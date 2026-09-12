@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Unit Lookup / Scan — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="back" href="/">&larr; Labelism</a>
+  <header>
+    <h1>Unit Lookup / Scan</h1>
+    <p class="muted">Type a unit code (e.g. 000001) or scan its QR.</p>
+  </header>
+
+  <form id="lookup-form">
+    <label>Unit code
+      <input name="code" autofocus required placeholder="000001">
+    </label>
+    <button type="submit">Look up</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    const form = document.getElementById('lookup-form');
+    const result = document.getElementById('result');
+    let currentUnit = null;
+
+    function render(unit) {
+      currentUnit = unit;
+      result.innerHTML = `
+        <div class="unit-card">
+          <div class="code">${unit.humanCode}</div>
+          <p class="muted">${unit.product} · ${unit.variant} · Batch ${unit.batchNumber}</p>
+          <span class="badge">${unit.disposition || '—'}</span>
+          ${unit.condition ? `<span class="badge">${unit.condition}</span>` : ''}
+          ${unit.locationName ? `<span class="badge">${unit.locationName}</span>` : ''}
+
+          <div class="actions">
+            <button data-action="sold">Mark Sold</button>
+            <button data-action="damage" class="secondary">Record Damage</button>
+            <button data-action="transfer" class="secondary">Transfer Location</button>
+            <button data-action="return" class="secondary">Record Return</button>
+            <button data-action="missing" class="secondary">Confirm Missing</button>
+          </div>
+          <div id="action-result"></div>
+
+          <div class="history">
+            ${unit.events.map(e => `
+              <div class="row">
+                <span class="type">#${e.seq} ${e.event_type}</span>
+                <span class="muted">${e.recorded_at}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      result.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => runAction(btn.dataset.action));
+      });
+    }
+
+    async function postEvent(body) {
+      return fetch(`/api/units/${currentUnit.id}/events`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(r => r.json());
+    }
+
+    async function runAction(action) {
+      const actionResult = document.getElementById('action-result');
+      let res;
+      // GUIDED actions only — fixed event_type -> projection mapping, not a
+      // free-form form (Director's instruction: prevent operators from
+      // creating invalid disposition/condition combinations).
+      if (action === 'sold') {
+        res = await postEvent({ eventType: 'UNIT_SOLD', disposition: 'SOLD', actor: 'izzat' });
+      } else if (action === 'damage') {
+        // Damage is recorded as an OBSERVATION — does NOT auto-change disposition.
+        res = await postEvent({ eventType: 'DAMAGE_OBSERVED', condition: 'DAMAGED', actor: 'izzat' });
+      } else if (action === 'return') {
+        res = await postEvent({ eventType: 'UNIT_RETURNED', disposition: 'RETURNED', actor: 'izzat' });
+      } else if (action === 'missing') {
+        res = await postEvent({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: 'izzat' });
+      } else if (action === 'transfer') {
+        // Inline form, not window.prompt() — a native browser dialog looks
+        // out of place next to the rest of the UI and (found during the
+        // digital rehearsal) cannot be driven by automated browser testing
+        // at all, since it auto-dismisses.
+        actionResult.innerHTML = `
+          <form id="transfer-form" style="margin-top:10px;max-width:320px">
+            <label>New location
+              <input name="locationName" required placeholder="e.g. Main Warehouse, Distributor A">
+            </label>
+            <div style="display:flex;gap:8px">
+              <button type="submit">Confirm Transfer</button>
+              <button type="button" id="transfer-cancel" class="secondary">Cancel</button>
+            </div>
+          </form>
+        `;
+        document.getElementById('transfer-cancel').addEventListener('click', () => {
+          actionResult.innerHTML = '';
+        });
+        document.getElementById('transfer-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const locationName = new FormData(e.target).get('locationName').trim();
+          if (!locationName) return;
+          const locations = await fetch('/api/locations').then(r => r.json());
+          let loc = locations.find(l => l.name.toLowerCase() === locationName.toLowerCase());
+          if (!loc) {
+            loc = await fetch('/api/locations', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: locationName }),
+            }).then(r => r.json());
+          }
+          const transferRes = await postEvent({ eventType: 'UNIT_TRANSFERRED', locationId: loc.id, actor: 'izzat', payload: { locationName } });
+          if (transferRes?.error) {
+            actionResult.innerHTML = `<div class="msg error">${transferRes.error}</div>`;
+            return;
+          }
+          const fresh = await fetch(`/api/units/lookup/${currentUnit.humanCode}`).then(r => r.json());
+          render(fresh);
+        });
+        return;
+      }
+
+      if (res?.error) {
+        actionResult.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      const fresh = await fetch(`/api/units/lookup/${currentUnit.humanCode}`).then(r => r.json());
+      render(fresh);
+    }
+
+    async function lookup(code) {
+      const res = await fetch(`/api/units/lookup/${encodeURIComponent(code)}`).then(r => r.json());
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      render(res);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = new FormData(form).get('code').trim();
+      lookup(code);
+    });
+
+    const presetCode = new URLSearchParams(location.search).get('code');
+    if (presetCode) {
+      form.code.value = presetCode;
+      lookup(presetCode);
+    }
+  </script>
+</body>
+</html>

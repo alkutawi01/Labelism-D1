@@ -1,0 +1,152 @@
+import * as catalog from '../services/catalog.js';
+import * as receiving from '../services/receiving.js';
+import * as units from '../services/units.js';
+import * as stocktake from '../services/stocktake.js';
+import { toErrorResponse } from '../domain/errors.js';
+import { verifyPassword, setSessionCookieHeader, clearSessionCookieHeader } from '../auth/index.js';
+
+function ok(body, status = 200) {
+  return Response.json(body, { status });
+}
+function notFound(message) {
+  return Response.json({ error: message }, { status: 404 });
+}
+async function body(request) {
+  try { return await request.json(); } catch { return {}; }
+}
+
+// Central dispatch -- returns a Response, or null if no route matched.
+// Cloudflare-specific bits (URL parsing, Request/Response) stay here;
+// everything called into is a plain function taking `db`/plain args.
+export async function routeApi(request, env) {
+  const url = new URL(request.url);
+  const { pathname } = url;
+  const method = request.method;
+  let m;
+
+  try {
+    if (pathname === '/api/login' && method === 'POST') {
+      const { password } = await body(request);
+      if (!password || !(await verifyPassword(password, env))) {
+        return Response.json({ error: 'Incorrect password.' }, { status: 401 });
+      }
+      const cookie = await setSessionCookieHeader(env);
+      return Response.json(
+        { ok: true, user: env.LABELISM_ADMIN_USER || 'izzat' },
+        { headers: { 'Set-Cookie': cookie } }
+      );
+    }
+
+    if (pathname === '/api/logout' && method === 'POST') {
+      return Response.json({ ok: true }, { headers: { 'Set-Cookie': clearSessionCookieHeader() } });
+    }
+
+    if (pathname === '/api/health' && method === 'GET') {
+      return ok({ ok: true, project: 'Labelism', phase: 'Phase 1 -- receiving & unit registration', dbMode: 'd1' });
+    }
+
+    if (pathname === '/api/products' && method === 'POST') {
+      return ok(await catalog.createProduct(env.DB, await body(request)), 201);
+    }
+    if (pathname === '/api/products' && method === 'GET') {
+      return ok(await catalog.listProducts(env.DB));
+    }
+
+    if (pathname === '/api/variants' && method === 'POST') {
+      return ok(await catalog.createVariant(env.DB, await body(request)), 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/products\/([^/]+)\/dimensions$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await catalog.addProductDimensions(env.DB, m[1], Array.isArray(b.names) ? b.names : []);
+      if (result.notFound) return notFound('Product not found.');
+      return ok(result, 201);
+    }
+
+    if (pathname === '/api/production-batches' && method === 'POST') {
+      return ok(await catalog.createProductionBatch(env.DB, await body(request)), 201);
+    }
+    if (pathname === '/api/production-batches' && method === 'GET') {
+      return ok(await catalog.listProductionBatches(env.DB));
+    }
+
+    if ((m = pathname.match(/^\/api\/production-batches\/([^/]+)$/)) && method === 'GET') {
+      const batch = await catalog.getProductionBatch(env.DB, m[1]);
+      if (!batch) return notFound('Production batch not found.');
+      return ok(batch);
+    }
+
+    if ((m = pathname.match(/^\/api\/production-batches\/([^/]+)\/receipts$/)) && method === 'POST') {
+      const result = await receiving.createReceipt(env.DB, m[1], await body(request));
+      if (result.notFound) return notFound('Production batch not found.');
+      return ok(result, 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/production-batches\/([^/]+)\/units$/)) && method === 'GET') {
+      return ok(await catalog.listUnitsForBatch(env.DB, m[1]));
+    }
+
+    if ((m = pathname.match(/^\/api\/receipts\/([^/]+)\/register-units$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await receiving.registerUnits(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Receipt not found.');
+      return ok(result, result.created ? 201 : 200);
+    }
+
+    if (pathname === '/api/locations' && method === 'GET') {
+      return ok(await catalog.listLocations(env.DB));
+    }
+    if (pathname === '/api/locations' && method === 'POST') {
+      return ok(await catalog.createLocation(env.DB, await body(request)), 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/units\/([^/]+)\/confirm-label$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await units.confirmLabel(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Unit not found.');
+      return ok(result, 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/units\/lookup\/([^/]+)$/)) && method === 'GET') {
+      const result = await units.lookupUnit(env.DB, m[1]);
+      if (!result) return notFound('Unit not found.');
+      return ok(result);
+    }
+
+    if ((m = pathname.match(/^\/api\/units\/([^/]+)\/events$/)) && method === 'POST') {
+      const result = await units.recordUnitEvent(env.DB, m[1], await body(request));
+      if (result.notFound) return notFound('Unit not found.');
+      return ok(result, 201);
+    }
+
+    if (pathname === '/api/stocktake-sessions' && method === 'POST') {
+      const result = await stocktake.openStocktakeSession(env.DB, await body(request));
+      if (result.notFound) return notFound('Production batch not found.');
+      return ok(result, 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/stocktake-sessions\/([^/]+)$/)) && method === 'GET') {
+      const result = await stocktake.getStocktakeSession(env.DB, m[1]);
+      if (!result) return notFound('Stocktake session not found.');
+      return ok(result);
+    }
+
+    if ((m = pathname.match(/^\/api\/stocktake-sessions\/([^/]+)\/scans$/)) && method === 'POST') {
+      const result = await stocktake.scanStocktakeUnit(env.DB, m[1], await body(request));
+      if (result.notFound && result.reason === 'unit') return notFound('Unit not found.');
+      if (result.notFound) return notFound('Stocktake session not found.');
+      return ok(result, result.alreadyScanned ? 200 : 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/stocktake-sessions\/([^/]+)\/close$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await stocktake.closeStocktakeSession(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Stocktake session not found.');
+      return ok(result);
+    }
+
+    return null;
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}

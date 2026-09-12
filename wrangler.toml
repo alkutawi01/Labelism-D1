@@ -1,0 +1,19 @@
+name = "labelism"
+main = "src/worker.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+NODE_ENV = "production"
+LABELISM_ADMIN_USER = "izzat"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "none"
+run_worker_first = true
+html_handling = "none"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "labelism"
+database_id = "631e90a3-18ed-45a4-97b2-ec5e4b5fcee2"

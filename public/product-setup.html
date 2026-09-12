@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Product Setup — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="back" href="/">&larr; Labelism</a>
+  <header>
+    <h1>Product Setup</h1>
+    <p class="muted">Create a product and its variants (e.g. size, color, material, or edition), then a production batch. Works for any physical product.</p>
+  </header>
+
+  <form id="form">
+    <fieldset>
+      <legend>Product</legend>
+      <label>
+        <input type="radio" name="productMode" value="new" checked> Create a new product
+      </label>
+      <label>
+        <input type="radio" name="productMode" value="existing"> Add to an existing product
+      </label>
+
+      <div id="new-product-fields">
+        <label>Product name
+          <input name="productName" placeholder="e.g. Product name or model">
+        </label>
+        <label>Variant dimensions this product has (optional, comma-separated)
+          <input name="newDimensions" placeholder="e.g. Size, Color, Material -- leave blank if this product has no meaningful variants">
+        </label>
+      </div>
+
+      <div id="existing-product-fields" hidden>
+        <label>Existing product
+          <select name="existingProductId">
+            <option value="">Loading products...</option>
+          </select>
+        </label>
+        <div id="existing-variants" class="muted"></div>
+        <label>Add more dimensions to this product (optional, comma-separated)
+          <input name="moreDimensions" placeholder="e.g. add a dimension that wasn't defined yet">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Variant</legend>
+      <div id="dimension-inputs"></div>
+      <div id="plain-label-field">
+        <label>Variant label
+          <input name="variantLabel" placeholder="e.g. Edition 1, or Size M">
+        </label>
+      </div>
+      <label>ISBN / SKU (optional, stored on the variant)
+        <input name="isbn" placeholder="leave blank if none yet">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Production Batch</legend>
+      <label>Batch number
+        <input name="batchNumber" value="1" required placeholder="e.g. 1 or ORD-1058">
+      </label>
+      <label>Planned quantity
+        <input name="plannedQuantity" type="number" required min="1" placeholder="e.g. 500">
+      </label>
+      <label>Unit cost, RM (optional)
+        <input name="unitCost" type="number" step="0.01" min="0" placeholder="e.g. 10.00">
+      </label>
+      <label>Producer name (optional)
+        <input name="producerName">
+      </label>
+    </fieldset>
+
+    <button type="submit">Create Production Batch</button>
+  </form>
+
+  <div id="result"></div>
+
+  <table id="list-table" hidden>
+    <thead><tr><th>Product</th><th>Variant</th><th>Batch</th><th>Planned</th></tr></thead>
+    <tbody id="list-body"></tbody>
+  </table>
+
+  <script>
+    const form = document.getElementById('form');
+    const result = document.getElementById('result');
+    const newFields = document.getElementById('new-product-fields');
+    const existingFields = document.getElementById('existing-product-fields');
+    const existingSelect = existingFields.querySelector('select[name=existingProductId]');
+    const existingVariantsEl = document.getElementById('existing-variants');
+    const dimensionInputs = document.getElementById('dimension-inputs');
+    const plainLabelField = document.getElementById('plain-label-field');
+    let productsCache = [];
+
+    function updateProductModeUI() {
+      const mode = new FormData(form).get('productMode');
+      newFields.hidden = mode !== 'new';
+      existingFields.hidden = mode !== 'existing';
+      form.productName.required = mode === 'new';
+      existingSelect.required = mode === 'existing';
+      renderDimensionInputs();
+    }
+    form.querySelectorAll('input[name=productMode]').forEach((el) => el.addEventListener('change', updateProductModeUI));
+    form.newDimensions.addEventListener('input', renderDimensionInputs);
+
+    function currentProduct() {
+      const mode = new FormData(form).get('productMode');
+      if (mode !== 'existing') return null;
+      return productsCache.find((p) => p.id === existingSelect.value) ?? null;
+    }
+
+    function parseDimensionNames(text) {
+      return (text || '').split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    // For an existing product, dimensions come from what's already saved.
+    // For a brand new product, the editor is declaring dimensions in this
+    // same submission -- read them live from the text field so the variant
+    // inputs stay structured from the very first variant, not just from the
+    // second one onward. A product with no dimensions declared (e.g. a
+    // book) keeps the simple plain-text label -- not every product needs
+    // multiple dimensions, and dimensions are never invented for a product
+    // that doesn't declare them (Director's Variant Dimensions Pass rule).
+    function renderDimensionInputs() {
+      const mode = new FormData(form).get('productMode');
+      const dims = mode === 'existing'
+        ? (currentProduct()?.dimensions ?? [])
+        : parseDimensionNames(form.newDimensions.value);
+      if (!dims.length) {
+        dimensionInputs.innerHTML = '';
+        plainLabelField.hidden = false;
+        form.variantLabel.required = true;
+        return;
+      }
+      plainLabelField.hidden = true;
+      form.variantLabel.required = false;
+      dimensionInputs.innerHTML = dims.map((d) => `
+        <label>${d}
+          <input name="dim__${d}" required placeholder="e.g. ${d} value">
+        </label>
+      `).join('');
+    }
+
+    function renderExistingVariants() {
+      const p = currentProduct();
+      if (!p) { existingVariantsEl.textContent = ''; return; }
+      if (!p.variants.length) { existingVariantsEl.textContent = 'No variants yet for this product.'; return; }
+      const lines = p.variants.map((v) => {
+        const attrs = Object.entries(v.attributes || {});
+        return attrs.length ? attrs.map(([k, val]) => `${k}: ${val}`).join(', ') : v.variantLabel;
+      });
+      existingVariantsEl.innerHTML = 'Existing variants:<br>' + lines.map((l) => `&bull; ${l}`).join('<br>');
+    }
+    existingSelect.addEventListener('change', () => { renderExistingVariants(); renderDimensionInputs(); });
+
+    async function loadProducts() {
+      const res = await fetch('/api/products');
+      productsCache = await res.json();
+      existingSelect.innerHTML = productsCache.length
+        ? productsCache.map((p) => `<option value="${p.id}">${p.name}${p.dimensions.length ? ' (' + p.dimensions.join(', ') + ')' : ''}</option>`).join('')
+        : '<option value="">No products yet -- create one first</option>';
+      renderExistingVariants();
+      renderDimensionInputs();
+    }
+
+    async function loadList() {
+      const res = await fetch('/api/production-batches');
+      const rows = await res.json();
+      if (!rows.length) return;
+      document.getElementById('list-table').hidden = false;
+      document.getElementById('list-body').innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.product_name}</td>
+          <td>${r.variant_label}</td>
+          <td>${r.batch_number}</td>
+          <td>${r.planned_quantity}</td>
+        </tr>
+      `).join('');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      result.innerHTML = '';
+      const data = Object.fromEntries(new FormData(form));
+      try {
+        let productId;
+        if (data.productMode === 'existing') {
+          if (!data.existingProductId) throw new Error('Select an existing product.');
+          productId = data.existingProductId;
+          if (data.moreDimensions && data.moreDimensions.trim()) {
+            const names = data.moreDimensions.split(',').map((s) => s.trim()).filter(Boolean);
+            const res = await fetch(`/api/products/${productId}/dimensions`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ names })
+            }).then(r => r.json());
+            if (res.error) throw new Error(res.error);
+          }
+        } else {
+          if (!data.productName) throw new Error('Product name is required.');
+          const product = await fetch('/api/products', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: data.productName })
+          }).then(r => r.json());
+          if (product.error) throw new Error(product.error);
+          productId = product.id;
+          if (data.newDimensions && data.newDimensions.trim()) {
+            const names = data.newDimensions.split(',').map((s) => s.trim()).filter(Boolean);
+            if (names.length) {
+              const res = await fetch(`/api/products/${productId}/dimensions`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ names })
+              }).then(r => r.json());
+              if (res.error) throw new Error(res.error);
+            }
+          }
+        }
+
+        // Structured dimension values (if this product has dimensions)
+        // become the real attributes AND compose the display label -- the
+        // label is never the source of truth, just a convenient summary.
+        const dimEntries = Object.entries(data).filter(([k]) => k.startsWith('dim__'));
+        let variantLabel = data.variantLabel;
+        const attributes = data.isbn ? { isbn: data.isbn } : {};
+        if (dimEntries.length) {
+          variantLabel = dimEntries.map(([, v]) => v).join(' / ');
+          for (const [k, v] of dimEntries) attributes[k.slice(5)] = v;
+        }
+        if (!variantLabel) throw new Error('Variant label (or dimension values) is required.');
+
+        const variant = await fetch('/api/variants', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId, variantLabel, attributes })
+        }).then(r => r.json());
+        if (variant.error) throw new Error(variant.error);
+
+        const batch = await fetch('/api/production-batches', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            variantId: variant.id,
+            batchNumber: data.batchNumber,
+            plannedQuantity: Number(data.plannedQuantity),
+            unitCostCents: data.unitCost ? Math.round(Number(data.unitCost) * 100) : undefined,
+            producerName: data.producerName || undefined,
+          })
+        }).then(r => r.json());
+        if (batch.error) throw new Error(batch.error);
+
+        result.innerHTML = `<div class="msg ok">Production batch created. ID: ${batch.id}<br>
+          Go to <a href="/receiving.html?batchId=${batch.id}">Receiving &amp; Reconciliation</a> to continue.</div>`;
+        form.reset();
+        updateProductModeUI();
+        loadProducts();
+        loadList();
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+
+    updateProductModeUI();
+    loadProducts();
+    loadList();
+  </script>
+</body>
+</html>

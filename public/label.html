@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Print Labels — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    /* Real thermal label sizes (mm), matched to what an Xprinter-class
+       label printer actually loads -- one physical label per printed
+       page, not a grid on A4. @page size is set dynamically per the
+       selected size (see script below). */
+    @media print {
+      .no-print { display: none !important; }
+      body { max-width: none; padding: 0; margin: 0; }
+      .label-grid { display: block; }
+      .label {
+        border: none;
+        border-radius: 0;
+        page-break-after: always;
+        width: var(--label-w);
+        height: var(--label-h);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2mm;
+      }
+      .label:last-child { page-break-after: auto; }
+    }
+    .label-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .label {
+      border: 1px dashed var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      background: var(--surface);
+    }
+    .label .qr { display: flex; justify-content: center; margin: 6px 0; }
+    .label .code { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .label .status { font-size: 11px; color: var(--muted); }
+    .label button { width: 100%; margin-top: 6px; padding: 6px; font-size: 12px; }
+    .label.confirmed { border-style: solid; border-color: var(--ok); }
+  </style>
+</head>
+<body>
+  <a class="back no-print" href="/">&larr; Labelism</a>
+  <header class="no-print">
+    <h1>Print Labels</h1>
+    <p class="muted">Print one label per copy, attach it, then confirm attachment by scanning or clicking Confirm.</p>
+  </header>
+
+  <label class="no-print">Production batch
+    <select id="batch-select"><option value="">Loading…</option></select>
+  </label>
+
+  <label class="no-print">Label size (physical sticker size loaded in your printer)
+    <select id="size-select">
+      <option value="40x30">40mm x 30mm</option>
+      <option value="50x30">50mm x 30mm</option>
+      <option value="60x40" selected>60mm x 40mm</option>
+    </select>
+  </label>
+
+  <div class="no-print" style="margin-top:12px">
+    <button id="print-btn" class="secondary">Print this page</button>
+  </div>
+
+  <div id="grid" class="label-grid"></div>
+
+  <script>
+    const select = document.getElementById('batch-select');
+    const sizeSelect = document.getElementById('size-select');
+    const grid = document.getElementById('grid');
+
+    const SIZES = {
+      '40x30': { w: 40, h: 30, qr: 60 },
+      '50x30': { w: 50, h: 30, qr: 70 },
+      '60x40': { w: 60, h: 40, qr: 90 },
+    };
+
+    function applyPageSize() {
+      const s = SIZES[sizeSelect.value];
+      let styleTag = document.getElementById('page-size-style');
+      if (!styleTag) {
+        styleTag = document.createElement('style');
+        styleTag.id = 'page-size-style';
+        document.head.appendChild(styleTag);
+      }
+      styleTag.textContent = `
+        @page { size: ${s.w}mm ${s.h}mm; margin: 0; }
+        :root { --label-w: ${s.w}mm; --label-h: ${s.h}mm; }
+      `;
+    }
+    sizeSelect.addEventListener('change', () => { applyPageSize(); loadUnits(); });
+
+    async function loadBatches() {
+      const rows = await fetch('/api/production-batches').then(r => r.json());
+      if (!rows.length) {
+        select.innerHTML = '<option value="">No production batches yet</option>';
+        return;
+      }
+      select.innerHTML = rows.map(r =>
+        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}</option>`
+      ).join('');
+      const params = new URLSearchParams(location.search);
+      if (params.get('batchId')) select.value = params.get('batchId');
+      loadUnits();
+    }
+
+    async function loadUnits() {
+      if (!select.value) return;
+      const units = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
+      const qrSize = SIZES[sizeSelect.value].qr;
+      grid.innerHTML = '';
+      units.forEach(u => {
+        const cell = document.createElement('div');
+        cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
+        cell.innerHTML = `
+          <div class="code">UNIT ${u.human_code}</div>
+          <div class="qr" id="qr-${u.id}"></div>
+          <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : 'Not yet confirmed'}</div>
+          <button class="no-print" data-id="${u.id}" ${u.label_confirmed_at ? 'disabled' : ''}>
+            ${u.label_confirmed_at ? 'Confirmed' : 'Confirm Attachment'}
+          </button>
+        `;
+        grid.appendChild(cell);
+        new QRCode(document.getElementById(`qr-${u.id}`), {
+          text: `${location.origin}/scan.html?code=${u.internal_token}`,
+          width: qrSize,
+          height: qrSize,
+        });
+      });
+      grid.querySelectorAll('button[data-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await fetch(`/api/units/${btn.dataset.id}/confirm-label`, { method: 'POST' });
+          loadUnits();
+        });
+      });
+    }
+
+    select.addEventListener('change', loadUnits);
+    document.getElementById('print-btn').addEventListener('click', () => window.print());
+    applyPageSize();
+    loadBatches();
+  </script>
+</body>
+</html>

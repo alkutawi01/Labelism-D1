@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Receiving &amp; Reconciliation — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="back" href="/">&larr; Labelism</a>
+  <header>
+    <h1>Receiving &amp; Reconciliation</h1>
+    <p class="muted">Record what actually arrived, then register it into stock — two steps.</p>
+  </header>
+
+  <label>Production batch
+    <select id="batch-select"><option value="">Loading…</option></select>
+  </label>
+
+  <div id="planned-info" class="msg" style="display:none;margin-top:10px"></div>
+
+  <form id="receipt-form" style="margin-top:20px">
+    <label>Quantity arrived
+      <input name="observedQuantity" type="number" required min="0">
+    </label>
+    <label style="flex-direction:row;align-items:center;gap:8px">
+      <input type="checkbox" id="has-rejects" style="width:auto">
+      Some of it is damaged / incomplete / rejected
+    </label>
+    <div id="reject-fields" hidden>
+      <label>How many are rejected
+        <input name="rejectedQuantity" type="number" value="0" min="0">
+      </label>
+      <label>Reason
+        <input name="rejectionReason" placeholder="e.g. scuffed cover, torn stitching">
+      </label>
+    </div>
+
+    <label>Accepted into stock
+      <input name="acceptedQuantity" type="number" min="0">
+    </label>
+    <p class="muted" id="accepted-hint" style="margin-top:-8px"></p>
+
+    <button type="submit">1. Confirm Receipt</button>
+  </form>
+
+  <div id="receipt-result"></div>
+
+  <div id="register-step" style="display:none;margin-top:16px">
+    <p class="muted">Receipt confirmed. Units have no identity until this step is done.</p>
+    <button id="register-btn" class="secondary">2. Register Units</button>
+    <div id="register-result"></div>
+  </div>
+
+  <script>
+    const select = document.getElementById('batch-select');
+    const plannedInfo = document.getElementById('planned-info');
+    const hasRejects = document.getElementById('has-rejects');
+    const rejectFields = document.getElementById('reject-fields');
+    const observedInput = document.querySelector('[name=observedQuantity]');
+    const rejectedInput = document.querySelector('[name=rejectedQuantity]');
+    const acceptedInput = document.querySelector('[name=acceptedQuantity]');
+    const acceptedHint = document.getElementById('accepted-hint');
+    let acceptedManuallyEdited = false;
+    let currentReceiptId = null;
+
+    // Accepted defaults to observed - rejected (the common case: every
+    // observed unit is either accepted or rejected, nothing left pending),
+    // but stays independently editable. The Director's invariant is
+    // accepted + rejected <= observed, NOT necessarily equality -- some
+    // observed units can be legitimately unresolved (pending inspection),
+    // so the default must be a suggestion, never a forced calculation.
+    function suggestAccepted() {
+      if (acceptedManuallyEdited) return;
+      const observed = Number(observedInput.value || 0);
+      const rejected = hasRejects.checked ? Number(rejectedInput.value || 0) : 0;
+      acceptedInput.value = Math.max(0, observed - rejected);
+      updateHint();
+    }
+
+    function updateHint() {
+      const observed = Number(observedInput.value || 0);
+      const rejected = hasRejects.checked ? Number(rejectedInput.value || 0) : 0;
+      const accepted = Number(acceptedInput.value || 0);
+      const unresolved = observed - rejected - accepted;
+      acceptedHint.textContent = unresolved > 0
+        ? `${unresolved} unresolved (observed but not yet accepted or rejected).`
+        : '';
+    }
+
+    observedInput.addEventListener('input', suggestAccepted);
+    rejectedInput.addEventListener('input', suggestAccepted);
+    acceptedInput.addEventListener('input', () => { acceptedManuallyEdited = true; updateHint(); });
+
+    hasRejects.addEventListener('change', () => {
+      rejectFields.hidden = !hasRejects.checked;
+      if (!hasRejects.checked) {
+        rejectedInput.value = 0;
+        document.querySelector('[name=rejectionReason]').value = '';
+      }
+      suggestAccepted();
+    });
+
+    async function loadBatches() {
+      const rows = await fetch('/api/production-batches').then(r => r.json());
+      if (!rows.length) {
+        select.innerHTML = '<option value="">No production batches yet — create one in Product Setup</option>';
+        return;
+      }
+      select.innerHTML = rows.map(r =>
+        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number} (planned ${r.planned_quantity})</option>`
+      ).join('');
+
+      const params = new URLSearchParams(location.search);
+      if (params.get('batchId')) select.value = params.get('batchId');
+      showPlanned();
+    }
+
+    async function showPlanned() {
+      if (!select.value) return;
+      const b = await fetch(`/api/production-batches/${select.value}`).then(r => r.json());
+      plannedInfo.style.display = 'block';
+      plannedInfo.className = 'msg';
+      plannedInfo.innerHTML = `Planned: <strong>${b.planned_quantity}</strong> units · Units registered so far: <strong>${b.unitCount}</strong>`;
+    }
+    select.addEventListener('change', showPlanned);
+
+    document.getElementById('receipt-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('receipt-result');
+      result.innerHTML = '';
+      if (!select.value) { result.innerHTML = '<div class="msg error">Select a production batch first.</div>'; return; }
+
+      const data = Object.fromEntries(new FormData(e.target));
+      const observed = Number(data.observedQuantity);
+      const rejected = hasRejects.checked ? Number(data.rejectedQuantity || 0) : 0;
+      const accepted = Number(data.acceptedQuantity || 0);
+
+      if (accepted + rejected > observed) {
+        result.innerHTML = `<div class="msg error">Accepted (${accepted}) + rejected (${rejected}) cannot exceed observed (${observed}).</div>`;
+        return;
+      }
+
+      const res = await fetch(`/api/production-batches/${select.value}/receipts`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observedQuantity: observed,
+          acceptedQuantity: accepted,
+          rejectedQuantity: rejected,
+          rejectionReason: hasRejects.checked ? (data.rejectionReason || undefined) : undefined,
+        })
+      }).then(r => r.json());
+
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      currentReceiptId = res.id;
+      const unresolved = observed - rejected - accepted;
+      result.innerHTML = `<div class="msg ok">Receipt confirmed — ${accepted} accepted into stock${unresolved > 0 ? `, ${unresolved} left unresolved` : ''}, variance from plan: ${res.variance >= 0 ? '+' : ''}${res.variance}.</div>`;
+      document.getElementById('register-step').style.display = 'block';
+    });
+
+    document.getElementById('register-btn').addEventListener('click', async () => {
+      const result = document.getElementById('register-result');
+      if (!currentReceiptId) return;
+      const res = await fetch(`/api/receipts/${currentReceiptId}/register-units`, { method: 'POST' })
+        .then(r => r.json());
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      result.innerHTML = `<div class="msg ok">${res.created} unit(s) registered${res.alreadyRegistered ? ' (' + res.alreadyRegistered + ' already existed)' : ''}.</div>`;
+      showPlanned();
+    });
+
+    loadBatches();
+  </script>
+</body>
+</html>

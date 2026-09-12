@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>Labelism</h1>
+    <p class="muted">Unit Identity Core — Phase 1</p>
+    <button id="logout-btn" class="secondary" style="margin-top:10px">Log Out</button>
+  </header>
+  <nav class="cards">
+    <a class="card" href="/product-setup.html">
+      <h2>1. Product Setup</h2>
+      <p>Create a product, variant, and production batch — set the planned quantity.</p>
+    </a>
+    <a class="card" href="/receiving.html">
+      <h2>2. Receiving &amp; Reconciliation</h2>
+      <p>Record units received, confirm, then register them.</p>
+    </a>
+    <a class="card" href="/label.html">
+      <h2>3. Print Labels</h2>
+      <p>Print a QR label per unit, then confirm each one is attached.</p>
+    </a>
+    <a class="card" href="/scan.html">
+      <h2>4. Unit Lookup / Scan</h2>
+      <p>Find a unit by code, view its status, record an action.</p>
+    </a>
+    <a class="card" href="/stocktake.html">
+      <h2>5. Stocktake</h2>
+      <p>Reconcile expected vs. observed units for a production batch.</p>
+    </a>
+  </nav>
+  <script>
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST' });
+      location.href = '/login.html';
+    });
+  </script>
+</body>
+</html>

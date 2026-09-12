@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Stocktake — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+    .count-tile { border: 1px solid var(--line); border-radius: 8px; padding: 14px; text-align: center; background: var(--surface); }
+    .count-tile .n { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .count-tile .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .code-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .code-chip { font-family: ui-monospace, Consolas, monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; display: flex; align-items: center; gap: 6px; }
+    .code-chip button { padding: 1px 6px; font-size: 11px; margin: 0; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">&larr; Labelism</a>
+  <header>
+    <h1>Stocktake</h1>
+    <p class="muted">Compare what should physically exist against what is actually observed. Not scanned does not mean missing until you confirm it.</p>
+  </header>
+
+  <div id="setup">
+    <label>Production batch
+      <select id="batch-select"><option value="">Loading…</option></select>
+    </label>
+    <button id="open-btn" style="margin-top:10px">Open Stocktake Session</button>
+  </div>
+
+  <div id="session" style="display:none">
+    <div class="counts">
+      <div class="count-tile"><div class="n" id="c-expected">0</div><div class="label">Expected</div></div>
+      <div class="count-tile"><div class="n" id="c-ok">0</div><div class="label">Observed OK</div></div>
+      <div class="count-tile"><div class="n" id="c-not">0</div><div class="label">Not Observed</div></div>
+    </div>
+
+    <form id="scan-form">
+      <label>Scan / enter code
+        <input name="code" autofocus placeholder="000001">
+      </label>
+      <button type="submit">Record Scan</button>
+    </form>
+    <div id="scan-result"></div>
+
+    <h2 style="margin-top:24px">Not Observed</h2>
+    <p class="muted">These were expected but not scanned yet. Confirm missing only when you're sure — this is a deliberate action, not automatic.</p>
+    <div id="not-observed-list" class="code-list"></div>
+
+    <h2 style="margin-top:24px">Unexpected</h2>
+    <p class="muted">Scanned, but not part of this batch's expected set.</p>
+    <div id="unexpected-list" class="code-list"></div>
+
+    <button id="close-btn" class="secondary" style="margin-top:24px">Close Session</button>
+    <div id="close-result"></div>
+  </div>
+
+  <script>
+    let sessionId = null;
+
+    async function loadBatches() {
+      const rows = await fetch('/api/production-batches').then(r => r.json());
+      const select = document.getElementById('batch-select');
+      if (!rows.length) {
+        select.innerHTML = '<option value="">No production batches yet</option>';
+        return;
+      }
+      select.innerHTML = rows.map(r =>
+        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}</option>`
+      ).join('');
+    }
+
+    document.getElementById('open-btn').addEventListener('click', async () => {
+      const batchId = document.getElementById('batch-select').value;
+      if (!batchId) return;
+      const res = await fetch('/api/stocktake-sessions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId, actor: 'izzat' }),
+      }).then(r => r.json());
+      if (res.error) { alert(res.error); return; }
+      sessionId = res.id;
+      document.getElementById('setup').style.display = 'none';
+      document.getElementById('session').style.display = 'block';
+      await refresh();
+    });
+
+    async function refresh() {
+      const s = await fetch(`/api/stocktake-sessions/${sessionId}`).then(r => r.json());
+      document.getElementById('c-expected').textContent = s.expectedCount;
+      document.getElementById('c-ok').textContent = s.ok.length;
+      document.getElementById('c-not').textContent = s.notObserved.length;
+
+      document.getElementById('not-observed-list').innerHTML = s.notObserved.map(u => `
+        <span class="code-chip">${u.humanCode} ${
+          u.missingConfirmed
+            ? '<span class="badge" style="font-size:11px">Missing confirmed</span>'
+            : `<button data-confirm-missing="${u.humanCode}">Confirm Missing</button>`
+        }</span>
+      `).join('') || '<span class="muted">None</span>';
+
+      document.getElementById('unexpected-list').innerHTML = s.unexpected.map(code =>
+        `<span class="code-chip">${code}</span>`
+      ).join('') || '<span class="muted">None</span>';
+
+      document.querySelectorAll('[data-confirm-missing]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const code = btn.dataset.confirmMissing;
+          const unit = await fetch(`/api/units/lookup/${code}`).then(r => r.json());
+          await fetch(`/api/units/${unit.id}/events`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: 'izzat' }),
+          });
+          refresh();
+        });
+      });
+    }
+
+    document.getElementById('scan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const code = new FormData(form).get('code').trim();
+      const result = document.getElementById('scan-result');
+      const res = await fetch(`/api/stocktake-sessions/${sessionId}/scans`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, actor: 'izzat' }),
+      }).then(r => r.json());
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+      } else {
+        result.innerHTML = `<div class="msg ${res.unexpected ? 'error' : 'ok'}">${res.humanCode}${res.alreadyScanned ? ' (already scanned)' : ''}${res.unexpected ? ' — UNEXPECTED for this batch' : ''}</div>`;
+      }
+      form.reset();
+      form.code.focus();
+      refresh();
+    });
+
+    document.getElementById('close-btn').addEventListener('click', async () => {
+      const res = await fetch(`/api/stocktake-sessions/${sessionId}/close`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'izzat' }),
+      }).then(r => r.json());
+      document.getElementById('close-result').innerHTML = res.error
+        ? `<div class="msg error">${res.error}</div>`
+        : `<div class="msg ok">Session closed.</div>`;
+    });
+
+    loadBatches();
+  </script>
+</body>
+</html>

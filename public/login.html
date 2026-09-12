@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Log In — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>Labelism</h1>
+    <p class="muted">Log in to continue.</p>
+  </header>
+
+  <form id="form">
+    <label>Password
+      <input name="password" type="password" required autofocus>
+    </label>
+    <button type="submit">Log In</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('result');
+      result.innerHTML = '';
+      const password = new FormData(e.target).get('password');
+      const res = await fetch('/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      }).then(r => r.json());
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      location.href = '/';
+    });
+  </script>
+</body>
+</html>
