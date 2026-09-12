@@ -89,6 +89,54 @@ export async function addProductDimensions(db, productId, names) {
   return { productId, dimensions: results.map((r) => r.name) };
 }
 
+// Case/whitespace-insensitive match on product name -- reuses the existing
+// product if one already exists rather than creating a duplicate. Used by
+// the document-import flow (see src/services/importManifest.js), where the
+// same product may legitimately be re-ordered across multiple documents.
+export async function getOrCreateProduct(db, name) {
+  const trimmed = String(name).trim();
+  const existing = await db
+    .prepare('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = LOWER(?)')
+    .bind(trimmed)
+    .first();
+  if (existing) return { id: existing.id, name: existing.name, created: false };
+  const created = await createProduct(db, { name: trimmed });
+  return { ...created, created: true };
+}
+
+// Exact match on (product_id, variant_label) -- the same uniqueness key the
+// variants table already enforces. Reuses the existing variant if one
+// matches instead of failing on the UNIQUE constraint.
+export async function getOrCreateVariant(db, productId, variantLabel, attributes) {
+  const existing = await db
+    .prepare('SELECT id FROM variants WHERE product_id = ? AND variant_label = ?')
+    .bind(productId, variantLabel)
+    .first();
+  if (existing) return { id: existing.id, productId, variantLabel, created: false };
+  const created = await createVariant(db, { productId, variantLabel, attributes });
+  return { ...created, created: true };
+}
+
+// Next free batch_number for a variant, as a plain incrementing string --
+// manual batch numbers aren't required to be sequential, so this loops past
+// any that were already taken by hand instead of assuming COUNT+1 is free.
+export async function nextBatchNumber(db, variantId) {
+  const row = await db
+    .prepare('SELECT COUNT(*) AS n FROM production_batches WHERE variant_id = ?')
+    .bind(variantId)
+    .first();
+  let n = Number(row.n) + 1;
+  while (
+    await db
+      .prepare('SELECT 1 FROM production_batches WHERE variant_id = ? AND batch_number = ?')
+      .bind(variantId, String(n))
+      .first()
+  ) {
+    n++;
+  }
+  return String(n);
+}
+
 export async function createVariant(db, { productId, variantLabel, attributes }) {
   if (!productId || !variantLabel) {
     throw new ValidationError('productId and variantLabel are required.');
@@ -110,17 +158,17 @@ export async function createVariant(db, { productId, variantLabel, attributes })
   return { id, productId, variantLabel };
 }
 
-export async function createProductionBatch(db, { variantId, batchNumber, plannedQuantity, unitCostCents, producerName }) {
+export async function createProductionBatch(db, { variantId, batchNumber, plannedQuantity, unitCostCents, producerName, notes }) {
   if (!variantId || !batchNumber || !plannedQuantity) {
     throw new ValidationError('variantId, batchNumber, and plannedQuantity are required.');
   }
   const id = newInternalId();
   await db
     .prepare(
-      `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, unit_cost_cents, producer_name)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, unit_cost_cents, producer_name, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, variantId, String(batchNumber), plannedQuantity, unitCostCents ?? null, producerName ?? null)
+    .bind(id, variantId, String(batchNumber), plannedQuantity, unitCostCents ?? null, producerName ?? null, notes ?? null)
     .run();
   return { id, variantId, batchNumber: String(batchNumber), plannedQuantity };
 }
@@ -147,6 +195,30 @@ export async function getProductionBatch(db, id) {
     .all();
   const countRow = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE batch_id = ?').bind(id).first();
   return { ...batch, receipts, unitCount: Number(countRow.n) };
+}
+
+// Cheap read-only counts for the dashboard -- a single query, no per-row
+// work, so it's safe to call on every Home page load.
+export async function getDashboardStats(db) {
+  const row = await db
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM products) AS products,
+        (SELECT COUNT(*) FROM variants) AS variants,
+        (SELECT COUNT(*) FROM production_batches) AS batches,
+        (SELECT COUNT(*) FROM units) AS units,
+        (SELECT COUNT(*) FROM units WHERE current_disposition = 'AVAILABLE') AS availableUnits,
+        (SELECT COUNT(*) FROM locations) AS locations`
+    )
+    .first();
+  return {
+    products: Number(row.products),
+    variants: Number(row.variants),
+    batches: Number(row.batches),
+    units: Number(row.units),
+    availableUnits: Number(row.availableUnits),
+    locations: Number(row.locations),
+  };
 }
 
 export async function listLocations(db) {

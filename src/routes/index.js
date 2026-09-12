@@ -2,6 +2,7 @@ import * as catalog from '../services/catalog.js';
 import * as receiving from '../services/receiving.js';
 import * as units from '../services/units.js';
 import * as stocktake from '../services/stocktake.js';
+import * as importManifest from '../services/importManifest.js';
 import { toErrorResponse } from '../domain/errors.js';
 import { verifyPassword, setSessionCookieHeader, clearSessionCookieHeader } from '../auth/index.js';
 
@@ -93,6 +94,21 @@ export async function routeApi(request, env) {
       return ok(result, result.created ? 201 : 200);
     }
 
+    if (pathname === '/api/import/preview' && method === 'POST') {
+      const b = await body(request);
+      const manifest = importManifest.normalizeManifest(b.manifest);
+      return ok(await importManifest.previewManifest(env.DB, manifest));
+    }
+    if (pathname === '/api/import/apply' && method === 'POST') {
+      const b = await body(request);
+      const manifest = importManifest.normalizeManifest(b.manifest);
+      return ok(await importManifest.applyManifest(env.DB, manifest, b.actor), 201);
+    }
+
+    if (pathname === '/api/stats' && method === 'GET') {
+      return ok(await catalog.getDashboardStats(env.DB));
+    }
+
     if (pathname === '/api/locations' && method === 'GET') {
       return ok(await catalog.listLocations(env.DB));
     }
@@ -103,6 +119,13 @@ export async function routeApi(request, env) {
     if ((m = pathname.match(/^\/api\/units\/([^/]+)\/confirm-label$/)) && method === 'POST') {
       const b = await body(request);
       const result = await units.confirmLabel(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Unit not found.');
+      return ok(result, 201);
+    }
+
+    if ((m = pathname.match(/^\/api\/units\/([^/]+)\/reissue-label$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await units.reissueLabel(env.DB, m[1], b.actor);
       if (result.notFound) return notFound('Unit not found.');
       return ok(result, 201);
     }

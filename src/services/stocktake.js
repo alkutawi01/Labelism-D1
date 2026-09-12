@@ -64,7 +64,7 @@ export async function getStocktakeSession(db, sessionId) {
     closedAt: session.closed_at,
     expectedCount: expected.length,
     ok: ok.map((u) => u.human_code),
-    notObserved: notObserved.map((u) => ({ humanCode: u.human_code, missingConfirmed: u.current_disposition === 'MISSING' })),
+    notObserved: notObserved.map((u) => ({ id: u.id, humanCode: u.human_code, missingConfirmed: u.current_disposition === 'MISSING' })),
     unexpected: unexpected.map((u) => u.human_code),
   };
 }
@@ -75,11 +75,30 @@ export async function scanStocktakeUnit(db, sessionId, { code, actor }) {
   if (session.status !== 'OPEN') throw new ValidationError('Stocktake session is not open.');
   if (!code) throw new ValidationError('code is required.');
 
-  const unit = await db
+  // human_code alone can match more than one unit (it's only unique within
+  // a batch, by design -- see units.lookupUnit for the full rationale).
+  // internal_token/public_token matches are always unique. Since a
+  // stocktake is inherently scoped to one batch, prefer whichever match (if
+  // any) actually belongs to THIS session's batch instead of guessing --
+  // that resolves the common case (operator manually types a code for an
+  // item that IS in this batch) without ever silently recording an event
+  // against the wrong physical unit.
+  const { results: matches } = await db
     .prepare('SELECT * FROM units WHERE human_code = ?1 OR internal_token = ?1 OR public_token = ?1')
     .bind(code)
-    .first();
-  if (!unit) return { notFound: true, reason: 'unit' };
+    .all();
+  if (!matches.length) return { notFound: true, reason: 'unit' };
+  let unit = matches[0];
+  if (matches.length > 1) {
+    const inBatch = matches.filter((u) => u.batch_id === session.batch_id);
+    if (inBatch.length === 1) {
+      unit = inBatch[0];
+    } else {
+      throw new ValidationError(
+        `Code "${code}" matches more than one unit and isn't uniquely identifiable here -- scan the QR instead of typing the code.`
+      );
+    }
+  }
 
   const expectedRow = await db
     .prepare('SELECT 1 AS present FROM stocktake_expected_units WHERE session_id = ? AND unit_id = ?')

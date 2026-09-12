@@ -1,0 +1,11 @@
+-- Document Import support -- additive only, 2026-09-12.
+-- Per Izzat's simplification of the AI-document-import idea: a source
+-- document (job order, invoice, quotation, DO, ...) reduces to
+-- Product + Variant (already fully modeled by product_dimensions /
+-- variant_attributes) plus a small amount of leftover context that isn't a
+-- first-class Labelism concept -- e.g. planned per-unit names ("LUQMAN",
+-- "ARRAF" for a school jersey order) or a project/customer reference. This
+-- column holds that leftover context as free text (JSON or plain), scoped
+-- to the production batch it came from. It does not participate in any
+-- Labelism business logic -- see src/services/importManifest.js.
+ALTER TABLE production_batches ADD COLUMN notes TEXT;

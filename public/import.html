@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Import from Document — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+  <header class="page-header">
+    <h1>Import from Document</h1>
+    <p class="muted">
+      Turn a job order, invoice, quotation, delivery order, or similar document into
+      Products, Variants, and Production Batches — without teaching Labelism that
+      document's format. An AI chatbot (outside Labelism, no API key needed) reads
+      your document and produces a small structured file; Labelism only reads that.
+    </p>
+  </header>
+
+  <fieldset>
+    <legend>Step 1 — Copy this prompt</legend>
+    <p class="muted">
+      Copy the prompt below into any AI chatbot you already use (ChatGPT, Claude, etc.),
+      then attach or paste your document (photo, PDF, or text) in the same message.
+    </p>
+    <textarea id="prompt-text" readonly rows="14"></textarea>
+    <button type="button" id="btn-copy-prompt" class="secondary">Copy Prompt</button>
+    <span id="copy-status" class="muted"></span>
+  </fieldset>
+
+  <fieldset>
+    <legend>Step 2 — Paste the chatbot's output here</legend>
+    <textarea id="manifest-input" rows="12" placeholder="Paste the JSON the chatbot gave you..."></textarea>
+    <button type="button" id="btn-preview">Preview</button>
+  </fieldset>
+
+  <div id="result"></div>
+
+  <fieldset id="preview-section" hidden>
+    <legend>Step 3 — Review before importing</legend>
+    <div id="preview-body"></div>
+    <button type="button" id="btn-confirm">Confirm Import</button>
+  </fieldset>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    const PROMPT = `You are helping convert a business document (job order, invoice, quotation, delivery order, purchase order, or similar) into a structured "Labelism Import Manifest v1" JSON object.
+
+Read the attached document/image and output ONLY a single JSON object in this exact shape:
+
+{
+  "schemaVersion": "1",
+  "context": "<optional short free text: project/customer name, due date, order reference -- anything worth keeping for reference, not modeled elsewhere>",
+  "products": [
+    {
+      "name": "<a clear product name, e.g. the apparel/item type -- translate to English if the source uses another language>",
+      "dimensions": ["<dimension name 1>", "<dimension name 2>"],
+      "variants": [
+        {
+          "attributes": { "<dimension name>": "<value>" },
+          "quantity": <integer, how many units of this exact variant>,
+          "unitNames": ["<name 1>", "<name 2>"]
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Field NAMES (dimension names like "Size", "Colour", "Material") must be in English, even if the source document uses another language.
+- Field VALUES (actual data: sizes like "S"/"XL", people's names, colours, materials) must be kept exactly as written in the source -- do NOT translate or alter them.
+- "unitNames" is optional -- only include it if the document assigns specific individual people/names to units (e.g. a school jersey order with student names per size). Omit it entirely if there is no such data. It is fine for it to be shorter than "quantity" (some units may be unnamed).
+- "dimensions" and "attributes" are optional -- if the document has no meaningful size/colour/etc. variation (e.g. a single book edition), omit them and just set "quantity" on one variant with an empty attributes object.
+- If the document lists more than one distinct product/item type, include each as a separate entry in "products".
+- Output ONLY the JSON object. No explanation, no markdown code fences, no extra text.`;
+
+    document.getElementById('prompt-text').value = PROMPT;
+
+    document.getElementById('btn-copy-prompt').addEventListener('click', async () => {
+      const status = document.getElementById('copy-status');
+      try {
+        await navigator.clipboard.writeText(PROMPT);
+        status.textContent = 'Copied.';
+      } catch {
+        status.textContent = 'Could not copy automatically -- select the text above and copy manually.';
+      }
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    });
+
+    const result = document.getElementById('result');
+    const previewSection = document.getElementById('preview-section');
+    const previewBody = document.getElementById('preview-body');
+    let currentManifest = null;
+
+    function renderPreview(preview) {
+      const t = preview.totals;
+      const rows = preview.products.map((p) => {
+        const variantLines = p.variants.map((v) => {
+          const attrText = Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ') || v.label;
+          const nameNote = v.namedCount ? ` — ${v.namedCount} named unit(s)` : '';
+          return `<li>${attrText} &times; ${v.quantity}${nameNote} ${v.isNewVariant ? '<span class="badge">new variant</span>' : '<span class="badge">existing variant</span>'}</li>`;
+        }).join('');
+        return `
+          <div class="unit-card">
+            <strong>${p.name}</strong> ${p.isNewProduct ? '<span class="badge">new product</span>' : '<span class="badge">existing product</span>'}
+            ${p.newDimensions.length ? `<div class="muted">Dimensions: ${p.newDimensions.join(', ')}</div>` : ''}
+            <ul>${variantLines}</ul>
+          </div>`;
+      }).join('');
+
+      previewBody.innerHTML = `
+        ${preview.context ? `<p class="muted">Context: ${preview.context}</p>` : ''}
+        <p>Will create <strong>${t.newProducts}</strong> new product(s) (${t.existingProducts} reused),
+        <strong>${t.newVariants}</strong> new variant(s) (${t.existingVariants} reused),
+        and <strong>${t.productionBatches}</strong> production batch(es)
+        totaling <strong>${t.plannedUnits}</strong> planned units
+        (${t.namedUnits} with a name attached).</p>
+        ${rows}
+        <p class="muted">This only records planned quantities — no physical Units are created yet.
+        Units are created later via Receiving, once goods actually arrive.</p>
+      `;
+      previewSection.hidden = false;
+    }
+
+    document.getElementById('btn-preview').addEventListener('click', async () => {
+      result.innerHTML = '';
+      previewSection.hidden = true;
+      let manifest;
+      try {
+        manifest = JSON.parse(document.getElementById('manifest-input').value);
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">That's not valid JSON: ${err.message}</div>`;
+        return;
+      }
+      try {
+        const res = await fetch('/api/import/preview', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Preview failed.');
+        currentManifest = manifest;
+        renderPreview(data);
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+
+    document.getElementById('btn-confirm').addEventListener('click', async () => {
+      if (!currentManifest) return;
+      result.innerHTML = '';
+      try {
+        const res = await fetch('/api/import/apply', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest: currentManifest })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Import failed.');
+        const links = data.createdBatches.map((b) => `
+          <li>${b.productName} — ${b.variantLabel} (${b.plannedQuantity} planned)
+          — <a href="/receiving.html?batchId=${b.batchId}">Go to Receiving</a></li>`).join('');
+        result.innerHTML = `<div class="msg ok">Import complete.<ul>${links}</ul></div>`;
+        previewSection.hidden = true;
+        document.getElementById('manifest-input').value = '';
+        currentManifest = null;
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
