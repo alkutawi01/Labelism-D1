@@ -4,21 +4,36 @@
   <meta charset="utf-8">
   <title>Log In — Labelism</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .auth-card {
+      width: 100%;
+      max-width: 320px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+    }
+    .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  </style>
 </head>
 <body>
-  <header>
-    <h1>Labelism</h1>
-    <p class="muted">Log in to continue.</p>
-  </header>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="topbar-mark">L</span>
+      <strong>Labelism</strong>
+    </div>
+    <p class="muted" style="margin-top:-14px">Log in to continue.</p>
 
-  <form id="form">
-    <label>Password
-      <input name="password" type="password" required autofocus>
-    </label>
-    <button type="submit">Log In</button>
-  </form>
+    <form id="form">
+      <label>Password
+        <input name="password" type="password" required autofocus>
+      </label>
+      <button type="submit">Log In</button>
+    </form>
 
-  <div id="result"></div>
+    <div id="result"></div>
+  </div>
 
   <script>
     document.getElementById('form').addEventListener('submit', async (e) => {

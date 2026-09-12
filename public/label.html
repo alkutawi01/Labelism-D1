@@ -12,7 +12,8 @@
        selected size (see script below). */
     @media print {
       .no-print { display: none !important; }
-      body { max-width: none; padding: 0; margin: 0; }
+      body { max-width: none; padding: 0; margin: 0 !important; }
+      .page { max-width: none; padding: 0; margin: 0; }
       .label-grid { display: block; }
       .label {
         border: none;
@@ -49,8 +50,8 @@
   </style>
 </head>
 <body>
-  <a class="back no-print" href="/">&larr; Labelism</a>
-  <header class="no-print">
+  <div class="page">
+  <header class="page-header no-print">
     <h1>Print Labels</h1>
     <p class="muted">Print one label per copy, attach it, then confirm attachment by scanning or clicking Confirm.</p>
   </header>
@@ -72,7 +73,9 @@
   </div>
 
   <div id="grid" class="label-grid"></div>
+  </div>
 
+  <script src="/nav.js"></script>
   <script>
     const select = document.getElementById('batch-select');
     const sizeSelect = document.getElementById('size-select');
@@ -125,9 +128,21 @@
           <div class="code">UNIT ${u.human_code}</div>
           <div class="qr" id="qr-${u.id}"></div>
           <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : 'Not yet confirmed'}</div>
-          <button class="no-print" data-id="${u.id}" ${u.label_confirmed_at ? 'disabled' : ''}>
+          <button class="no-print" data-id="${u.id}" data-action="confirm" ${u.label_confirmed_at ? 'disabled' : ''}>
             ${u.label_confirmed_at ? 'Confirmed' : 'Confirm Attachment'}
           </button>
+          ${!u.label_confirmed_at ? `
+            <button class="no-print secondary" data-id="${u.id}" data-action="reissue">
+              Lost — Reissue
+            </button>
+            <div class="no-print reissue-confirm" id="reissue-confirm-${u.id}" hidden style="margin-top:6px">
+              <div class="muted" style="font-size:11px;margin-bottom:4px">
+                This permanently invalidates the current QR and prints a new one. Only if this label was lost/spoiled before attaching.
+              </div>
+              <button class="no-print" data-id="${u.id}" data-action="reissue-confirm">Yes, reissue</button>
+              <button class="no-print secondary" data-id="${u.id}" data-action="reissue-cancel">Cancel</button>
+            </div>
+          ` : ''}
         `;
         grid.appendChild(cell);
         new QRCode(document.getElementById(`qr-${u.id}`), {
@@ -136,9 +151,33 @@
           height: qrSize,
         });
       });
-      grid.querySelectorAll('button[data-id]').forEach(btn => {
+      grid.querySelectorAll('button[data-action="confirm"]').forEach(btn => {
         btn.addEventListener('click', async () => {
           await fetch(`/api/units/${btn.dataset.id}/confirm-label`, { method: 'POST' });
+          loadUnits();
+        });
+      });
+      // Inline confirm, not window.confirm() -- a native dialog looks out of
+      // place here and (per the same lesson already learned on scan.html's
+      // transfer form) cannot be driven by automated browser testing at all,
+      // since it auto-dismisses.
+      grid.querySelectorAll('button[data-action="reissue"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = false;
+        });
+      });
+      grid.querySelectorAll('button[data-action="reissue-cancel"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = true;
+        });
+      });
+      grid.querySelectorAll('button[data-action="reissue-confirm"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const res = await fetch(`/api/units/${btn.dataset.id}/reissue-label`, { method: 'POST' }).then(r => r.json());
+          if (res.error) {
+            grid.querySelector(`#reissue-confirm-${btn.dataset.id} .muted`).insertAdjacentHTML('afterend', `<div class="msg error">${res.error}</div>`);
+            return;
+          }
           loadUnits();
         });
       });

@@ -15,8 +15,8 @@
   </style>
 </head>
 <body>
-  <a class="back" href="/">&larr; Labelism</a>
-  <header>
+  <div class="page">
+  <header class="page-header">
     <h1>Stocktake</h1>
     <p class="muted">Compare what should physically exist against what is actually observed. Not scanned does not mean missing until you confirm it.</p>
   </header>
@@ -54,7 +54,9 @@
     <button id="close-btn" class="secondary" style="margin-top:24px">Close Session</button>
     <div id="close-result"></div>
   </div>
+  </div>
 
+  <script src="/nav.js"></script>
   <script>
     let sessionId = null;
 
@@ -94,7 +96,7 @@
         <span class="code-chip">${u.humanCode} ${
           u.missingConfirmed
             ? '<span class="badge" style="font-size:11px">Missing confirmed</span>'
-            : `<button data-confirm-missing="${u.humanCode}">Confirm Missing</button>`
+            : `<button data-confirm-missing="${u.id}">Confirm Missing</button>`
         }</span>
       `).join('') || '<span class="muted">None</span>';
 
@@ -104,9 +106,8 @@
 
       document.querySelectorAll('[data-confirm-missing]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const code = btn.dataset.confirmMissing;
-          const unit = await fetch(`/api/units/lookup/${code}`).then(r => r.json());
-          await fetch(`/api/units/${unit.id}/events`, {
+          const unitId = btn.dataset.confirmMissing;
+          await fetch(`/api/units/${unitId}/events`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: 'izzat' }),
           });

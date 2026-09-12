@@ -6,8 +6,8 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <a class="back" href="/">&larr; Labelism</a>
-  <header>
+  <div class="page">
+  <header class="page-header">
     <h1>Product Setup</h1>
     <p class="muted">Create a product and its variants (e.g. size, color, material, or edition), then a production batch. Works for any physical product.</p>
   </header>
@@ -15,10 +15,10 @@
   <form id="form">
     <fieldset>
       <legend>Product</legend>
-      <label>
+      <label class="inline">
         <input type="radio" name="productMode" value="new" checked> Create a new product
       </label>
-      <label>
+      <label class="inline">
         <input type="radio" name="productMode" value="existing"> Add to an existing product
       </label>
 
@@ -82,7 +82,9 @@
     <thead><tr><th>Product</th><th>Variant</th><th>Batch</th><th>Planned</th></tr></thead>
     <tbody id="list-body"></tbody>
   </table>
+  </div>
 
+  <script src="/nav.js"></script>
   <script>
     const form = document.getElementById('form');
     const result = document.getElementById('result');

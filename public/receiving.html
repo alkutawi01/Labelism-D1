@@ -6,24 +6,28 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <a class="back" href="/">&larr; Labelism</a>
-  <header>
+  <div class="page">
+  <header class="page-header">
     <h1>Receiving &amp; Reconciliation</h1>
     <p class="muted">Record what actually arrived, then register it into stock — two steps.</p>
   </header>
 
-  <label>Production batch
-    <select id="batch-select"><option value="">Loading…</option></select>
-  </label>
+  <fieldset style="max-width:460px">
+    <legend>Production batch</legend>
+    <label>Which batch is this receipt for?
+      <select id="batch-select"><option value="">Loading…</option></select>
+    </label>
+    <div id="planned-info" class="msg" style="display:none"></div>
+  </fieldset>
 
-  <div id="planned-info" class="msg" style="display:none;margin-top:10px"></div>
-
-  <form id="receipt-form" style="margin-top:20px">
+  <form id="receipt-form">
+    <fieldset>
+    <legend>Receipt</legend>
     <label>Quantity arrived
       <input name="observedQuantity" type="number" required min="0">
     </label>
-    <label style="flex-direction:row;align-items:center;gap:8px">
-      <input type="checkbox" id="has-rejects" style="width:auto">
+    <label class="inline">
+      <input type="checkbox" id="has-rejects">
       Some of it is damaged / incomplete / rejected
     </label>
     <div id="reject-fields" hidden>
@@ -41,16 +45,20 @@
     <p class="muted" id="accepted-hint" style="margin-top:-8px"></p>
 
     <button type="submit">1. Confirm Receipt</button>
+    </fieldset>
   </form>
 
   <div id="receipt-result"></div>
 
-  <div id="register-step" style="display:none;margin-top:16px">
+  <fieldset id="register-step" style="display:none;max-width:460px">
+    <legend>Register</legend>
     <p class="muted">Receipt confirmed. Units have no identity until this step is done.</p>
     <button id="register-btn" class="secondary">2. Register Units</button>
     <div id="register-result"></div>
+  </fieldset>
   </div>
 
+  <script src="/nav.js"></script>
   <script>
     const select = document.getElementById('batch-select');
     const plannedInfo = document.getElementById('planned-info');

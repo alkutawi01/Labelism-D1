@@ -2,41 +2,95 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Labelism</title>
+  <title>Dashboard — Labelism</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header>
-    <h1>Labelism</h1>
-    <p class="muted">Unit Identity Core — Phase 1</p>
-    <button id="logout-btn" class="secondary" style="margin-top:10px">Log Out</button>
-  </header>
-  <nav class="cards">
-    <a class="card" href="/product-setup.html">
-      <h2>1. Product Setup</h2>
-      <p>Create a product, variant, and production batch — set the planned quantity.</p>
-    </a>
-    <a class="card" href="/receiving.html">
-      <h2>2. Receiving &amp; Reconciliation</h2>
-      <p>Record units received, confirm, then register them.</p>
-    </a>
-    <a class="card" href="/label.html">
-      <h2>3. Print Labels</h2>
-      <p>Print a QR label per unit, then confirm each one is attached.</p>
-    </a>
-    <a class="card" href="/scan.html">
-      <h2>4. Unit Lookup / Scan</h2>
-      <p>Find a unit by code, view its status, record an action.</p>
-    </a>
-    <a class="card" href="/stocktake.html">
-      <h2>5. Stocktake</h2>
-      <p>Reconcile expected vs. observed units for a production batch.</p>
-    </a>
-  </nav>
+  <div class="page">
+    <header class="page-header">
+      <span class="eyebrow">Unit Identity Core</span>
+      <h1>Dashboard</h1>
+      <p class="muted">A snapshot of everything Labelism is currently tracking, and the tools to manage it.</p>
+    </header>
+
+    <div class="stats" id="stats">
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+        <div class="value">—</div><div class="label">Products</div>
+      </div>
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <div class="value">—</div><div class="label">Variants</div>
+      </div>
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+        <div class="value">—</div><div class="label">Production batches</div>
+      </div>
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        <div class="value">—</div><div class="label">Units registered</div>
+      </div>
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        <div class="value">—</div><div class="label">Units available</div>
+      </div>
+      <div class="stat">
+        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        <div class="value">—</div><div class="label">Locations</div>
+      </div>
+    </div>
+
+    <nav class="cards">
+      <a class="card" href="/import.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></div>
+        <div>
+          <h2>Import from Document</h2>
+          <p>Turn a job order, invoice, or similar document into products, variants, and batches in one step.</p>
+        </div>
+      </a>
+      <a class="card" href="/product-setup.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
+        <div>
+          <h2>Product Setup</h2>
+          <p>Create a product, variant, and production batch — set the planned quantity.</p>
+        </div>
+      </a>
+      <a class="card" href="/receiving.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></div>
+        <div>
+          <h2>Receiving &amp; Reconciliation</h2>
+          <p>Record units received, confirm, then register them.</p>
+        </div>
+      </a>
+      <a class="card" href="/label.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></div>
+        <div>
+          <h2>Print Labels</h2>
+          <p>Print a QR label per unit, then confirm each one is attached.</p>
+        </div>
+      </a>
+      <a class="card" href="/scan.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg></div>
+        <div>
+          <h2>Unit Lookup / Scan</h2>
+          <p>Find a unit by code, view its status, record an action.</p>
+        </div>
+      </a>
+      <a class="card" href="/stocktake.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><polyline points="9 14 11 16 15 12"></polyline></svg></div>
+        <div>
+          <h2>Stocktake</h2>
+          <p>Reconcile expected vs. observed units for a production batch.</p>
+        </div>
+      </a>
+    </nav>
+  </div>
+
+  <script src="/nav.js"></script>
   <script>
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-      await fetch('/api/logout', { method: 'POST' });
-      location.href = '/login.html';
+    fetch('/api/stats').then(r => r.json()).then(s => {
+      const values = [s.products, s.variants, s.batches, s.units, s.availableUnits, s.locations];
+      document.querySelectorAll('#stats .value').forEach((el, i) => { el.textContent = values[i]; });
     });
   </script>
 </body>

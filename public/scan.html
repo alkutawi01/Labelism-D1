@@ -6,8 +6,8 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <a class="back" href="/">&larr; Labelism</a>
-  <header>
+  <div class="page">
+  <header class="page-header">
     <h1>Unit Lookup / Scan</h1>
     <p class="muted">Type a unit code (e.g. 000001) or scan its QR.</p>
   </header>
@@ -20,7 +20,9 @@
   </form>
 
   <div id="result"></div>
+  </div>
 
+  <script src="/nav.js"></script>
   <script>
     const form = document.getElementById('lookup-form');
     const result = document.getElementById('result');
@@ -132,10 +134,30 @@
       render(fresh);
     }
 
+    function renderAmbiguous(candidates) {
+      result.innerHTML = `
+        <p class="muted">This code matches more than one unit (the same copy number exists in different batches). Which one did you mean?</p>
+        ${candidates.map(c => `
+          <div class="unit-card">
+            <div class="code">${c.humanCode}</div>
+            <p class="muted">${c.product} · ${c.variant} · Batch ${c.batchNumber}</p>
+            <button data-token="${c.internalToken}">Select this one</button>
+          </div>
+        `).join('')}
+      `;
+      result.querySelectorAll('button[data-token]').forEach(btn => {
+        btn.addEventListener('click', () => lookup(btn.dataset.token));
+      });
+    }
+
     async function lookup(code) {
       const res = await fetch(`/api/units/lookup/${encodeURIComponent(code)}`).then(r => r.json());
       if (res.error) {
         result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      if (res.ambiguous) {
+        renderAmbiguous(res.candidates);
         return;
       }
       render(res);
