@@ -166,15 +166,27 @@ export async function reissueLabel(db, unitId, actor) {
 // happens to match more than one batch's copy #N -- handled by returning
 // every match so the caller can ask which one was meant, instead of
 // silently picking one (the previous .first()-on-non-unique-key bug).
+// Field Simulation debt called out three times now (P1's wrong-shipment
+// scan, P4's return intake, general scan-operator workflow): lookupUnit()
+// is meant to be a unit's "identity card" for a human, but only ever
+// showed product/variant/batch -- never which order/customer/shipment it
+// actually belongs to. Director approved this as a read-model enrichment,
+// not a schema change: same joins already proven in canUnitFulfillShipment
+// and Return Intake's scan, just surfaced generically wherever a unit gets
+// looked up (scan.html's Return/Transfer/Damage actions included).
 export async function lookupUnit(db, code) {
   const { results } = await db
     .prepare(
-      `SELECT u.*, pb.batch_number, v.variant_label, p.name AS product_name, l.name AS location_name
+      `SELECT u.*, pb.batch_number, v.variant_label, p.name AS product_name, l.name AS location_name,
+              o.order_reference, c.name AS customer_name
        FROM units u
        JOIN production_batches pb ON pb.id = u.batch_id
        JOIN variants v ON v.id = pb.variant_id
        JOIN products p ON p.id = v.product_id
        LEFT JOIN locations l ON l.id = u.current_location_id
+       LEFT JOIN order_lines ol ON ol.id = pb.order_line_id
+       LEFT JOIN orders o ON o.id = ol.order_id
+       LEFT JOIN customers c ON c.id = o.customer_id
        WHERE u.human_code = ?1 OR u.internal_token = ?1 OR u.public_token = ?1`
     )
     .bind(code)
@@ -200,6 +212,14 @@ export async function lookupUnit(db, code) {
     .bind(unit.id)
     .all();
 
+  const { results: shipments } = await db
+    .prepare(
+      `SELECT s.reference, s.status FROM shipment_units su
+       JOIN shipments s ON s.id = su.shipment_id WHERE su.unit_id = ?`
+    )
+    .bind(unit.id)
+    .all();
+
   return {
     id: unit.id,
     humanCode: unit.human_code,
@@ -212,6 +232,9 @@ export async function lookupUnit(db, code) {
     locationName: unit.location_name,
     labelConfirmedAt: unit.label_confirmed_at,
     internalToken: unit.internal_token,
+    orderReference: unit.order_reference,
+    customerName: unit.customer_name,
+    shipments,
     events,
   };
 }

@@ -236,6 +236,21 @@ export async function createLocation(db, { name, locationType }) {
   return { id, name, locationType: locationType ?? null };
 }
 
+// Shared by any flow that needs to move a unit to a named place without
+// forcing the operator through a separate "create location first" step
+// (dispatch, return intake) -- same find-or-create-by-name behaviour
+// scan.html's Transfer Location form already does client-side, pulled
+// server-side so it can be reused atomically.
+export async function getOrCreateLocation(db, name) {
+  let location = await db.prepare('SELECT * FROM locations WHERE lower(name) = lower(?)').bind(name).first();
+  if (!location) {
+    const id = newInternalId();
+    await db.prepare('INSERT INTO locations (id, name) VALUES (?, ?)').bind(id, name).run();
+    location = { id, name };
+  }
+  return location;
+}
+
 // Includes location -- Field Simulation Study G1 (partial shipment) found
 // that this view previously had no way to show an allocation/location
 // breakdown for a batch without looking up every unit individually.

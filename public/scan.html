@@ -34,9 +34,11 @@
         <div class="unit-card">
           <div class="code">${unit.humanCode}</div>
           <p class="muted">${unit.product} · ${unit.variant} · Batch ${unit.batchNumber}</p>
+          ${unit.orderReference ? `<p class="muted">Order ${unit.orderReference}${unit.customerName ? ` · ${unit.customerName}` : ''}</p>` : ''}
           <span class="badge">${unit.disposition || '—'}</span>
           ${unit.condition ? `<span class="badge">${unit.condition}</span>` : ''}
           ${unit.locationName ? `<span class="badge">${unit.locationName}</span>` : ''}
+          ${unit.shipments && unit.shipments.length ? `<p class="muted">${unit.shipments.map(s => `Shipment ${s.reference} (${s.status})`).join(', ')}</p>` : ''}
 
           <div class="actions">
             <button data-action="sold">Mark Sold</button>

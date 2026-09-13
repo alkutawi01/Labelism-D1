@@ -13,6 +13,7 @@
 // table spanning multiple order lines, no Allocation table.
 import { newInternalId, buildEventBatch } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
+import { getOrCreateLocation } from './catalog.js';
 
 export async function createShipment(db, { orderLineId, reference, plannedQuantity }) {
   if (!orderLineId || !reference) throw new ValidationError('orderLineId and reference are required.');
@@ -205,15 +206,7 @@ export async function dispatchShipment(db, shipmentId, { locationName, actor }) 
   }
   if (!locationName) throw new ValidationError('A destination location is required.');
 
-  let location = await db
-    .prepare('SELECT * FROM locations WHERE lower(name) = lower(?)')
-    .bind(locationName)
-    .first();
-  if (!location) {
-    const id = newInternalId();
-    await db.prepare('INSERT INTO locations (id, name) VALUES (?, ?)').bind(id, locationName).run();
-    location = { id, name: locationName };
-  }
+  const location = await getOrCreateLocation(db, locationName);
 
   const { results: units } = await db
     .prepare('SELECT unit_id FROM shipment_units WHERE shipment_id = ?')

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Return Intake — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+  <header class="page-header">
+    <h1>Return Intake</h1>
+    <p class="muted">Scan units as they physically arrive back from a customer. Receiving here moves the unit to the intake's location -- QC deciding what happens to it is a separate, later step.</p>
+  </header>
+
+  <fieldset>
+    <legend>Existing Intakes</legend>
+    <div id="existing-intakes" class="muted">Loading…</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>New Return Intake</legend>
+    <form id="intake-form">
+      <label>Customer (optional)
+        <select id="customer-select"><option value="">Unknown / not linked</option></select>
+      </label>
+      <label>Reference
+        <input name="reference" required placeholder="e.g. Return 1">
+      </label>
+      <label>Destination location
+        <input name="locationName" placeholder="Returns Area (default)">
+      </label>
+      <button type="submit">Open Return Intake</button>
+    </form>
+  </fieldset>
+
+  <div id="intake-result"></div>
+
+  <fieldset id="scan-section" hidden>
+    <legend>Scan Units</legend>
+    <form id="scan-form">
+      <label>Scan / enter code
+        <input name="code" autofocus placeholder="000001">
+      </label>
+      <button type="submit">Record Scan</button>
+    </form>
+    <div id="scan-result"></div>
+
+    <h2 style="margin-top:20px">Units in this intake</h2>
+    <div id="units-list" class="muted">None yet.</div>
+
+    <button id="close-btn" class="secondary" style="margin-top:16px">Close Intake</button>
+    <div id="close-result"></div>
+  </fieldset>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    let currentIntakeId = null;
+
+    async function loadCustomers() {
+      const customers = await fetch('/api/customers').then(r => r.json());
+      const select = document.getElementById('customer-select');
+      select.innerHTML = '<option value="">Unknown / not linked</option>' +
+        customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
+
+    async function loadExistingIntakes() {
+      const rows = await fetch('/api/return-intakes').then(r => r.json());
+      const el = document.getElementById('existing-intakes');
+      if (!rows.length) { el.textContent = 'No return intakes yet.'; return; }
+      el.innerHTML = rows.map((r) => `
+        <div style="margin:4px 0">
+          <span>${r.reference}${r.customer_name ? ` (${r.customer_name})` : ''} -- ${r.status}, ${r.scanned_count} scanned, ${r.pending_qc_count} awaiting QC</span>
+          ${r.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${r.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
+        </div>
+      `).join('');
+      el.querySelectorAll('button[data-resume]').forEach((btn) => {
+        btn.addEventListener('click', () => resumeIntake(btn.dataset.resume));
+      });
+    }
+
+    async function resumeIntake(id) {
+      currentIntakeId = id;
+      document.getElementById('intake-result').innerHTML = '';
+      document.getElementById('scan-section').hidden = false;
+      document.getElementById('close-result').innerHTML = '';
+      await refreshUnits();
+    }
+
+    document.getElementById('intake-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('intake-result');
+      const data = Object.fromEntries(new FormData(e.target));
+      const customerId = document.getElementById('customer-select').value || null;
+      const intake = await fetch('/api/return-intakes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId, reference: data.reference, locationName: data.locationName || null }),
+      }).then(r => r.json());
+      if (intake.error) { result.innerHTML = `<div class="msg error">${intake.error}</div>`; return; }
+      currentIntakeId = intake.id;
+      result.innerHTML = `<div class="msg ok">Return intake "${intake.reference}" opened -- destination: ${intake.locationName}.</div>`;
+      document.getElementById('scan-section').hidden = false;
+      document.getElementById('units-list').innerHTML = 'None yet.';
+      e.target.reset();
+      loadExistingIntakes();
+    });
+
+    document.getElementById('scan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const code = new FormData(form).get('code').trim();
+      const result = document.getElementById('scan-result');
+      const res = await fetch(`/api/return-intakes/${currentIntakeId}/scans`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, actor: 'izzat' }),
+      }).then(r => r.json());
+      if (res.error) {
+        result.innerHTML = `<div class="msg error">${res.error}</div>`;
+      } else if (res.alreadyScanned) {
+        result.innerHTML = `<div class="msg error">${res.humanCode} -- already scanned into this intake.</div>`;
+      } else {
+        const context = res.orderReference ? ` -- from Order ${res.orderReference}${res.customerName ? ` (${res.customerName})` : ''}` : ' -- no order on record';
+        result.innerHTML = `<div class="msg ${res.expected ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${res.expected ? 'Expected return (was previously dispatched).' : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.'}</div>`;
+        refreshUnits();
+      }
+      form.reset();
+      form.code.focus();
+    });
+
+    async function refreshUnits() {
+      const intake = await fetch(`/api/return-intakes/${currentIntakeId}`).then(r => r.json());
+      const el = document.getElementById('units-list');
+      if (!intake.units.length) { el.innerHTML = 'None yet.'; return; }
+      el.innerHTML = intake.units.map((u) => `
+        <div style="margin:4px 0">
+          <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'} --
+          ${u.qc_outcome ? `QC: ${u.qc_outcome}` : `
+            <button type="button" data-qc="${u.unit_id}" data-outcome="AVAILABLE" style="padding:2px 8px;font-size:12px">Resellable</button>
+            <button type="button" data-qc="${u.unit_id}" data-outcome="DAMAGED" style="padding:2px 8px;font-size:12px" class="secondary">Damaged</button>
+            <button type="button" data-qc="${u.unit_id}" data-outcome="REJECTED" style="padding:2px 8px;font-size:12px" class="secondary">Reject/Discard</button>
+          `}</span>
+        </div>
+      `).join('');
+      el.querySelectorAll('button[data-qc]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          await fetch(`/api/return-intakes/${currentIntakeId}/units/${btn.dataset.qc}/qc`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outcome: btn.dataset.outcome, actor: 'izzat' }),
+          });
+          refreshUnits();
+        });
+      });
+    }
+
+    document.getElementById('close-btn').addEventListener('click', async () => {
+      const res = await fetch(`/api/return-intakes/${currentIntakeId}/close`, { method: 'POST' }).then(r => r.json());
+      document.getElementById('close-result').innerHTML = res.error
+        ? `<div class="msg error">${res.error}</div>`
+        : `<div class="msg ok">Closed.</div>`;
+      if (!res.error) loadExistingIntakes();
+    });
+
+    loadCustomers();
+    loadExistingIntakes();
+  </script>
+</body>
+</html>

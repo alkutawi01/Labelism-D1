@@ -5,6 +5,7 @@ import * as stocktake from '../services/stocktake.js';
 import * as importManifest from '../services/importManifest.js';
 import * as orders from '../services/orders.js';
 import * as shipments from '../services/shipments.js';
+import * as returns from '../services/returns.js';
 import { toErrorResponse } from '../domain/errors.js';
 import { verifyPassword, setSessionCookieHeader, clearSessionCookieHeader } from '../auth/index.js';
 
@@ -165,6 +166,36 @@ export async function routeApi(request, env) {
     }
     if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/shipments$/)) && method === 'GET') {
       return ok(await shipments.listShipmentsForOrderLine(env.DB, m[1]));
+    }
+
+    if (pathname === '/api/return-intakes' && method === 'GET') {
+      return ok(await returns.listReturnIntakes(env.DB));
+    }
+    if (pathname === '/api/return-intakes' && method === 'POST') {
+      return ok(await returns.createReturnIntake(env.DB, await body(request)), 201);
+    }
+    if ((m = pathname.match(/^\/api\/return-intakes\/([^/]+)$/)) && method === 'GET') {
+      const result = await returns.getReturnIntake(env.DB, m[1]);
+      if (!result) return notFound('Return intake not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/return-intakes\/([^/]+)\/scans$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await returns.scanUnitIntoReturnIntake(env.DB, m[1], b);
+      if (result.notFound && result.reason === 'unit') return notFound('Unit not found.');
+      if (result.notFound) return notFound('Return intake not found.');
+      return ok(result, result.alreadyScanned ? 200 : 201);
+    }
+    if ((m = pathname.match(/^\/api\/return-intakes\/([^/]+)\/units\/([^/]+)\/qc$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await returns.decideReturnQc(env.DB, m[1], m[2], b);
+      if (result.notFound) return notFound('That unit is not part of this return intake.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/return-intakes\/([^/]+)\/close$/)) && method === 'POST') {
+      const result = await returns.closeReturnIntake(env.DB, m[1]);
+      if (result.notFound) return notFound('Return intake not found.');
+      return ok(result);
     }
 
     if (pathname === '/api/locations' && method === 'GET') {
