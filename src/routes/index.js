@@ -244,6 +244,9 @@ export async function routeApi(request, env) {
       return ok(result, 201);
     }
 
+    if (pathname === '/api/stocktake-sessions' && method === 'GET') {
+      return ok(await stocktake.listStocktakeSessions(env.DB));
+    }
     if (pathname === '/api/stocktake-sessions' && method === 'POST') {
       const result = await stocktake.openStocktakeSession(env.DB, await body(request));
       if (result.notFound) return notFound('Production batch not found.');

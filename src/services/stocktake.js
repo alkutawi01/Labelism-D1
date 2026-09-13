@@ -49,6 +49,34 @@ export async function openStocktakeSession(db, { batchId, locationId, actor }) {
   return { id, batchId: batchId ?? null, locationId: locationId ?? null, status: 'OPEN', expectedCount: availableUnits.length };
 }
 
+// Field Simulation Pass 3, Scenario A (disaster recovery): every other
+// session-based flow in Labelism (Shipment packing, Return Intake) lists
+// its open/recent sessions with a Resume button -- this page never did.
+// A stocktake session's scans are all persisted server-side the instant
+// each one happens, so no scan progress is ever actually lost if a
+// device dies or a tab closes mid-count. But without this list, that
+// progress was still practically unreachable: the only state tying an
+// operator to a session was a JS variable in memory, gone the moment the
+// page reloaded, with no way to even discover the session still existed.
+export async function listStocktakeSessions(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT ss.id, ss.status, ss.started_at, ss.closed_at, l.name AS location_name,
+              pb.batch_number, p.name AS product_name, v.variant_label,
+              (SELECT COUNT(*) FROM stocktake_expected_units seu WHERE seu.session_id = ss.id) AS expected_count,
+              (SELECT COUNT(*) FROM stocktake_scans sc WHERE sc.session_id = ss.id) AS scanned_count
+       FROM stocktake_sessions ss
+       LEFT JOIN locations l ON l.id = ss.location_id
+       LEFT JOIN production_batches pb ON pb.id = ss.batch_id
+       LEFT JOIN variants v ON v.id = pb.variant_id
+       LEFT JOIN products p ON p.id = v.product_id
+       ORDER BY ss.started_at DESC
+       LIMIT 20`
+    )
+    .all();
+  return results;
+}
+
 export async function getStocktakeSession(db, sessionId) {
   const session = await db.prepare('SELECT * FROM stocktake_sessions WHERE id = ?').bind(sessionId).first();
   if (!session) return null;

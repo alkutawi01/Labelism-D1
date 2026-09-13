@@ -21,6 +21,11 @@
     <p class="muted">Compare what should physically exist against what is actually observed. Not scanned does not mean missing until you confirm it.</p>
   </header>
 
+  <fieldset>
+    <legend>Existing Sessions</legend>
+    <div id="existing-sessions" class="muted">Loading…</div>
+  </fieldset>
+
   <div id="setup">
     <label class="inline">
       <input type="radio" name="scopeMode" value="location" checked> Count a location (recommended)
@@ -116,6 +121,40 @@
       ).join('');
     }
 
+    // Field Simulation Pass 3, Scenario A (disaster recovery): every scan
+    // is persisted server-side the instant it happens, so no progress is
+    // ever actually lost if a device dies or a tab closes mid-count -- but
+    // without this list, an operator had no way back into an open session
+    // beyond remembering its raw ID. Mirrors the same Resume pattern
+    // already proven on Pack & Ship and Return Intake.
+    async function loadExistingSessions() {
+      const rows = await fetch('/api/stocktake-sessions').then(r => r.json());
+      const el = document.getElementById('existing-sessions');
+      if (!rows.length) { el.textContent = 'No stocktake sessions yet.'; return; }
+      el.innerHTML = rows.map((s) => {
+        const scope = s.location_name
+          ? `Location: ${s.location_name}`
+          : `Batch: ${s.product_name} · ${s.variant_label} · ${s.batch_number}`;
+        return `
+        <div style="margin:4px 0">
+          <span>${scope} -- ${s.status}, ${s.scanned_count}/${s.expected_count} observed</span>
+          ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
+        </div>`;
+      }).join('');
+      el.querySelectorAll('button[data-resume]').forEach((btn) => {
+        btn.addEventListener('click', () => resumeSession(btn.dataset.resume));
+      });
+    }
+
+    async function resumeSession(id) {
+      sessionId = id;
+      document.getElementById('setup').style.display = 'none';
+      document.getElementById('session').style.display = 'block';
+      document.getElementById('scan-result').innerHTML = '';
+      document.getElementById('close-result').innerHTML = '';
+      await refresh();
+    }
+
     document.getElementById('open-btn').addEventListener('click', async () => {
       const mode = document.querySelector('input[name=scopeMode]:checked').value;
       const body = mode === 'location'
@@ -131,6 +170,7 @@
       document.getElementById('setup').style.display = 'none';
       document.getElementById('session').style.display = 'block';
       await refresh();
+      loadExistingSessions();
     });
 
     async function refresh() {
@@ -190,11 +230,17 @@
       document.getElementById('close-result').innerHTML = res.error
         ? `<div class="msg error">${res.error}</div>`
         : `<div class="msg ok">Session closed.</div>`;
+      if (!res.error) {
+        document.getElementById('session').style.display = 'none';
+        document.getElementById('setup').style.display = 'block';
+        loadExistingSessions();
+      }
     });
 
     updateScopeModeUI();
     loadLocations();
     loadBatches();
+    loadExistingSessions();
   </script>
 </body>
 </html>
