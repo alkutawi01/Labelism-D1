@@ -22,9 +22,24 @@
   </header>
 
   <div id="setup">
-    <label>Production batch
-      <select id="batch-select"><option value="">Loading…</option></select>
+    <label class="inline">
+      <input type="radio" name="scopeMode" value="location" checked> Count a location (recommended)
     </label>
+    <label class="inline">
+      <input type="radio" name="scopeMode" value="batch"> Count a whole batch (legacy)
+    </label>
+    <p class="muted" id="batch-mode-warning" hidden>A batch-scoped count expects every unit still marked AVAILABLE anywhere, including ones already dispatched to a customer -- they'll show as "Not Observed" here even though they safely left. Use this only for a batch that hasn't shipped anywhere yet; otherwise count by location.</p>
+
+    <div id="location-field">
+      <label>Location
+        <select id="location-select"><option value="">Loading…</option></select>
+      </label>
+    </div>
+    <div id="batch-field" hidden>
+      <label>Production batch
+        <select id="batch-select"><option value="">Loading…</option></select>
+      </label>
+    </div>
     <button id="open-btn" style="margin-top:10px">Open Stocktake Session</button>
   </div>
 
@@ -60,6 +75,35 @@
   <script>
     let sessionId = null;
 
+    // Field Simulation Pass 3, Stocktake-under-concurrent-activity scenario:
+    // the domain model was revised (Director-approved, Domain Model
+    // Revision Pass v1) specifically so a location-scoped count expects
+    // only "what's supposed to be HERE" -- a batch split across a
+    // warehouse and customers must not have its already-dispatched units
+    // show up as falsely Not Observed. The backend has supported this from
+    // day one (openStocktakeSession accepts locationId), but this page
+    // only ever exposed batch-scoped sessions -- so the safer mode Director
+    // designed for exactly this problem was never actually reachable.
+    // Verified live: a batch-scoped count on a batch with 2 units already
+    // dispatched to a real customer location showed those 2 units in Not
+    // Observed with a live "Confirm Missing" button, indistinguishable
+    // from genuinely lost stock.
+    function updateScopeModeUI() {
+      const mode = document.querySelector('input[name=scopeMode]:checked').value;
+      document.getElementById('location-field').hidden = mode !== 'location';
+      document.getElementById('batch-field').hidden = mode !== 'batch';
+      document.getElementById('batch-mode-warning').hidden = mode !== 'batch';
+    }
+    document.querySelectorAll('input[name=scopeMode]').forEach((el) => el.addEventListener('change', updateScopeModeUI));
+
+    async function loadLocations() {
+      const rows = await fetch('/api/locations').then(r => r.json());
+      const select = document.getElementById('location-select');
+      select.innerHTML = rows.length
+        ? rows.map(r => `<option value="${r.id}">${r.name}</option>`).join('')
+        : '<option value="">No locations yet -- one is created automatically the first time a batch is received</option>';
+    }
+
     async function loadBatches() {
       const rows = await fetch('/api/production-batches').then(r => r.json());
       const select = document.getElementById('batch-select');
@@ -73,11 +117,14 @@
     }
 
     document.getElementById('open-btn').addEventListener('click', async () => {
-      const batchId = document.getElementById('batch-select').value;
-      if (!batchId) return;
+      const mode = document.querySelector('input[name=scopeMode]:checked').value;
+      const body = mode === 'location'
+        ? { locationId: document.getElementById('location-select').value }
+        : { batchId: document.getElementById('batch-select').value };
+      if (!body.locationId && !body.batchId) return;
       const res = await fetch('/api/stocktake-sessions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId, actor: 'izzat' }),
+        body: JSON.stringify({ ...body, actor: 'izzat' }),
       }).then(r => r.json());
       if (res.error) { alert(res.error); return; }
       sessionId = res.id;
@@ -145,6 +192,8 @@
         : `<div class="msg ok">Session closed.</div>`;
     });
 
+    updateScopeModeUI();
+    loadLocations();
     loadBatches();
   </script>
 </body>
