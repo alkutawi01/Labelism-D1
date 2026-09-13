@@ -55,6 +55,8 @@
       text-align: center;
       background: var(--surface);
     }
+    .label .product { font-size: 10px; color: var(--muted); line-height: 1.2; }
+    .label .variant { font-size: 12px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
     .label .qr { display: flex; justify-content: center; margin: 6px 0; }
     .label .code { font-weight: 600; font-variant-numeric: tabular-nums; }
     .label .status { font-size: 11px; color: var(--muted); }
@@ -123,8 +125,11 @@
     }
     sizeSelect.addEventListener('change', () => { applyPageSize(); loadUnits(); });
 
+    let batchesCache = [];
+
     async function loadBatches() {
       const rows = await fetch('/api/production-batches').then(r => r.json());
+      batchesCache = rows;
       if (!rows.length) {
         select.innerHTML = '<option value="">No production batches yet</option>';
         return;
@@ -141,13 +146,15 @@
       if (!select.value) return;
       const units = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
       const qrSize = SIZES[sizeSelect.value].qr;
+      const batch = batchesCache.find(b => b.id === select.value);
       grid.innerHTML = '';
       units.forEach(u => {
         const cell = document.createElement('div');
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
-          <div class="code">UNIT ${u.human_code}</div>
+          ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
+          <div class="code">UNIT ${u.human_code}</div>
           <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : 'Not yet confirmed'}</div>
           <button class="no-print" data-id="${u.id}" data-action="confirm" ${u.label_confirmed_at ? 'disabled' : ''}>
             ${u.label_confirmed_at ? 'Confirmed' : 'Confirm Attachment'}
