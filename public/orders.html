@@ -69,7 +69,7 @@
   </fieldset>
 
   <table id="orders-table" hidden>
-    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th></tr></thead>
+    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th><th>Notes</th></tr></thead>
     <tbody id="orders-body"></tbody>
   </table>
   </div>
@@ -105,6 +105,7 @@
           <td>${o.customer_name}</td>
           <td>${o.order_reference}</td>
           <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}`).join('<br>') : '<span class="muted">No lines yet</span>'}</td>
+          <td>${o.notes ? o.notes : '<span class="muted">—</span>'}</td>
         </tr>
       `).join('');
     }

@@ -107,7 +107,7 @@ export async function createOrderLine(db, { orderId, variantId, description, qua
 export async function getOrderLine(db, id) {
   const line = await db
     .prepare(
-      `SELECT ol.*, o.order_reference, o.customer_id, c.name AS customer_name
+      `SELECT ol.*, o.order_reference, o.customer_id, o.notes AS order_notes, c.name AS customer_name
        FROM order_lines ol
        JOIN orders o ON o.id = ol.order_id
        JOIN customers c ON c.id = o.customer_id

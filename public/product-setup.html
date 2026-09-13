@@ -289,6 +289,15 @@
       if (line.error) { banner.hidden = false; banner.className = 'msg error'; banner.textContent = line.error; return; }
       banner.hidden = false;
       banner.textContent = `The batch you create here will be linked to: ${line.customer_name} — ${line.order_reference} — ${line.description || ''} (${line.quantity_ordered} ordered, ${line.batches.length} batch(es) so far).`;
+      // Order notes are the only place a customer-cancelled / on-hold /
+      // changed-mind order can be recorded today -- there is no order
+      // status field. Surface it right here, at the exact moment a new
+      // batch (i.e. new production) is about to be committed against this
+      // order, since that's the one place this warning can still prevent
+      // wasted production. Elsewhere (the Orders list) it's just a record.
+      if (line.order_notes) {
+        banner.innerHTML += `<br><strong>Order note:</strong> ${line.order_notes}`;
+      }
 
       // Ali already typed this quantity once on the Orders page -- don't
       // make him remember and retype it. Default to what's still needed
