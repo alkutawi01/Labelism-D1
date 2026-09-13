@@ -163,7 +163,7 @@
       if (!body.locationId && !body.batchId) return;
       const res = await fetch('/api/stocktake-sessions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, actor: 'izzat' }),
+        body: JSON.stringify({ ...body, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
       }).then(r => r.json());
       if (res.error) { alert(res.error); return; }
       sessionId = res.id;
@@ -196,7 +196,7 @@
           const unitId = btn.dataset.confirmMissing;
           await fetch(`/api/units/${unitId}/events`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: 'izzat' }),
+            body: JSON.stringify({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
           });
           refresh();
         });
@@ -210,7 +210,7 @@
       const result = document.getElementById('scan-result');
       const res = await fetch(`/api/stocktake-sessions/${sessionId}/scans`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, actor: 'izzat' }),
+        body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
       }).then(r => r.json());
       if (res.error) {
         result.innerHTML = `<div class="msg error">${res.error}</div>`;
@@ -225,7 +225,7 @@
     document.getElementById('close-btn').addEventListener('click', async () => {
       const res = await fetch(`/api/stocktake-sessions/${sessionId}/close`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor: 'izzat' }),
+        body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
       }).then(r => r.json());
       document.getElementById('close-result').innerHTML = res.error
         ? `<div class="msg error">${res.error}</div>`

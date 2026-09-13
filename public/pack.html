@@ -160,7 +160,7 @@
           if (!locationName) return;
           const res = await fetch(`/api/shipments/${shipmentId}/dispatch`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ locationName, actor: 'izzat' }),
+            body: JSON.stringify({ locationName, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
           }).then(r => r.json());
           if (res.error) {
             el.querySelector(`#dispatch-form-${shipmentId}`).insertAdjacentHTML('beforeend', `<div class="msg error">${res.error}</div>`);
@@ -217,7 +217,7 @@
       try {
         const httpRes = await fetch(`/api/shipments/${currentShipmentId}/scans`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, actor: 'izzat' }),
+          body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
         });
         const res = await httpRes.json();
         if (res.error) {
@@ -238,7 +238,7 @@
     document.getElementById('close-btn').addEventListener('click', async () => {
       const res = await fetch(`/api/shipments/${currentShipmentId}/close`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor: 'izzat' }),
+        body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
       }).then(r => r.json());
       const message = res.error
         ? `<div class="msg error">${res.error}</div>`

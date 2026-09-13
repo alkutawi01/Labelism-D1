@@ -53,6 +53,28 @@
 
   document.body.classList.add('has-sidebar');
 
+  // Field Simulation Pass 3, Scenario B (multi-user handover): every write
+  // across the entire app hardcoded actor: 'izzat' regardless of who was
+  // physically at the keyboard -- confirmed by grepping every page. The
+  // actor column has been free text since the original schema specifically
+  // so it wouldn't need real accounts (a `users` table is reserved for
+  // later, per Director's note in schema-add-orders.sql), but nothing ever
+  // actually let the person using the device say who they are, so the one
+  // field a second shift could use to see "who did this" was a permanent
+  // lie. This is NOT a login/identity system (Director's explicit
+  // instruction not to build that yet) -- just letting the existing free-
+  // text field hold the truth. Persisted in localStorage (per-device, no
+  // server round-trip) so it survives across pages and a shift only sets
+  // it once at the start of their shift, not on every single action.
+  function getActor() {
+    return localStorage.getItem('labelism_actor') || '';
+  }
+  function setActor(name) {
+    if (name) localStorage.setItem('labelism_actor', name);
+    else localStorage.removeItem('labelism_actor');
+  }
+  window.LabelismActor = { get: getActor };
+
   const nav = document.createElement('div');
   // no-print: label.html hides everything with this class when printing a
   // physical label sheet -- harmless on pages without that print stylesheet.
@@ -63,10 +85,36 @@
       ${LINKS.map(l => `${l.newGroup ? '<div class="sidebar-divider"></div>' : ''}<a href="${l.href}" ${l.href === path ? 'class="active"' : ''}>${icon(l.icon)}${l.label}</a>`).join('')}
     </nav>
     <div class="sidebar-bottom">
+      <div id="nav-actor-display" style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer"></div>
+      <div id="nav-actor-form" hidden style="width:72px;padding:4px 2px">
+        <input id="nav-actor-input" type="text" placeholder="Your name" style="width:100%;font-size:10.5px;padding:3px;box-sizing:border-box">
+        <button id="nav-actor-save" type="button" style="width:100%;font-size:10px;padding:2px;margin-top:3px">Save</button>
+      </div>
       <button id="nav-logout-btn" type="button">${icon('logout')}Log Out</button>
     </div>
   `;
   document.body.insertBefore(nav, document.body.firstChild);
+
+  const actorDisplay = document.getElementById('nav-actor-display');
+  const actorForm = document.getElementById('nav-actor-form');
+  const actorInput = document.getElementById('nav-actor-input');
+  function renderActor() {
+    const name = getActor();
+    actorDisplay.textContent = name ? `Working as ${name} · change` : 'Set your name';
+  }
+  renderActor();
+  actorDisplay.addEventListener('click', () => {
+    actorDisplay.hidden = true;
+    actorForm.hidden = false;
+    actorInput.value = getActor();
+    actorInput.focus();
+  });
+  document.getElementById('nav-actor-save').addEventListener('click', () => {
+    setActor(actorInput.value.trim());
+    actorForm.hidden = true;
+    actorDisplay.hidden = false;
+    renderActor();
+  });
 
   document.getElementById('nav-logout-btn').addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
