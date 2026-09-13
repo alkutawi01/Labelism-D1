@@ -139,7 +139,7 @@
         return;
       }
       select.innerHTML = rows.map(r =>
-        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}</option>`
+        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}${r.order_reference ? ` -- ${r.order_reference}` : ''}</option>`
       ).join('');
       const params = new URLSearchParams(location.search);
       if (params.get('batchId')) select.value = params.get('batchId');

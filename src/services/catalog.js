@@ -173,13 +173,29 @@ export async function createProductionBatch(db, { variantId, batchNumber, planne
   return { id, variantId, batchNumber: String(batchNumber), plannedQuantity, orderLineId: orderLineId ?? null };
 }
 
+// Productization Pass 3 (Data Integrity & Recovery): a batch's order_line_id
+// is set once at creation and never shown anywhere it appears afterward --
+// confirmed by reproduction that an operator who picks the wrong order line
+// while creating a batch (an easy mis-click, since Product Setup's banner
+// is the only place that context ever shows) has no way to notice later.
+// The link itself matters beyond bookkeeping: Shipment fulfillment checks
+// a unit's batch.order_line_id against the shipment's, so a mislinked batch
+// silently produces units that can only ever fulfill the WRONG order's
+// shipments. Joining order/customer context here (read-only, no schema
+// change) is the fix for "can he see it" -- "can it be corrected" is a
+// separate, deliberately unresolved question flagged to Director, since it
+// needs an actual new mutation, not just a better read model.
 export async function listProductionBatches(db) {
   const { results } = await db
     .prepare(
-      `SELECT pb.id, pb.batch_number, pb.planned_quantity, pb.notes, p.name AS product_name, v.variant_label
+      `SELECT pb.id, pb.batch_number, pb.planned_quantity, pb.notes, p.name AS product_name, v.variant_label,
+              o.order_reference, c.name AS customer_name
        FROM production_batches pb
        JOIN variants v ON v.id = pb.variant_id
        JOIN products p ON p.id = v.product_id
+       LEFT JOIN order_lines ol ON ol.id = pb.order_line_id
+       LEFT JOIN orders o ON o.id = ol.order_id
+       LEFT JOIN customers c ON c.id = o.customer_id
        ORDER BY pb.created_at DESC`
     )
     .all();
@@ -187,7 +203,17 @@ export async function listProductionBatches(db) {
 }
 
 export async function getProductionBatch(db, id) {
-  const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(id).first();
+  const batch = await db
+    .prepare(
+      `SELECT pb.*, o.order_reference, c.name AS customer_name
+       FROM production_batches pb
+       LEFT JOIN order_lines ol ON ol.id = pb.order_line_id
+       LEFT JOIN orders o ON o.id = ol.order_id
+       LEFT JOIN customers c ON c.id = o.customer_id
+       WHERE pb.id = ?`
+    )
+    .bind(id)
+    .first();
   if (!batch) return null;
   const { results: receipts } = await db
     .prepare('SELECT * FROM batch_receipts WHERE batch_id = ? ORDER BY received_at')
