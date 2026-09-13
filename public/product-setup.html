@@ -288,6 +288,16 @@
       if (line.error) { banner.hidden = false; banner.className = 'msg error'; banner.textContent = line.error; return; }
       banner.hidden = false;
       banner.textContent = `The batch you create here will be linked to: ${line.customer_name} — ${line.order_reference} — ${line.description || ''} (${line.quantity_ordered} ordered, ${line.batches.length} batch(es) so far).`;
+
+      // Ali already typed this quantity once on the Orders page -- don't
+      // make him remember and retype it. Default to what's still needed
+      // (ordered minus already-batched), not the full order line total, so
+      // this stays correct even on a second/third batch for the same line.
+      const alreadyPlanned = line.batches.reduce((sum, b) => sum + b.planned_quantity, 0);
+      const remaining = line.quantity_ordered - alreadyPlanned;
+      if (remaining > 0 && !form.plannedQuantity.value) {
+        form.plannedQuantity.value = remaining;
+      }
     })();
   </script>
 </body>
