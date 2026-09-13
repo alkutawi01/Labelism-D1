@@ -17,6 +17,7 @@
     <label>Which order line is this shipment for?
       <select id="line-select"><option value="">Loading…</option></select>
     </label>
+    <div id="order-rollup" class="muted"></div>
     <div id="existing-shipments" class="muted"></div>
   </fieldset>
 
@@ -81,26 +82,44 @@
     // unreachable -- there was no way to resume scanning into or even
     // close it, since currentShipmentId only ever got set at the moment a
     // NEW shipment was created in this page's own memory.
+    // O5 finding: this rollup only ever refreshed on line-select or after
+    // Close/Dispatch -- while actively scanning into an OPEN shipment, it
+    // sat frozen at whatever it read on page load, showing "Packed: 0"
+    // even as the scan-section stats right below correctly climbed to 1,
+    // 2, 3... Split out so a scan can refresh just this number without
+    // touching (or hiding) the active scan section itself.
+    async function refreshOrderRollup(lineId) {
+      const rollupEl = document.getElementById('order-rollup');
+      const line = linesById.get(lineId);
+      if (!line) { rollupEl.textContent = ''; return; }
+      const rows = await fetch(`/api/order-lines/${lineId}/shipments`).then(r => r.json());
+      const packedTotal = rows.reduce((sum, s) => sum + s.scanned_count, 0);
+      rollupEl.textContent = `Ordered: ${line.quantity_ordered} · Packed: ${packedTotal} · Remaining: ${Math.max(0, line.quantity_ordered - packedTotal)}`;
+      // Same staleness applied to each shipment's own row (e.g. "Shipment 1
+      // (OPEN, 1/60)" frozen while the live scan count was already at 2) --
+      // update it in place rather than re-rendering the whole list, which
+      // would also nuke any open dispatch-destination input mid-type.
+      for (const s of rows) {
+        const span = document.getElementById(`shipment-row-label-${s.id}`);
+        if (span) span.textContent = `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`;
+      }
+      return rows;
+    }
+
     async function loadExistingShipments() {
       const lineId = document.getElementById('line-select').value;
       const el = document.getElementById('existing-shipments');
       document.getElementById('scan-section').hidden = true;
       currentShipmentId = null;
-      if (!lineId) { el.textContent = ''; return; }
-      const rows = await fetch(`/api/order-lines/${lineId}/shipments`).then(r => r.json());
-      const line = linesById.get(lineId);
-      const packedTotal = rows.reduce((sum, s) => sum + s.scanned_count, 0);
-      const ordered = line ? line.quantity_ordered : null;
-      const rollup = ordered != null
-        ? `<div>Ordered: ${ordered} &middot; Packed: ${packedTotal} &middot; Remaining: ${Math.max(0, ordered - packedTotal)}</div>`
-        : '';
+      if (!lineId) { document.getElementById('order-rollup').textContent = ''; el.textContent = ''; return; }
+      const rows = await refreshOrderRollup(lineId);
       if (!rows.length) {
-        el.innerHTML = rollup + 'No shipments yet for this line.';
+        el.innerHTML = 'No shipments yet for this line.';
         return;
       }
-      el.innerHTML = rollup + rows.map((s) => `
+      el.innerHTML = rows.map((s) => `
         <div style="margin:4px 0">
-          <span>${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})</span>
+          <span id="shipment-row-label-${s.id}">${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})</span>
           ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
           ${s.status === 'CLOSED' ? ` <button type="button" class="secondary" data-dispatch-open="${s.id}" style="padding:2px 8px;font-size:12px">Dispatch</button>` : ''}
           <div class="dispatch-form" id="dispatch-form-${s.id}" hidden style="margin-top:4px">
@@ -195,6 +214,7 @@
           result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' -- already scanned' : ' -- packed'}</div>`;
           const shipment = await fetch(`/api/shipments/${currentShipmentId}`).then(r => r.json());
           document.getElementById('s-packed').textContent = shipment.scannedCount;
+          if (!res.alreadyScanned) refreshOrderRollup(document.getElementById('line-select').value);
         }
       } catch (err) {
         result.innerHTML = `<div class="msg error">Could not reach the server (${err.message}).</div>`;
@@ -208,10 +228,19 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actor: 'izzat' }),
       }).then(r => r.json());
-      document.getElementById('close-result').innerHTML = res.error
+      const message = res.error
         ? `<div class="msg error">${res.error}</div>`
         : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}` : ''}.</div>`;
-      if (!res.error) loadExistingShipments();
+      document.getElementById('close-result').innerHTML = message;
+      if (!res.error) {
+        // O5 finding: loadExistingShipments() hides the whole scan-section
+        // (including #close-result) as soon as it runs, so the missing-
+        // count confirmation flashed and vanished before an operator could
+        // read it. Show it where it survives that hide -- #shipment-result
+        // sits above the section that gets hidden.
+        document.getElementById('shipment-result').innerHTML = message;
+        loadExistingShipments();
+      }
     });
 
     loadLines();
