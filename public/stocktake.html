@@ -131,25 +131,45 @@
       const rows = await fetch('/api/stocktake-sessions').then(r => r.json());
       const el = document.getElementById('existing-sessions');
       if (!rows.length) { el.textContent = 'No stocktake sessions yet.'; return; }
+      // Field Simulation Pass 3, Scenario C (operational ownership): found
+      // the exact same bug already fixed on Return Intake -- a CLOSED
+      // session with units never confirmed missing (scanned_count <
+      // expected_count) had no reachable path in the UI at all, since
+      // "Resume" only ever rendered for OPEN sessions. Confirming missing
+      // has no server-side status check (recordUnitEvent is generic, not
+      // session-scoped), so this was purely a UI dead end, not a designed
+      // restriction -- a real, actionable discrepancy nobody could act on
+      // once the session closed.
+      const unresolvedClosed = (s) => s.status !== 'OPEN' && s.scanned_count < s.expected_count;
       el.innerHTML = rows.map((s) => {
         const scope = s.location_name
           ? `Location: ${s.location_name}`
           : `Batch: ${s.product_name} · ${s.variant_label} · ${s.batch_number}`;
         return `
         <div style="margin:4px 0">
-          <span>${scope} -- ${s.status}, ${s.scanned_count}/${s.expected_count} observed</span>
+          <span>${scope} -- ${s.status}, ${s.scanned_count}/${s.expected_count} observed${unresolvedClosed(s) ? ` <span class="muted">(${s.expected_count - s.scanned_count} never confirmed missing)</span>` : ''}</span>
           ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
+          ${unresolvedClosed(s) ? ` <button type="button" class="secondary" data-review="${s.id}" style="padding:2px 8px;font-size:12px">Review</button>` : ''}
         </div>`;
       }).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
-        btn.addEventListener('click', () => resumeSession(btn.dataset.resume));
+        btn.addEventListener('click', () => resumeSession(btn.dataset.resume, true));
+      });
+      el.querySelectorAll('button[data-review]').forEach((btn) => {
+        btn.addEventListener('click', () => resumeSession(btn.dataset.review, false));
       });
     }
 
-    async function resumeSession(id) {
+    async function resumeSession(id, allowScanning) {
       sessionId = id;
       document.getElementById('setup').style.display = 'none';
       document.getElementById('session').style.display = 'block';
+      // A closed session can't accept new scans (scanStocktakeUnit enforces
+      // that server-side) and is already closed -- hide both controls in
+      // review mode, keep the Not Observed list and its Confirm Missing
+      // buttons, which are what a closed-but-unresolved session is here for.
+      document.getElementById('scan-form').hidden = !allowScanning;
+      document.getElementById('close-btn').hidden = !allowScanning;
       document.getElementById('scan-result').innerHTML = '';
       document.getElementById('close-result').innerHTML = '';
       await refresh();
