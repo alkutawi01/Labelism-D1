@@ -86,6 +86,7 @@
   </label>
 
   <p class="muted no-print" id="unit-count-summary" style="margin-top:12px"></p>
+  <div class="no-print" id="pending-attachment" style="margin-top:8px"></div>
 
   <div class="no-print" style="margin-top:12px">
     <button id="print-btn" class="secondary">Print this page</button>
@@ -187,8 +188,29 @@
       document.getElementById('unit-count-summary').textContent = units.length
         ? `${units.length} unit${units.length === 1 ? '' : 's'} in this batch — printing will produce ${units.length} label${units.length === 1 ? '' : 's'}.${confirmedCount ? ` ${confirmedCount} already confirmed attached.` : ''}`
         : '';
+
+      // Field Simulation Pass 3 Scenario B2 (exception recovery during
+      // handover): confirmed live that a scattered handful of pending
+      // units among many (e.g. 3 of 65) IS visually distinguishable once
+      // you find its card -- but with pagination hiding most of the batch
+      // by default, an operator picking up someone else's unfinished work
+      // had no way to know WHICH codes still need attention without
+      // paging through the entire grid looking for the ones missing the
+      // green border. Same problem Stocktake already solved with its
+      // dedicated "Not Observed" list -- applying the same pattern here:
+      // name the pending codes directly, with a jump-to-card shortcut.
+      const pendingEl = document.getElementById('pending-attachment');
+      const pending = units.filter((u) => !u.label_confirmed_at);
+      pendingEl.innerHTML = pending.length
+        ? `<div class="msg error">${pending.length} unit${pending.length === 1 ? '' : 's'} still awaiting attachment: ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${u.human_code}</button>`).join('')}</div>`
+        : '';
+      pendingEl.querySelectorAll('button[data-jump]').forEach((btn) => {
+        btn.addEventListener('click', () => jumpToUnit(btn.dataset.jump));
+      });
+
       units.forEach(u => {
         const cell = document.createElement('div');
+        cell.id = `label-cell-${u.id}`;
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         const verified = !!u.label_scan_verified;
         cell.innerHTML = `
@@ -292,6 +314,14 @@
       });
 
       applyPagination();
+    }
+
+    function jumpToUnit(unitId) {
+      const index = currentUnits.findIndex((u) => u.id === unitId);
+      if (index === -1) return;
+      currentPage = Math.floor(index / PAGE_SIZE) + 1;
+      applyPagination();
+      document.getElementById(`label-cell-${unitId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function applyPagination() {
