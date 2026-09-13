@@ -65,7 +65,14 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
   if (!code) throw new ValidationError('code is required.');
 
   const { results: matches } = await db
-    .prepare('SELECT * FROM units WHERE human_code = ?1 OR internal_token = ?1 OR public_token = ?1')
+    .prepare(
+      `SELECT u.*, v.variant_label, p.name AS product_name
+       FROM units u
+       JOIN production_batches pb ON pb.id = u.batch_id
+       JOIN variants v ON v.id = pb.variant_id
+       JOIN products p ON p.id = v.product_id
+       WHERE u.human_code = ?1 OR u.internal_token = ?1 OR u.public_token = ?1`
+    )
     .bind(code)
     .all();
   if (!matches.length) return { notFound: true, reason: 'unit' };
@@ -94,8 +101,15 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
     .prepare('SELECT 1 FROM shipment_units WHERE shipment_id = ? AND unit_id = ?')
     .bind(shipmentId, unit.id)
     .first();
+  // Visual-check aid (Field Simulation P2): pack.html shows this alongside
+  // the human code so an operator can catch a physically mislabeled item
+  // (right order, wrong variant/size) at the moment of scanning -- the
+  // system can't verify a physical label matches its unit record, but it
+  // can surface enough for a human to notice a mismatch.
+  const productLabel = `${unit.product_name} · ${unit.variant_label}`;
+
   if (already) {
-    return { unitId: unit.id, humanCode: unit.human_code, alreadyScanned: true };
+    return { unitId: unit.id, humanCode: unit.human_code, product: productLabel, alreadyScanned: true };
   }
 
   await db
@@ -103,7 +117,7 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
     .bind(shipmentId, unit.id, actor ?? null)
     .run();
 
-  return { unitId: unit.id, humanCode: unit.human_code, alreadyScanned: false };
+  return { unitId: unit.id, humanCode: unit.human_code, product: productLabel, alreadyScanned: false };
 }
 
 export async function getShipment(db, id) {
