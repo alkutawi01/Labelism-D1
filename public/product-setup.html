@@ -254,11 +254,23 @@
         if (batch.error) throw new Error(batch.error);
 
         result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''}. ID: ${batch.id}<br>
-          Go to <a href="/receiving.html?batchId=${batch.id}">Receiving &amp; Reconciliation</a> to continue.</div>`;
+          Go to <a href="/receiving.html?batchId=${batch.id}">Receiving &amp; Reconciliation</a> to continue.
+          ${orderLineId ? '<br>Creating a batch for a <em>different</em> line on this order (e.g. another size)? Go back to <a href="/orders.html">Orders</a> and click Product Setup from that line -- reusing this page will link it to the same line again.' : ''}</div>`;
         form.reset();
         updateProductModeUI();
         loadProducts();
         loadList();
+        // The order-line link is only valid for the ONE batch this page was
+        // opened for -- without this, a second batch created on the same
+        // page load (e.g. Ali adding Size M right after Size S, since the
+        // "existing product" flow makes that the obvious next move) would
+        // silently attach to the SAME order line as the first, because
+        // orderLineId is read fresh from the URL on every submit. Clearing
+        // it here makes that mistake impossible instead of just documented.
+        if (orderLineId) {
+          history.replaceState(null, '', location.pathname);
+          document.getElementById('order-line-banner').hidden = true;
+        }
       } catch (err) {
         result.innerHTML = `<div class="msg error">${err.message}</div>`;
       }
