@@ -158,19 +158,19 @@ export async function createVariant(db, { productId, variantLabel, attributes })
   return { id, productId, variantLabel };
 }
 
-export async function createProductionBatch(db, { variantId, batchNumber, plannedQuantity, unitCostCents, producerName, notes }) {
+export async function createProductionBatch(db, { variantId, batchNumber, plannedQuantity, unitCostCents, producerName, notes, orderLineId }) {
   if (!variantId || !batchNumber || !plannedQuantity) {
     throw new ValidationError('variantId, batchNumber, and plannedQuantity are required.');
   }
   const id = newInternalId();
   await db
     .prepare(
-      `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, unit_cost_cents, producer_name, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, unit_cost_cents, producer_name, notes, order_line_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, variantId, String(batchNumber), plannedQuantity, unitCostCents ?? null, producerName ?? null, notes ?? null)
+    .bind(id, variantId, String(batchNumber), plannedQuantity, unitCostCents ?? null, producerName ?? null, notes ?? null, orderLineId ?? null)
     .run();
-  return { id, variantId, batchNumber: String(batchNumber), plannedQuantity };
+  return { id, variantId, batchNumber: String(batchNumber), plannedQuantity, orderLineId: orderLineId ?? null };
 }
 
 export async function listProductionBatches(db) {
@@ -236,10 +236,17 @@ export async function createLocation(db, { name, locationType }) {
   return { id, name, locationType: locationType ?? null };
 }
 
+// Includes location -- Field Simulation Study G1 (partial shipment) found
+// that this view previously had no way to show an allocation/location
+// breakdown for a batch without looking up every unit individually.
 export async function listUnitsForBatch(db, batchId) {
   const { results } = await db
     .prepare(
-      'SELECT id, human_code, internal_token, current_disposition, label_confirmed_at FROM units WHERE batch_id = ? ORDER BY human_code'
+      `SELECT u.id, u.human_code, u.internal_token, u.current_disposition, u.label_confirmed_at,
+              u.current_location_id, l.name AS location_name
+       FROM units u
+       LEFT JOIN locations l ON l.id = u.current_location_id
+       WHERE u.batch_id = ? ORDER BY u.human_code`
     )
     .bind(batchId)
     .all();

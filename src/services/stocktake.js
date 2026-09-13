@@ -5,26 +5,48 @@
 import { newInternalId, buildEventBatch } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 
-export async function openStocktakeSession(db, { batchId, actor }) {
-  if (!batchId) throw new ValidationError('batchId is required.');
-  const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(batchId).first();
-  if (!batch) return { notFound: true };
+// Director's correction (Domain Model Revision Pass v1): a warehouse count
+// should expect "what's physically supposed to be HERE," not "every
+// AVAILABLE unit anywhere in this batch" -- a batch that's split across a
+// warehouse and two customers must not have its shipped units show up as
+// falsely "Not Observed" during a warehouse stocktake. So a session is now
+// scoped to EITHER a location (expected = AVAILABLE units currently at
+// that location, regardless of batch) OR, for backward compatibility, a
+// batch (legacy behavior, expected = every AVAILABLE unit in that batch
+// regardless of location) -- exactly one of the two must be given.
+export async function openStocktakeSession(db, { batchId, locationId, actor }) {
+  if (!batchId && !locationId) throw new ValidationError('Either batchId or locationId is required.');
+  if (batchId && locationId) throw new ValidationError('Provide batchId or locationId, not both.');
+
+  let availableUnits;
+  if (locationId) {
+    const location = await db.prepare('SELECT id FROM locations WHERE id = ?').bind(locationId).first();
+    if (!location) return { notFound: true };
+    ({ results: availableUnits } = await db
+      .prepare("SELECT id FROM units WHERE current_location_id = ? AND current_disposition = 'AVAILABLE'")
+      .bind(locationId)
+      .all());
+  } else {
+    const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(batchId).first();
+    if (!batch) return { notFound: true };
+    ({ results: availableUnits } = await db
+      .prepare("SELECT id FROM units WHERE batch_id = ? AND current_disposition = 'AVAILABLE'")
+      .bind(batchId)
+      .all());
+  }
 
   const id = newInternalId();
-  const { results: availableUnits } = await db
-    .prepare("SELECT id FROM units WHERE batch_id = ? AND current_disposition = 'AVAILABLE'")
-    .bind(batchId)
-    .all();
-
   const statements = [
-    db.prepare('INSERT INTO stocktake_sessions (id, batch_id, started_by) VALUES (?, ?, ?)').bind(id, batchId, actor ?? null),
+    db
+      .prepare('INSERT INTO stocktake_sessions (id, batch_id, location_id, started_by) VALUES (?, ?, ?, ?)')
+      .bind(id, batchId ?? null, locationId ?? null, actor ?? null),
     ...availableUnits.map((u) =>
       db.prepare('INSERT INTO stocktake_expected_units (session_id, unit_id) VALUES (?, ?)').bind(id, u.id)
     ),
   ];
   await db.batch(statements);
 
-  return { id, batchId, status: 'OPEN', expectedCount: availableUnits.length };
+  return { id, batchId: batchId ?? null, locationId: locationId ?? null, status: 'OPEN', expectedCount: availableUnits.length };
 }
 
 export async function getStocktakeSession(db, sessionId) {
@@ -54,11 +76,17 @@ export async function getStocktakeSession(db, sessionId) {
 
   const ok = expected.filter((u) => scannedIds.has(u.id));
   const notObserved = expected.filter((u) => !scannedIds.has(u.id));
-  const unexpected = scanned.filter((u) => !expectedIds.has(u.id) || u.batch_id !== session.batch_id);
+  // expectedIds already reflects the session's actual scope (batch OR
+  // location) -- a separate batch_id comparison here would incorrectly
+  // flag every scan as unexpected for location-scoped sessions, since
+  // session.batch_id is null there but every real unit has a non-null
+  // batch_id.
+  const unexpected = scanned.filter((u) => !expectedIds.has(u.id));
 
   return {
     id: session.id,
     batchId: session.batch_id,
+    locationId: session.location_id,
     status: session.status,
     startedAt: session.started_at,
     closedAt: session.closed_at,
@@ -78,11 +106,14 @@ export async function scanStocktakeUnit(db, sessionId, { code, actor }) {
   // human_code alone can match more than one unit (it's only unique within
   // a batch, by design -- see units.lookupUnit for the full rationale).
   // internal_token/public_token matches are always unique. Since a
-  // stocktake is inherently scoped to one batch, prefer whichever match (if
-  // any) actually belongs to THIS session's batch instead of guessing --
-  // that resolves the common case (operator manually types a code for an
-  // item that IS in this batch) without ever silently recording an event
-  // against the wrong physical unit.
+  // stocktake session (batch- or location-scoped) has a concrete expected
+  // set already snapshotted, prefer whichever match (if any) is actually
+  // IN that expected set instead of guessing -- resolves the common case
+  // (operator manually types a code for an item that IS expected here)
+  // without ever silently recording an event against the wrong physical
+  // unit. This works for both scoping modes, unlike comparing batch_id
+  // directly (which breaks for location-scoped sessions, where there is
+  // no single batch_id to compare against).
   const { results: matches } = await db
     .prepare('SELECT * FROM units WHERE human_code = ?1 OR internal_token = ?1 OR public_token = ?1')
     .bind(code)
@@ -90,9 +121,13 @@ export async function scanStocktakeUnit(db, sessionId, { code, actor }) {
   if (!matches.length) return { notFound: true, reason: 'unit' };
   let unit = matches[0];
   if (matches.length > 1) {
-    const inBatch = matches.filter((u) => u.batch_id === session.batch_id);
-    if (inBatch.length === 1) {
-      unit = inBatch[0];
+    const { results: expectedHere } = await db
+      .prepare('SELECT unit_id FROM stocktake_expected_units WHERE session_id = ? AND unit_id IN (' + matches.map(() => '?').join(',') + ')')
+      .bind(sessionId, ...matches.map((m) => m.id))
+      .all();
+    const expectedMatches = matches.filter((m) => expectedHere.some((e) => e.unit_id === m.id));
+    if (expectedMatches.length === 1) {
+      unit = expectedMatches[0];
     } else {
       throw new ValidationError(
         `Code "${code}" matches more than one unit and isn't uniquely identifiable here -- scan the QR instead of typing the code.`
@@ -135,7 +170,7 @@ export async function scanStocktakeUnit(db, sessionId, { code, actor }) {
     unitId: unit.id,
     humanCode: unit.human_code,
     alreadyScanned: !inserted,
-    unexpected: !alreadyExpected || unit.batch_id !== session.batch_id,
+    unexpected: !alreadyExpected,
   };
 }
 

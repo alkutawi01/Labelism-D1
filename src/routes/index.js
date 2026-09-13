@@ -3,6 +3,7 @@ import * as receiving from '../services/receiving.js';
 import * as units from '../services/units.js';
 import * as stocktake from '../services/stocktake.js';
 import * as importManifest from '../services/importManifest.js';
+import * as orders from '../services/orders.js';
 import { toErrorResponse } from '../domain/errors.js';
 import { verifyPassword, setSessionCookieHeader, clearSessionCookieHeader } from '../auth/index.js';
 
@@ -107,6 +108,29 @@ export async function routeApi(request, env) {
 
     if (pathname === '/api/stats' && method === 'GET') {
       return ok(await catalog.getDashboardStats(env.DB));
+    }
+
+    if (pathname === '/api/customers' && method === 'GET') {
+      return ok(await orders.listCustomers(env.DB));
+    }
+    if (pathname === '/api/customers' && method === 'POST') {
+      return ok(await orders.createCustomer(env.DB, await body(request)), 201);
+    }
+
+    if (pathname === '/api/orders' && method === 'GET') {
+      return ok(await orders.listOrders(env.DB));
+    }
+    if (pathname === '/api/orders' && method === 'POST') {
+      return ok(await orders.createOrder(env.DB, await body(request)), 201);
+    }
+
+    if (pathname === '/api/order-lines' && method === 'POST') {
+      return ok(await orders.createOrderLine(env.DB, await body(request)), 201);
+    }
+    if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)$/)) && method === 'GET') {
+      const result = await orders.getOrderLine(env.DB, m[1]);
+      if (!result) return notFound('Order line not found.');
+      return ok(result);
     }
 
     if (pathname === '/api/locations' && method === 'GET') {

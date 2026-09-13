@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Orders — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+  <header class="page-header">
+    <h1>Customers &amp; Orders</h1>
+    <p class="muted">Track who ordered what before production starts. An order line is fulfilled by one or more production batches -- created here, then produced in Product Setup.</p>
+  </header>
+
+  <fieldset>
+    <legend>Customer</legend>
+    <label class="inline">
+      <input type="radio" name="customerMode" value="existing" checked> Existing customer
+    </label>
+    <label class="inline">
+      <input type="radio" name="customerMode" value="new"> New customer
+    </label>
+    <div id="existing-customer-field">
+      <label>Customer
+        <select name="existingCustomerId"><option value="">Loading…</option></select>
+      </label>
+    </div>
+    <div id="new-customer-field" hidden>
+      <label>Customer name
+        <input name="newCustomerName" placeholder="e.g. ABC School">
+      </label>
+    </div>
+  </fieldset>
+
+  <form id="order-form">
+    <fieldset>
+      <legend>Order</legend>
+      <label>Order reference
+        <input name="orderReference" required placeholder="e.g. Order #001, Robothon 2026">
+      </label>
+      <label>Order date (optional)
+        <input name="orderDate" type="date">
+      </label>
+      <label>Due date (optional)
+        <input name="dueDate" type="date">
+      </label>
+      <label>Notes (optional)
+        <input name="orderNotes" placeholder="anything worth keeping for reference">
+      </label>
+      <button type="submit">Create Order</button>
+    </fieldset>
+  </form>
+
+  <div id="order-result"></div>
+
+  <fieldset id="line-section" hidden>
+    <legend>Order Line</legend>
+    <p class="muted" id="line-order-label"></p>
+    <form id="line-form">
+      <label>What's being ordered
+        <input name="description" placeholder="e.g. Jersey Home, Size M -- plain text is fine, no product needed yet">
+      </label>
+      <label>Quantity ordered
+        <input name="quantityOrdered" type="number" min="1" required placeholder="e.g. 50">
+      </label>
+      <button type="submit">Add Line</button>
+    </form>
+    <div id="line-result"></div>
+  </fieldset>
+
+  <table id="orders-table" hidden>
+    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th></tr></thead>
+    <tbody id="orders-body"></tbody>
+  </table>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    const form = document.getElementById('order-form');
+    const existingField = document.getElementById('existing-customer-field');
+    const newField = document.getElementById('new-customer-field');
+    const existingSelect = existingField.querySelector('select');
+    let currentOrderId = null;
+
+    function updateCustomerModeUI() {
+      const mode = new FormData(form).get('customerMode') ?? document.querySelector('input[name=customerMode]:checked').value;
+      existingField.hidden = mode !== 'existing';
+      newField.hidden = mode !== 'new';
+    }
+    document.querySelectorAll('input[name=customerMode]').forEach((el) => el.addEventListener('change', updateCustomerModeUI));
+
+    async function loadCustomers() {
+      const rows = await fetch('/api/customers').then(r => r.json());
+      existingSelect.innerHTML = rows.length
+        ? rows.map((c) => `<option value="${c.id}">${c.name}</option>`).join('')
+        : '<option value="">No customers yet -- create one</option>';
+    }
+
+    async function loadOrders() {
+      const rows = await fetch('/api/orders').then(r => r.json());
+      if (!rows.length) return;
+      document.getElementById('orders-table').hidden = false;
+      document.getElementById('orders-body').innerHTML = rows.map((o) => `
+        <tr>
+          <td>${o.customer_name}</td>
+          <td>${o.order_reference}</td>
+          <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}`).join('<br>') : '<span class="muted">No lines yet</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.querySelectorAll('input[name=customerMode]').forEach((el) => el.addEventListener('change', updateCustomerModeUI));
+
+    document.getElementById('order-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('order-result');
+      result.innerHTML = '';
+      try {
+        const mode = document.querySelector('input[name=customerMode]:checked').value;
+        let customerId;
+        if (mode === 'new') {
+          const name = newField.querySelector('[name=newCustomerName]').value.trim();
+          if (!name) throw new Error('Customer name is required.');
+          const customer = await fetch('/api/customers', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          }).then(r => r.json());
+          if (customer.error) throw new Error(customer.error);
+          customerId = customer.id;
+        } else {
+          customerId = existingSelect.value;
+          if (!customerId) throw new Error('Select an existing customer.');
+        }
+
+        const data = Object.fromEntries(new FormData(form));
+        const order = await fetch('/api/orders', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerId,
+            orderReference: data.orderReference,
+            orderDate: data.orderDate || undefined,
+            dueDate: data.dueDate || undefined,
+            notes: data.orderNotes || undefined,
+          }),
+        }).then(r => r.json());
+        if (order.error) throw new Error(order.error);
+
+        currentOrderId = order.id;
+        result.innerHTML = `<div class="msg ok">Order "${order.orderReference}" created.</div>`;
+        document.getElementById('line-section').hidden = false;
+        document.getElementById('line-order-label').textContent = `Adding lines to: ${order.orderReference}`;
+        loadCustomers();
+        loadOrders();
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+
+    document.getElementById('line-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('line-result');
+      result.innerHTML = '';
+      try {
+        if (!currentOrderId) throw new Error('Create an order first.');
+        const data = Object.fromEntries(new FormData(e.target));
+        const line = await fetch('/api/order-lines', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: currentOrderId,
+            description: data.description || undefined,
+            quantityOrdered: Number(data.quantityOrdered),
+          }),
+        }).then(r => r.json());
+        if (line.error) throw new Error(line.error);
+        result.innerHTML = `<div class="msg ok">Line added. To produce it, go to <a href="/product-setup.html?orderLineId=${line.id}">Product Setup</a> and create a batch -- it'll be linked to this line.</div>`;
+        e.target.reset();
+        loadOrders();
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+
+    updateCustomerModeUI();
+    loadCustomers();
+    loadOrders();
+  </script>
+</body>
+</html>

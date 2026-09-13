@@ -12,6 +12,8 @@
     <p class="muted">Create a product and its variants (e.g. size, color, material, or edition), then a production batch. Works for any physical product.</p>
   </header>
 
+  <div id="order-line-banner" class="msg ok" hidden></div>
+
   <form id="form">
     <fieldset>
       <legend>Product</legend>
@@ -237,6 +239,7 @@
         }).then(r => r.json());
         if (variant.error) throw new Error(variant.error);
 
+        const orderLineId = new URLSearchParams(location.search).get('orderLineId') || undefined;
         const batch = await fetch('/api/production-batches', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -245,11 +248,12 @@
             plannedQuantity: Number(data.plannedQuantity),
             unitCostCents: data.unitCost ? Math.round(Number(data.unitCost) * 100) : undefined,
             producerName: data.producerName || undefined,
+            orderLineId,
           })
         }).then(r => r.json());
         if (batch.error) throw new Error(batch.error);
 
-        result.innerHTML = `<div class="msg ok">Production batch created. ID: ${batch.id}<br>
+        result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''}. ID: ${batch.id}<br>
           Go to <a href="/receiving.html?batchId=${batch.id}">Receiving &amp; Reconciliation</a> to continue.</div>`;
         form.reset();
         updateProductModeUI();
@@ -263,6 +267,16 @@
     updateProductModeUI();
     loadProducts();
     loadList();
+
+    (async () => {
+      const orderLineId = new URLSearchParams(location.search).get('orderLineId');
+      if (!orderLineId) return;
+      const line = await fetch(`/api/order-lines/${orderLineId}`).then(r => r.json());
+      const banner = document.getElementById('order-line-banner');
+      if (line.error) { banner.hidden = false; banner.className = 'msg error'; banner.textContent = line.error; return; }
+      banner.hidden = false;
+      banner.textContent = `The batch you create here will be linked to: ${line.customer_name} — ${line.order_reference} — ${line.description || ''} (${line.quantity_ordered} ordered, ${line.batches.length} batch(es) so far).`;
+    })();
   </script>
 </body>
 </html>
