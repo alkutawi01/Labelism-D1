@@ -85,6 +85,8 @@
     </select>
   </label>
 
+  <p class="muted no-print" id="unit-count-summary" style="margin-top:12px"></p>
+
   <div class="no-print" style="margin-top:12px">
     <button id="print-btn" class="secondary">Print this page</button>
   </div>
@@ -176,6 +178,15 @@
       const batch = batchesCache.find(b => b.id === select.value);
       const batchContext = parseBatchContext(batch);
       grid.innerHTML = '';
+
+      // O4 finding: for a batch small enough to fit on one screen (<=30
+      // units), nothing told the operator how many labels were about to
+      // print -- the pagination summary only appeared once a batch was
+      // large enough to need pages. Always state it plainly before Print.
+      const confirmedCount = units.filter((u) => u.label_confirmed_at).length;
+      document.getElementById('unit-count-summary').textContent = units.length
+        ? `${units.length} unit${units.length === 1 ? '' : 's'} in this batch — printing will produce ${units.length} label${units.length === 1 ? '' : 's'}.${confirmedCount ? ` ${confirmedCount} already confirmed attached.` : ''}`
+        : '';
       units.forEach(u => {
         const cell = document.createElement('div');
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
