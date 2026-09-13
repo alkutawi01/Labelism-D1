@@ -106,11 +106,24 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
   // it toward the order's fulfilment. This is a hard error, distinct from
   // "alreadyScanned" (which only means re-scanning into the SAME shipment
   // is a harmless no-op).
+  //
+  // Field Simulation Pass 3 Scenario 4 fix: that block was written before
+  // Return Intake existed, and only ever meant "don't let a unit be an
+  // ACTIVE member of two shipments at once." A shipment reaching
+  // DISPATCHED means the unit has physically left the building -- that
+  // membership is now a closed historical fact, not a hold. Without this
+  // exclusion, any unit that was ever dispatched and later returned
+  // (RETURN_RECEIVED + QC AVAILABLE) could never be packed into a new
+  // shipment again, permanently, even though it's legitimately back in
+  // inventory -- confirmed live before fixing. Excluding DISPATCHED here
+  // does NOT touch Shipment Split's original guarantee: OPEN and CLOSED
+  // (not-yet-dispatched) memberships still block, since those units
+  // haven't left yet and really are still spoken for.
   const { results: memberships } = await db
     .prepare(
       `SELECT su.shipment_id, s.reference FROM shipment_units su
        JOIN shipments s ON s.id = su.shipment_id
-       WHERE su.unit_id = ?`
+       WHERE su.unit_id = ? AND s.status != 'DISPATCHED'`
     )
     .bind(unit.id)
     .all();
