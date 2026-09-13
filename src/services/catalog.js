@@ -176,7 +176,7 @@ export async function createProductionBatch(db, { variantId, batchNumber, planne
 export async function listProductionBatches(db) {
   const { results } = await db
     .prepare(
-      `SELECT pb.id, pb.batch_number, pb.planned_quantity, p.name AS product_name, v.variant_label
+      `SELECT pb.id, pb.batch_number, pb.planned_quantity, pb.notes, p.name AS product_name, v.variant_label
        FROM production_batches pb
        JOIN variants v ON v.id = pb.variant_id
        JOIN products p ON p.id = v.product_id

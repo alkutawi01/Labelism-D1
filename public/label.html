@@ -55,6 +55,7 @@
       text-align: center;
       background: var(--surface);
     }
+    .label .context { font-size: 9px; color: var(--muted); line-height: 1.15; margin-bottom: 3px; }
     .label .product { font-size: 10px; color: var(--muted); line-height: 1.2; }
     .label .variant { font-size: 12px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
     .label .qr { display: flex; justify-content: center; margin: 6px 0; }
@@ -88,6 +89,7 @@
     <button id="print-btn" class="secondary">Print this page</button>
   </div>
 
+  <div id="pagination" class="no-print" style="margin-top:14px;display:flex;gap:10px;align-items:center"></div>
   <div id="grid" class="label-grid"></div>
   </div>
 
@@ -142,16 +144,43 @@
       loadUnits();
     }
 
-    async function loadUnits() {
+    const PAGE_SIZE = 30;
+    let currentPage = 1;
+    let currentUnits = [];
+
+    function parseBatchContext(batch) {
+      if (!batch || !batch.notes) return '';
+      try {
+        const parsed = JSON.parse(batch.notes);
+        return parsed.context || '';
+      } catch {
+        return '';
+      }
+    }
+
+    async function loadUnits(resetPage = true) {
       if (!select.value) return;
-      const units = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
+      currentUnits = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
+      if (resetPage) currentPage = 1;
+      renderUnits();
+    }
+
+    // Screen shows one page at a time (large batches, e.g. 1000+ units,
+    // would otherwise mean endless scrolling just to review before
+    // printing) -- but every unit's QR is still rendered into the DOM up
+    // front, and printing always includes all of them regardless of which
+    // page is currently shown on screen (see beforeprint/afterprint below).
+    function renderUnits() {
+      const units = currentUnits;
       const qrSize = SIZES[sizeSelect.value].qr;
       const batch = batchesCache.find(b => b.id === select.value);
+      const batchContext = parseBatchContext(batch);
       grid.innerHTML = '';
       units.forEach(u => {
         const cell = document.createElement('div');
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
+          ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
           ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${u.human_code}</div>
@@ -182,7 +211,7 @@
       grid.querySelectorAll('button[data-action="confirm"]').forEach(btn => {
         btn.addEventListener('click', async () => {
           await fetch(`/api/units/${btn.dataset.id}/confirm-label`, { method: 'POST' });
-          loadUnits();
+          loadUnits(false);
         });
       });
       // Inline confirm, not window.confirm() -- a native dialog looks out of
@@ -206,10 +235,45 @@
             grid.querySelector(`#reissue-confirm-${btn.dataset.id} .muted`).insertAdjacentHTML('afterend', `<div class="msg error">${res.error}</div>`);
             return;
           }
-          loadUnits();
+          loadUnits(false);
         });
       });
+
+      applyPagination();
     }
+
+    function applyPagination() {
+      const cards = Array.from(grid.querySelectorAll('.label'));
+      const totalPages = Math.max(1, Math.ceil(cards.length / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      cards.forEach((c, i) => { c.style.display = (i >= start && i < end) ? '' : 'none'; });
+
+      const pagination = document.getElementById('pagination');
+      if (cards.length <= PAGE_SIZE) { pagination.innerHTML = ''; return; }
+      pagination.innerHTML = `
+        <button type="button" class="secondary" id="page-prev" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Previous</button>
+        <span class="muted">Page ${currentPage} of ${totalPages} &middot; ${cards.length} units total (showing ${start + 1}-${Math.min(end, cards.length)}; printing includes all ${cards.length})</span>
+        <button type="button" class="secondary" id="page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+      `;
+      document.getElementById('page-prev')?.addEventListener('click', () => { currentPage--; applyPagination(); window.scrollTo(0, 0); });
+      document.getElementById('page-next')?.addEventListener('click', () => { currentPage++; applyPagination(); window.scrollTo(0, 0); });
+    }
+
+    // Printing must always include every unit, regardless of which page is
+    // currently shown on screen -- temporarily lift the pagination display
+    // override for the duration of the print, then restore it.
+    let prePrintDisplays = null;
+    window.addEventListener('beforeprint', () => {
+      const cards = Array.from(grid.querySelectorAll('.label'));
+      prePrintDisplays = cards.map(c => c.style.display);
+      cards.forEach(c => { c.style.display = ''; });
+    });
+    window.addEventListener('afterprint', () => {
+      applyPagination();
+      prePrintDisplays = null;
+    });
 
     select.addEventListener('change', loadUnits);
     document.getElementById('print-btn').addEventListener('click', () => window.print());
