@@ -156,6 +156,13 @@ export async function routeApi(request, env) {
       if (result.notFound) return notFound('Shipment not found.');
       return ok(result);
     }
+
+    if ((m = pathname.match(/^\/api\/shipments\/([^/]+)\/dispatch$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await shipments.dispatchShipment(env.DB, m[1], { locationName: b.locationName, actor: b.actor });
+      if (result.notFound) return notFound('Shipment not found.');
+      return ok(result);
+    }
     if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/shipments$/)) && method === 'GET') {
       return ok(await shipments.listShipmentsForOrderLine(env.DB, m[1]));
     }

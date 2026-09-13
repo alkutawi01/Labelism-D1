@@ -98,13 +98,45 @@
         el.innerHTML = rollup + 'No shipments yet for this line.';
         return;
       }
-      el.innerHTML = rollup + rows.map((s) =>
-        `<span style="margin-right:10px">${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})${
-          s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''
-        }</span>`
-      ).join('');
+      el.innerHTML = rollup + rows.map((s) => `
+        <div style="margin:4px 0">
+          <span>${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})</span>
+          ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
+          ${s.status === 'CLOSED' ? ` <button type="button" class="secondary" data-dispatch-open="${s.id}" style="padding:2px 8px;font-size:12px">Dispatch</button>` : ''}
+          <div class="dispatch-form" id="dispatch-form-${s.id}" hidden style="margin-top:4px">
+            <input type="text" placeholder="Destination (e.g. Customer -- School ABC)" data-dispatch-location="${s.id}" style="font-size:12px;padding:4px">
+            <button type="button" data-dispatch-confirm="${s.id}" style="padding:2px 8px;font-size:12px">Confirm Dispatch</button>
+          </div>
+        </div>
+      `).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
         btn.addEventListener('click', () => resumeShipment(btn.dataset.resume));
+      });
+      // Dispatch is deliberately its own step, separate from Close --
+      // Field Simulation P4 found closing a shipment never actually moved
+      // units anywhere, so "closed" and "left the building" need to stay
+      // distinguishable (a closed-but-undispatched shipment is real and
+      // common: packed today, courier picks up tomorrow).
+      el.querySelectorAll('button[data-dispatch-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.getElementById(`dispatch-form-${btn.dataset.dispatchOpen}`).hidden = false;
+        });
+      });
+      el.querySelectorAll('button[data-dispatch-confirm]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const shipmentId = btn.dataset.dispatchConfirm;
+          const locationName = el.querySelector(`[data-dispatch-location="${shipmentId}"]`).value.trim();
+          if (!locationName) return;
+          const res = await fetch(`/api/shipments/${shipmentId}/dispatch`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locationName, actor: 'izzat' }),
+          }).then(r => r.json());
+          if (res.error) {
+            el.querySelector(`#dispatch-form-${shipmentId}`).insertAdjacentHTML('beforeend', `<div class="msg error">${res.error}</div>`);
+            return;
+          }
+          loadExistingShipments();
+        });
       });
     }
     document.getElementById('line-select').addEventListener('change', loadExistingShipments);

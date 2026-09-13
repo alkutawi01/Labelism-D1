@@ -11,7 +11,7 @@
 // v1 limit (Director-mandated, revisit only if a real case proves it
 // wrong): one shipment fulfills exactly one order_line. No shipment_lines
 // table spanning multiple order lines, no Allocation table.
-import { newInternalId } from '../db/d1.js';
+import { newInternalId, buildEventBatch } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 
 export async function createShipment(db, { orderLineId, reference, plannedQuantity }) {
@@ -186,6 +186,57 @@ export async function closeShipment(db, id, actor) {
     packedCount,
     missing: Math.max(0, shipment.planned_quantity - packedCount),
   };
+}
+
+// Field Simulation P4 (Return & Replacement) build: the domain design from
+// Phase A/B always described dispatch as "a separate, later action taken
+// when the shipment is actually sent out" (UNIT_DISPATCHED event + a
+// location change, deliberately NOT a disposition -- see the file header)
+// but no action anywhere in the app ever actually created it. Units sat as
+// AVAILABLE @ Warehouse forever, even after a shipment closed -- which
+// meant P4's own scenarios ("100 shipped", "customer received it") had no
+// real state to build on. This fills that gap; it does not change the
+// Director-approved design, only implements what was already specified.
+export async function dispatchShipment(db, shipmentId, { locationName, actor }) {
+  const shipment = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(shipmentId).first();
+  if (!shipment) return { notFound: true };
+  if (shipment.status !== 'CLOSED') {
+    throw new ValidationError('Only a closed shipment can be dispatched -- close it first once packing is complete.');
+  }
+  if (!locationName) throw new ValidationError('A destination location is required.');
+
+  let location = await db
+    .prepare('SELECT * FROM locations WHERE lower(name) = lower(?)')
+    .bind(locationName)
+    .first();
+  if (!location) {
+    const id = newInternalId();
+    await db.prepare('INSERT INTO locations (id, name) VALUES (?, ?)').bind(id, locationName).run();
+    location = { id, name: locationName };
+  }
+
+  const { results: units } = await db
+    .prepare('SELECT unit_id FROM shipment_units WHERE shipment_id = ?')
+    .bind(shipmentId)
+    .all();
+
+  const statements = [];
+  for (const { unit_id } of units) {
+    statements.push(
+      ...buildEventBatch(db, {
+        eventId: newInternalId(),
+        unitId: unit_id,
+        eventType: 'UNIT_DISPATCHED',
+        payload: { shipmentId, reference: shipment.reference },
+        actor: actor ?? 'izzat',
+        locationId: location.id,
+      })
+    );
+  }
+  statements.push(db.prepare("UPDATE shipments SET status = 'DISPATCHED' WHERE id = ?").bind(shipmentId));
+
+  await db.batch(statements);
+  return { id: shipmentId, status: 'DISPATCHED', locationName: location.name, dispatchedCount: units.length };
 }
 
 export async function listShipmentsForOrderLine(db, orderLineId) {
