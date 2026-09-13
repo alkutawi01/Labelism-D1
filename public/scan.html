@@ -151,7 +151,15 @@
     }
 
     async function lookup(code) {
-      const res = await fetch(`/api/units/lookup/${encodeURIComponent(code)}`).then(r => r.json());
+      result.innerHTML = `<p class="muted">Looking up ${code}…</p>`;
+      let res;
+      try {
+        const httpRes = await fetch(`/api/units/lookup/${encodeURIComponent(code)}`);
+        res = await httpRes.json();
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">Could not reach the server (${err.message}). Check your connection and try again.</div>`;
+        return;
+      }
       if (res.error) {
         result.innerHTML = `<div class="msg error">${res.error}</div>`;
         return;
