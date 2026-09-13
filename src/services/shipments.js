@@ -97,10 +97,28 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
     throw new ValidationError(fulfillCheck.reason);
   }
 
-  const already = await db
-    .prepare('SELECT 1 FROM shipment_units WHERE shipment_id = ? AND unit_id = ?')
-    .bind(shipmentId, unit.id)
-    .first();
+  // Field Simulation P3 (Shipment Split) fix: a unit can only be a member
+  // of ONE shipment at a time, full stop -- checked across ALL shipments,
+  // not just this one. Without this, the same physical unit could be
+  // scanned into a second partial shipment after already being packed
+  // (and even after the first shipment closed), silently double-counting
+  // it toward the order's fulfilment. This is a hard error, distinct from
+  // "alreadyScanned" (which only means re-scanning into the SAME shipment
+  // is a harmless no-op).
+  const { results: memberships } = await db
+    .prepare(
+      `SELECT su.shipment_id, s.reference FROM shipment_units su
+       JOIN shipments s ON s.id = su.shipment_id
+       WHERE su.unit_id = ?`
+    )
+    .bind(unit.id)
+    .all();
+  const sameShipment = memberships.find((m) => m.shipment_id === shipmentId);
+  const otherShipment = memberships.find((m) => m.shipment_id !== shipmentId);
+  if (otherShipment) {
+    throw new ValidationError(`This unit is already packed in Shipment "${otherShipment.reference}" -- a unit can only belong to one shipment.`);
+  }
+
   // Visual-check aid (Field Simulation P2): pack.html shows this alongside
   // the human code so an operator can catch a physically mislabeled item
   // (right order, wrong variant/size) at the moment of scanning -- the
@@ -108,7 +126,7 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
   // can surface enough for a human to notice a mismatch.
   const productLabel = `${unit.product_name} · ${unit.variant_label}`;
 
-  if (already) {
+  if (sameShipment) {
     return { unitId: unit.id, humanCode: unit.human_code, product: productLabel, alreadyScanned: true };
   }
 

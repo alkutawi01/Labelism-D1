@@ -56,6 +56,7 @@
   <script src="/nav.js"></script>
   <script>
     let currentShipmentId = null;
+    let linesById = new Map();
 
     async function loadLines() {
       const orders = await fetch('/api/orders').then(r => r.json());
@@ -65,22 +66,60 @@
         select.innerHTML = '<option value="">No order lines yet -- create one in Orders</option>';
         return;
       }
+      linesById = new Map(allLines.map((l) => [l.id, l]));
       select.innerHTML = allLines.map((l) =>
         `<option value="${l.id}">${l.customerName} · ${l.orderRef} · ${l.description || (l.product_name + ' ' + l.variant_label)} (${l.quantity_ordered})</option>`
       ).join('');
       loadExistingShipments();
     }
 
+    // Field Simulation P3 (Shipment Split): fixes two real gaps found when
+    // an order is fulfilled across multiple shipments -- (1) there was no
+    // order-level rollup, only a raw per-shipment list an operator had to
+    // add up by hand, and (2) reloading this page (browser closed, staff
+    // shift change, crash) made an already-OPEN shipment permanently
+    // unreachable -- there was no way to resume scanning into or even
+    // close it, since currentShipmentId only ever got set at the moment a
+    // NEW shipment was created in this page's own memory.
     async function loadExistingShipments() {
       const lineId = document.getElementById('line-select').value;
       const el = document.getElementById('existing-shipments');
+      document.getElementById('scan-section').hidden = true;
+      currentShipmentId = null;
       if (!lineId) { el.textContent = ''; return; }
       const rows = await fetch(`/api/order-lines/${lineId}/shipments`).then(r => r.json());
-      el.innerHTML = rows.length
-        ? 'Existing shipments: ' + rows.map((s) => `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`).join(', ')
-        : 'No shipments yet for this line.';
+      const line = linesById.get(lineId);
+      const packedTotal = rows.reduce((sum, s) => sum + s.scanned_count, 0);
+      const ordered = line ? line.quantity_ordered : null;
+      const rollup = ordered != null
+        ? `<div>Ordered: ${ordered} &middot; Packed: ${packedTotal} &middot; Remaining: ${Math.max(0, ordered - packedTotal)}</div>`
+        : '';
+      if (!rows.length) {
+        el.innerHTML = rollup + 'No shipments yet for this line.';
+        return;
+      }
+      el.innerHTML = rollup + rows.map((s) =>
+        `<span style="margin-right:10px">${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})${
+          s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''
+        }</span>`
+      ).join('');
+      el.querySelectorAll('button[data-resume]').forEach((btn) => {
+        btn.addEventListener('click', () => resumeShipment(btn.dataset.resume));
+      });
     }
     document.getElementById('line-select').addEventListener('change', loadExistingShipments);
+
+    async function resumeShipment(shipmentId) {
+      const shipment = await fetch(`/api/shipments/${shipmentId}`).then(r => r.json());
+      if (shipment.error) return;
+      currentShipmentId = shipmentId;
+      document.getElementById('shipment-result').innerHTML = `<div class="msg ok">Resumed shipment "${shipment.reference}".</div>`;
+      document.getElementById('scan-section').hidden = false;
+      document.getElementById('s-planned').textContent = shipment.planned_quantity;
+      document.getElementById('s-packed').textContent = shipment.scannedCount;
+      document.getElementById('scan-result').innerHTML = '';
+      document.getElementById('close-result').innerHTML = '';
+    }
 
     document.getElementById('shipment-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -140,6 +179,7 @@
       document.getElementById('close-result').innerHTML = res.error
         ? `<div class="msg error">${res.error}</div>`
         : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}` : ''}.</div>`;
+      if (!res.error) loadExistingShipments();
     });
 
     loadLines();
