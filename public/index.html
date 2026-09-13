@@ -13,6 +13,25 @@
       <p class="muted">A snapshot of everything Labelism is currently tracking, and the tools to manage it.</p>
     </header>
 
+    <div id="getting-started" hidden style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 20px;margin-bottom:20px">
+      <h2 style="margin-top:0">Getting started</h2>
+      <p class="muted">Labelism gives every physical unit (a jersey, a book, a manufactured item) its own QR identity, so you can track it from production through to a customer -- and back, if it's ever returned. Four ideas to know first:</p>
+      <ul class="muted" style="line-height:1.7">
+        <li><strong>Product</strong> -- what it is in general (e.g. "Jersey Sekolah ABC").</li>
+        <li><strong>Variant</strong> -- a specific version of it (e.g. Size M).</li>
+        <li><strong>Production Batch</strong> -- one production run of a variant (e.g. 100 units of Size M).</li>
+        <li><strong>Unit</strong> -- one physical, individually-labeled copy from that batch.</li>
+      </ul>
+      <p class="muted">Typical order of work:</p>
+      <ol style="line-height:1.8">
+        <li><a href="/product-setup.html">Product Setup</a> -- create a product, variant, and batch with a planned quantity.</li>
+        <li><a href="/receiving.html">Receiving</a> -- record what actually arrived, then register each one as a Unit.</li>
+        <li><a href="/label.html">Print Labels</a> -- print a QR per unit, attach it, then scan to verify and confirm.</li>
+        <li><a href="/pack.html">Pack &amp; Ship</a> -- scan units into a shipment for a customer's order, then dispatch it.</li>
+      </ol>
+      <p class="muted">Taking an order first? Start with <a href="/orders.html">Customers &amp; Orders</a> instead -- Product Setup can link to it.</p>
+    </div>
+
     <div class="stats" id="stats">
       <div class="stat">
         <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
@@ -83,11 +102,25 @@
           <p>Find a unit by code, view its status, record an action.</p>
         </div>
       </a>
+      <a class="card" href="/pack.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></div>
+        <div>
+          <h2>Pack &amp; Ship</h2>
+          <p>Scan units into a shipment for an order, then dispatch it to the customer.</p>
+        </div>
+      </a>
       <a class="card" href="/stocktake.html">
         <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><polyline points="9 14 11 16 15 12"></polyline></svg></div>
         <div>
           <h2>Stocktake</h2>
           <p>Reconcile expected vs. observed units for a production batch.</p>
+        </div>
+      </a>
+      <a class="card" href="/returns.html">
+        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></div>
+        <div>
+          <h2>Return Intake</h2>
+          <p>Scan units as they physically arrive back from a customer, then decide their fate.</p>
         </div>
       </a>
     </nav>
@@ -98,6 +131,10 @@
     fetch('/api/stats').then(r => r.json()).then(s => {
       const values = [s.products, s.variants, s.batches, s.units, s.availableUnits, s.locations];
       document.querySelectorAll('#stats .value').forEach((el, i) => { el.textContent = values[i]; });
+      // Nothing tracked yet -- almost certainly a first-time setup, not an
+      // established operator, so show what the system is and what order
+      // to do things in instead of a wall of zeroes with no explanation.
+      if (s.products === 0) document.getElementById('getting-started').hidden = false;
     });
   </script>
 </body>
