@@ -26,12 +26,22 @@
   }
   window.LabelismIcon = icon;
 
+  // Productization Pass 2 (Navigation + Terminology): the sidebar was a
+  // single flat list with no hierarchy at all, which meant Product Setup
+  // -- a page most operators only need when starting a new item, not when
+  // fulfilling a day's orders -- read as equally central as Receiving,
+  // Labels, and Pack, the pages someone actually clicks most days. Grouped
+  // by when each page is actually used, with a thin divider (not text --
+  // the rail is only 72px wide, a group label wouldn't fit without
+  // wrapping awkwardly): Orders on its own (the customer-facing entry
+  // point), then Setup (Products, Import -- occasional), then day-to-day
+  // Operations (Receiving through Returns -- frequent).
   const LINKS = [
     { href: '/', label: 'Dashboard', icon: 'home' },
     { href: '/orders.html', label: 'Orders', icon: 'bag' },
+    { href: '/product-setup.html', label: 'Products', icon: 'package', newGroup: true },
     { href: '/import.html', label: 'Import', icon: 'download' },
-    { href: '/product-setup.html', label: 'Products', icon: 'package' },
-    { href: '/receiving.html', label: 'Receiving', icon: 'inbox' },
+    { href: '/receiving.html', label: 'Receiving', icon: 'inbox', newGroup: true },
     { href: '/label.html', label: 'Labels', icon: 'tag' },
     { href: '/pack.html', label: 'Pack', icon: 'truck' },
     { href: '/scan.html', label: 'Scan', icon: 'scan' },
@@ -50,7 +60,7 @@
   nav.innerHTML = `
     <a class="sidebar-mark" href="/" aria-label="Labelism">L</a>
     <nav class="sidebar-nav">
-      ${LINKS.map(l => `<a href="${l.href}" ${l.href === path ? 'class="active"' : ''}>${icon(l.icon)}${l.label}</a>`).join('')}
+      ${LINKS.map(l => `${l.newGroup ? '<div class="sidebar-divider"></div>' : ''}<a href="${l.href}" ${l.href === path ? 'class="active"' : ''}>${icon(l.icon)}${l.label}</a>`).join('')}
     </nav>
     <div class="sidebar-bottom">
       <button id="nav-logout-btn" type="button">${icon('logout')}Log Out</button>

@@ -114,6 +114,7 @@ body.has-sidebar { margin-left: var(--sidebar-w); }
 .sidebar-nav a svg { width: 20px; height: 20px; flex: none; }
 .sidebar-nav a:hover { color: var(--navy-ink); background: rgba(255,255,255,.06); }
 .sidebar-nav a.active { color: var(--navy-ink); background: rgba(255,255,255,.1); }
+.sidebar-divider { width: 40px; height: 1px; background: var(--navy-line); margin: 6px 0; }
 .sidebar-bottom {
   margin-top: auto;
   display: flex;
