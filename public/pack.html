@@ -101,9 +101,19 @@
       // would also nuke any open dispatch-destination input mid-type.
       for (const s of rows) {
         const span = document.getElementById(`shipment-row-label-${s.id}`);
-        if (span) span.textContent = `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`;
+        if (span) span.textContent = shipmentRowLabel(s);
       }
       return rows;
+    }
+
+    // Shown after DISPATCHED so an operator checking the shipment list later
+    // (or right after dispatching) can see WHERE it went without opening
+    // every unit's individual history -- Field Simulation Pass 3 Scenario 3
+    // found the destination typed at dispatch was recorded per-unit only,
+    // never surfaced at the shipment level at all.
+    function shipmentRowLabel(s) {
+      const base = `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`;
+      return s.status === 'DISPATCHED' && s.destination_name ? `${base} → ${s.destination_name}` : base;
     }
 
     async function loadExistingShipments() {
@@ -112,6 +122,7 @@
       document.getElementById('scan-section').hidden = true;
       currentShipmentId = null;
       if (!lineId) { document.getElementById('order-rollup').textContent = ''; el.textContent = ''; return; }
+      const line = linesById.get(lineId);
       const rows = await refreshOrderRollup(lineId);
       if (!rows.length) {
         el.innerHTML = 'No shipments yet for this line.';
@@ -119,10 +130,11 @@
       }
       el.innerHTML = rows.map((s) => `
         <div style="margin:4px 0">
-          <span id="shipment-row-label-${s.id}">${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})</span>
+          <span id="shipment-row-label-${s.id}">${shipmentRowLabel(s)}</span>
           ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
           ${s.status === 'CLOSED' ? ` <button type="button" class="secondary" data-dispatch-open="${s.id}" style="padding:2px 8px;font-size:12px">Dispatch</button>` : ''}
           <div class="dispatch-form" id="dispatch-form-${s.id}" hidden style="margin-top:4px">
+            <div class="muted" style="font-size:12px;margin-bottom:4px">Dispatching <strong>${s.reference}</strong> (${s.scanned_count} units) for <strong>${line.customerName}</strong> — ${line.orderRef}. Double-check the destination below before confirming.</div>
             <input type="text" placeholder="Destination (e.g. Customer -- School ABC)" data-dispatch-location="${s.id}" style="font-size:12px;padding:4px">
             <button type="button" data-dispatch-confirm="${s.id}" style="padding:2px 8px;font-size:12px">Confirm Dispatch</button>
           </div>

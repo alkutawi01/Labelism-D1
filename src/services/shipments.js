@@ -142,11 +142,13 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
 export async function getShipment(db, id) {
   const shipment = await db
     .prepare(
-      `SELECT s.*, ol.description, ol.quantity_ordered, o.order_reference, c.name AS customer_name
+      `SELECT s.*, ol.description, ol.quantity_ordered, o.order_reference, c.name AS customer_name,
+              l.name AS destination_name
        FROM shipments s
        JOIN order_lines ol ON ol.id = s.order_line_id
        JOIN orders o ON o.id = ol.order_id
        JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN locations l ON l.id = s.destination_location_id
        WHERE s.id = ?`
     )
     .bind(id)
@@ -226,7 +228,11 @@ export async function dispatchShipment(db, shipmentId, { locationName, actor }) 
       })
     );
   }
-  statements.push(db.prepare("UPDATE shipments SET status = 'DISPATCHED' WHERE id = ?").bind(shipmentId));
+  statements.push(
+    db
+      .prepare("UPDATE shipments SET status = 'DISPATCHED', destination_location_id = ? WHERE id = ?")
+      .bind(location.id, shipmentId)
+  );
 
   await db.batch(statements);
   return { id: shipmentId, status: 'DISPATCHED', locationName: location.name, dispatchedCount: units.length };
@@ -235,9 +241,11 @@ export async function dispatchShipment(db, shipmentId, { locationName, actor }) 
 export async function listShipmentsForOrderLine(db, orderLineId) {
   const { results } = await db
     .prepare(
-      `SELECT s.id, s.reference, s.planned_quantity, s.status,
+      `SELECT s.id, s.reference, s.planned_quantity, s.status, l.name AS destination_name,
               (SELECT COUNT(*) FROM shipment_units su WHERE su.shipment_id = s.id) AS scanned_count
-       FROM shipments s WHERE s.order_line_id = ? ORDER BY s.created_at`
+       FROM shipments s
+       LEFT JOIN locations l ON l.id = s.destination_location_id
+       WHERE s.order_line_id = ? ORDER BY s.created_at`
     )
     .bind(orderLineId)
     .all();

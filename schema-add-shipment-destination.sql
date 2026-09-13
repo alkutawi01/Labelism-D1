@@ -1,0 +1,13 @@
+-- Productization Pass 3, Scenario 3 (mis-dispatch to wrong customer
+-- location). Live testing found dispatchShipment() already resolves and
+-- records a destination location on every UNIT_DISPATCHED event (per
+-- unit), but the shipment record itself never captured it -- there was no
+-- query that could answer "where did shipment X go" without walking every
+-- unit's event history individually. Deriving it instead from units'
+-- current_location_id was rejected: that field is live/mutable (a later
+-- Stocktake relocation would silently rewrite what looks like historical
+-- dispatch fact), whereas the destination a shipment was actually sent to
+-- is a fact of the dispatch event and must stay fixed once recorded --
+-- same reasoning as closed_at already being its own column instead of
+-- derived.
+ALTER TABLE shipments ADD COLUMN destination_location_id TEXT REFERENCES locations(id);
