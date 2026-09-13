@@ -69,7 +69,7 @@
   <div class="page">
   <header class="page-header no-print">
     <h1>Print Labels</h1>
-    <p class="muted">Print one label per copy, attach it, then confirm attachment by scanning or clicking Confirm.</p>
+    <p class="muted">Print one label per copy, attach it, then scan the attached QR to verify it's the right label before confirming.</p>
   </header>
 
   <label class="no-print">Production batch
@@ -179,15 +179,24 @@
       units.forEach(u => {
         const cell = document.createElement('div');
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
+        const verified = !!u.label_scan_verified;
         cell.innerHTML = `
           ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
           ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${u.human_code}</div>
-          <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : 'Not yet confirmed'}</div>
-          <button class="no-print" data-id="${u.id}" data-action="confirm" ${u.label_confirmed_at ? 'disabled' : ''}>
-            ${u.label_confirmed_at ? 'Confirmed' : 'Confirm Attachment'}
-          </button>
+          <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : verified ? 'Scan verified — ready to confirm' : 'Awaiting attachment scan'}</div>
+          ${u.label_confirmed_at ? `
+            <button class="no-print" disabled>Confirmed</button>
+          ` : verified ? `
+            <button class="no-print" data-id="${u.id}" data-action="confirm">Confirm Attachment</button>
+          ` : `
+            <form class="no-print scan-verify-form" data-id="${u.id}" style="margin-top:6px">
+              <input name="code" placeholder="Scan the attached label's QR" style="font-size:12px;padding:6px" required>
+              <button type="submit" style="margin-top:4px">Verify Scan</button>
+            </form>
+            <div class="no-print scan-verify-result" id="scan-verify-result-${u.id}"></div>
+          `}
           ${!u.label_confirmed_at ? `
             <button class="no-print secondary" data-id="${u.id}" data-action="reissue">
               Lost — Reissue
@@ -211,6 +220,38 @@
       grid.querySelectorAll('button[data-action="confirm"]').forEach(btn => {
         btn.addEventListener('click', async () => {
           await fetch(`/api/units/${btn.dataset.id}/confirm-label`, { method: 'POST' });
+          loadUnits(false);
+        });
+      });
+      // P2 fix: attachment must be verified by actually scanning the
+      // physical label before Confirm Attachment is even shown -- catches
+      // both a swapped label (scan resolves to a different unit) and a
+      // mis-click (nothing was scanned at all).
+      grid.querySelectorAll('form.scan-verify-form').forEach(form => {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const unitId = form.dataset.id;
+          const code = new FormData(form).get('code').trim();
+          const resultEl = document.getElementById(`scan-verify-result-${unitId}`);
+          const res = await fetch(`/api/units/${unitId}/verify-label-scan`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, actor: 'izzat' }),
+          }).then(r => r.json());
+          if (res.error) {
+            resultEl.innerHTML = `<div class="msg error">${res.error}</div>`;
+            return;
+          }
+          if (!res.verified) {
+            resultEl.innerHTML =
+              res.reason === 'mismatch'
+                ? `<div class="msg error">Wrong label — this QR belongs to Unit ${res.actualUnit.humanCode} (${res.actualUnit.product} · ${res.actualUnit.variant}), not this one.</div>`
+                : res.reason === 'ambiguous'
+                ? `<div class="msg error">That code matches more than one unit — scan the QR itself instead of typing a short code.</div>`
+                : `<div class="msg error">No unit matches that code.</div>`;
+            form.code.value = '';
+            form.code.focus();
+            return;
+          }
           loadUnits(false);
         });
       });

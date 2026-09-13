@@ -243,7 +243,11 @@ export async function listUnitsForBatch(db, batchId) {
   const { results } = await db
     .prepare(
       `SELECT u.id, u.human_code, u.internal_token, u.current_disposition, u.label_confirmed_at,
-              u.current_location_id, l.name AS location_name
+              u.current_location_id, l.name AS location_name,
+              EXISTS(
+                SELECT 1 FROM unit_events ue
+                WHERE ue.unit_id = u.id AND ue.event_type = 'LABEL_SCANNED_FOR_ATTACHMENT'
+              ) AS label_scan_verified
        FROM units u
        LEFT JOIN locations l ON l.id = u.current_location_id
        WHERE u.batch_id = ? ORDER BY u.human_code`

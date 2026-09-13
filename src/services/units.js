@@ -6,9 +6,102 @@
 import { newInternalId, newOpaqueToken, buildEventBatch } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 
+// A scanned QR encodes the full scan.html URL (see label.html), so a
+// phone-camera scan or a pasted decode both hand back a URL rather than
+// the bare token -- pull the token out if it looks like one of our URLs,
+// otherwise treat the input as a raw code (human_code or token typed/
+// pasted directly).
+function extractScannedCode(raw) {
+  const trimmed = (raw ?? '').trim();
+  try {
+    const url = new URL(trimmed);
+    const param = url.searchParams.get('code');
+    if (param) return param;
+  } catch {
+    // Not a URL -- fall through, use as-is.
+  }
+  return trimmed;
+}
+
+// Step 1 of the P2 fix: verify the label actually attached to the physical
+// object is the one this unit record expects, BEFORE confirmLabel is
+// allowed to fire. Records LABEL_SCANNED_FOR_ATTACHMENT as an observation
+// (matches the rest of Labelism's principle that a scan proves something
+// was seen, not that a business decision was made) -- confirmLabel is the
+// separate, later step that turns a verified scan into the real commitment.
+export async function verifyLabelScan(db, unitId, rawCode, actor) {
+  const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
+  if (!unit) return { notFound: true };
+  if (!rawCode) throw new ValidationError('A scanned code is required.');
+  if (unit.label_confirmed_at) {
+    throw new ValidationError('This label is already confirmed attached.');
+  }
+
+  const code = extractScannedCode(rawCode);
+  const { results: matches } = await db
+    .prepare(
+      `SELECT u.*, v.variant_label, p.name AS product_name, pb.batch_number
+       FROM units u
+       JOIN production_batches pb ON pb.id = u.batch_id
+       JOIN variants v ON v.id = pb.variant_id
+       JOIN products p ON p.id = v.product_id
+       WHERE u.human_code = ?1 OR u.internal_token = ?1 OR u.public_token = ?1`
+    )
+    .bind(code)
+    .all();
+
+  if (!matches.length) return { verified: false, reason: 'not_found' };
+  if (matches.length > 1) {
+    // human_code repeats across batches -- a short typed code can't prove
+    // physical identity here. Scanning the QR (internal_token, always
+    // globally unique) sidesteps this entirely.
+    return { verified: false, reason: 'ambiguous' };
+  }
+
+  const scanned = matches[0];
+  if (scanned.id !== unitId) {
+    return {
+      verified: false,
+      reason: 'mismatch',
+      actualUnit: {
+        id: scanned.id,
+        humanCode: scanned.human_code,
+        product: scanned.product_name,
+        variant: scanned.variant_label,
+        batchNumber: scanned.batch_number,
+      },
+    };
+  }
+
+  const eventId = newInternalId();
+  const statements = buildEventBatch(db, {
+    eventId,
+    unitId,
+    eventType: 'LABEL_SCANNED_FOR_ATTACHMENT',
+    actor: actor ?? 'izzat',
+  });
+  await db.batch(statements);
+  return { verified: true };
+}
+
+// Field Simulation P2 (Wrong Label Attachment) fix, Director-approved
+// 2026-09-13: a button click is not proof a physical label was actually
+// scanned onto the right object -- two units of the same variant print
+// near-identical cards, and an operator can click whichever card matches
+// their INTENT rather than what they actually attached. Confirm is now
+// gated on a prior verifyLabelScan() success, which is a hard server-side
+// check (not just a client-side disabled button) so this can't be bypassed.
 export async function confirmLabel(db, unitId, actor) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
+
+  const scanned = await db
+    .prepare("SELECT 1 FROM unit_events WHERE unit_id = ? AND event_type = 'LABEL_SCANNED_FOR_ATTACHMENT' LIMIT 1")
+    .bind(unitId)
+    .first();
+  if (!scanned) {
+    throw new ValidationError('Scan the label actually attached to this unit before confirming -- a click alone is not proof of physical attachment.');
+  }
 
   const now = new Date().toISOString();
   const eventId = newInternalId();

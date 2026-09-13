@@ -174,6 +174,13 @@ export async function routeApi(request, env) {
       return ok(result, 201);
     }
 
+    if ((m = pathname.match(/^\/api\/units\/([^/]+)\/verify-label-scan$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await units.verifyLabelScan(env.DB, m[1], b.code, b.actor);
+      if (result.notFound) return notFound('Unit not found.');
+      return ok(result, result.verified ? 201 : 200);
+    }
+
     if ((m = pathname.match(/^\/api\/units\/([^/]+)\/reissue-label$/)) && method === 'POST') {
       const b = await body(request);
       const result = await units.reissueLabel(env.DB, m[1], b.actor);
