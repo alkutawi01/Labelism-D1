@@ -55,7 +55,7 @@ export async function listOrders(db) {
 
   const { results: lines } = await db
     .prepare(
-      `SELECT ol.id, ol.order_id, ol.quantity_ordered, ol.description, ol.variant_id,
+      `SELECT ol.id, ol.order_id, ol.quantity_ordered, ol.description, ol.variant_id, ol.notes,
               v.variant_label, p.name AS product_name
        FROM order_lines ol
        LEFT JOIN variants v ON v.id = ol.variant_id
@@ -98,6 +98,23 @@ export async function createOrderLine(db, { orderId, variantId, description, qua
     )
     .run();
   return { id, orderId, variantId: variantId ?? null, quantityOrdered };
+}
+
+// Field Simulation Pass 3 Scenario 6 fix: order_lines.notes was already
+// part of the Director-approved Domain Model Revision Pass v1 schema and
+// accepted at creation, but there was no way to set or change it
+// afterward -- so it could never actually record the thing it exists for
+// ("customer changed this line to Size L on 20/9"), since that always
+// happens AFTER the line already exists, often after a batch is already
+// in progress. Deliberately notes-only: this does NOT touch
+// quantity_ordered or variant_id, which stay a real mutation-capability
+// gap requiring a design call (same class of risk as the Scenario 1
+// batch order-link correction question).
+export async function updateOrderLineNotes(db, id, notes) {
+  const line = await db.prepare('SELECT id FROM order_lines WHERE id = ?').bind(id).first();
+  if (!line) return { notFound: true };
+  await db.prepare('UPDATE order_lines SET notes = ? WHERE id = ?').bind(notes ?? null, id).run();
+  return { id, notes: notes ?? null };
 }
 
 // One order line, its parent order/customer, and every production batch

@@ -63,6 +63,9 @@
       <label>Quantity ordered
         <input name="quantityOrdered" type="number" min="1" required placeholder="e.g. 50">
       </label>
+      <label>Notes (optional)
+        <input name="lineNotes" placeholder="e.g. customer changed this to Size L on 20/9">
+      </label>
       <button type="submit">Add Line</button>
     </form>
     <div id="line-result"></div>
@@ -96,6 +99,26 @@
         : '<option value="">No customers yet -- create one</option>';
     }
 
+    // Field Simulation Pass 3 Scenario 6: a line's notes is the only place
+    // a post-creation change ("customer changed this to Size L") can be
+    // recorded today, since quantity_ordered/variant_id have no edit
+    // capability at all (a real gap, deferred pending Director's design
+    // call same as the Scenario 1 batch order-link correction). Shown
+    // inline per line, with a lightweight edit control, since this is the
+    // one list an operator would check to notice a change was flagged.
+    function lineNoteHtml(l) {
+      const noteText = l.notes ? l.notes : '<span class="muted">no note</span>';
+      return `
+        <span data-note-display="${l.id}">
+          <span id="line-note-${l.id}">${noteText}</span>
+          <button type="button" class="secondary" data-edit-note="${l.id}" style="padding:1px 6px;font-size:11px">Edit note</button>
+        </span>
+        <span data-note-form="${l.id}" hidden>
+          <input type="text" data-note-input="${l.id}" value="${l.notes ? l.notes.replace(/"/g, '&quot;') : ''}" placeholder="e.g. customer changed this to Size L on 20/9" style="font-size:12px;padding:3px;width:220px">
+          <button type="button" data-save-note="${l.id}" style="padding:1px 6px;font-size:11px">Save</button>
+        </span>`;
+    }
+
     async function loadOrders() {
       const rows = await fetch('/api/orders').then(r => r.json());
       if (!rows.length) return;
@@ -104,10 +127,29 @@
         <tr>
           <td>${o.customer_name}</td>
           <td>${o.order_reference}</td>
-          <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}`).join('<br>') : '<span class="muted">No lines yet</span>'}</td>
+          <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}<br><span class="muted" style="font-size:12px">${lineNoteHtml(l)}</span>`).join('<hr style="border:none;border-top:1px solid var(--line);margin:6px 0">') : '<span class="muted">No lines yet</span>'}</td>
           <td>${o.notes ? o.notes : '<span class="muted">—</span>'}</td>
         </tr>
       `).join('');
+      const body = document.getElementById('orders-body');
+      body.querySelectorAll('button[data-edit-note]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const lineId = btn.dataset.editNote;
+          body.querySelector(`[data-note-display="${lineId}"]`).hidden = true;
+          body.querySelector(`[data-note-form="${lineId}"]`).hidden = false;
+        });
+      });
+      body.querySelectorAll('button[data-save-note]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const lineId = btn.dataset.saveNote;
+          const value = body.querySelector(`[data-note-input="${lineId}"]`).value.trim();
+          const res = await fetch(`/api/order-lines/${lineId}/notes`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: value || null }),
+          }).then(r => r.json());
+          if (!res.error) loadOrders();
+        });
+      });
     }
 
     document.querySelectorAll('input[name=customerMode]').forEach((el) => el.addEventListener('change', updateCustomerModeUI));
@@ -170,6 +212,7 @@
             orderId: currentOrderId,
             description: data.description || undefined,
             quantityOrdered: Number(data.quantityOrdered),
+            notes: data.lineNotes || undefined,
           }),
         }).then(r => r.json());
         if (line.error) throw new Error(line.error);

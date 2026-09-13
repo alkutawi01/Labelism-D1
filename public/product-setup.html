@@ -298,6 +298,14 @@
       if (line.order_notes) {
         banner.innerHTML += `<br><strong>Order note:</strong> ${line.order_notes}`;
       }
+      // Field Simulation Pass 3 Scenario 6: a note on the LINE itself
+      // (e.g. "customer changed this to Size L on 20/9") is a different,
+      // more specific signal than an order-level note -- shown separately
+      // so a multi-line order's other lines don't get buried under a
+      // warning that doesn't apply to them.
+      if (line.notes) {
+        banner.innerHTML += `<br><strong>Line note:</strong> ${line.notes}`;
+      }
 
       // Ali already typed this quantity once on the Orders page -- don't
       // make him remember and retype it. Default to what's still needed

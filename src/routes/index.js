@@ -134,6 +134,12 @@ export async function routeApi(request, env) {
       if (!result) return notFound('Order line not found.');
       return ok(result);
     }
+    if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/notes$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await orders.updateOrderLineNotes(env.DB, m[1], b.notes);
+      if (result.notFound) return notFound('Order line not found.');
+      return ok(result);
+    }
 
     if (pathname === '/api/shipments' && method === 'POST') {
       const result = await shipments.createShipment(env.DB, await body(request));
