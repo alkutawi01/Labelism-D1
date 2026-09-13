@@ -185,11 +185,23 @@ export async function createProductionBatch(db, { variantId, batchNumber, planne
 // change) is the fix for "can he see it" -- "can it be corrected" is a
 // separate, deliberately unresolved question flagged to Director, since it
 // needs an actual new mutation, not just a better read model.
+// Field Simulation Pass 3, Scenario B (multi-user handover): Abu picking
+// up Ali's unfinished work had no way to tell, from this list alone,
+// whether a batch was done -- "registered" and "labeled" progress each
+// only ever showed up once you'd already navigated into Receiving or
+// Print Labels AND selected that specific batch there. Not missing data
+// (both counts were always derivable), just scattered across pages with
+// no single place aggregating them, exactly the "status tersebar" gap
+// Director predicted for this scenario. Added as plain read-only
+// subqueries -- no new domain concept, same pattern as the Order column
+// added for Scenario 1.
 export async function listProductionBatches(db) {
   const { results } = await db
     .prepare(
       `SELECT pb.id, pb.batch_number, pb.planned_quantity, pb.notes, p.name AS product_name, v.variant_label,
-              o.order_reference, c.name AS customer_name
+              o.order_reference, c.name AS customer_name,
+              (SELECT COUNT(*) FROM units u WHERE u.batch_id = pb.id) AS registered_count,
+              (SELECT COUNT(*) FROM units u WHERE u.batch_id = pb.id AND u.label_confirmed_at IS NOT NULL) AS labeled_count
        FROM production_batches pb
        JOIN variants v ON v.id = pb.variant_id
        JOIN products p ON p.id = v.product_id

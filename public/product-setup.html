@@ -81,7 +81,7 @@
   <div id="result"></div>
 
   <table id="list-table" hidden>
-    <thead><tr><th>Product</th><th>Variant</th><th>Batch</th><th>Planned</th><th>Order</th></tr></thead>
+    <thead><tr><th>Product</th><th>Variant</th><th>Batch</th><th>Planned</th><th>Order</th><th>Registered</th><th>Labeled</th></tr></thead>
     <tbody id="list-body"></tbody>
   </table>
   </div>
@@ -181,6 +181,8 @@
           <td>${r.batch_number}</td>
           <td>${r.planned_quantity}</td>
           <td>${r.order_reference ? `${r.order_reference} (${r.customer_name})` : '<span class="muted">Not linked to an order</span>'}</td>
+          <td>${r.registered_count}/${r.planned_quantity}</td>
+          <td>${r.labeled_count}/${r.registered_count}</td>
         </tr>
       `).join('');
     }
