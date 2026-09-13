@@ -40,6 +40,16 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* Field Simulation Pass 3, Scenario C: found live that `form { display:
+   flex }` below silently defeats the `hidden` attribute/property on any
+   <form> -- author rules of equal-or-higher specificity beat the
+   UA stylesheet's default `[hidden] { display: none }`, so
+   `formEl.hidden = true` did nothing visible. Same risk exists for any
+   other element given its own non-`none` display value (fieldset,
+   .stats, .cards, etc.) -- this reasserts `[hidden]` as the standing
+   contract app-wide, the way most CSS resets already do, rather than
+   auditing every current and future `.hidden = true` call site. */
+[hidden] { display: none !important; }
 body {
   background: var(--bg);
   color: var(--ink);

@@ -68,22 +68,45 @@
       const rows = await fetch('/api/return-intakes').then(r => r.json());
       const el = document.getElementById('existing-intakes');
       if (!rows.length) { el.textContent = 'No return intakes yet.'; return; }
+      // Field Simulation Pass 3, Scenario C (operational ownership): found
+      // live that a CLOSED intake with unresolved QC items became a dead
+      // end -- "Resume" only ever rendered for OPEN intakes, and it was
+      // the ONLY way in the UI to reach the units-list/QC buttons. Backend
+      // never actually blocked QC after closing (decideReturnQc doesn't
+      // check intake status at all -- closing only ever stopped new scans
+      // coming in), so this was a pure UI gap: a real, actionable "1
+      // awaiting QC" that nobody could act on anymore. Also adds a plain
+      // next-action label next to the count itself, per Director's note
+      // that an exception count is only useful once someone knows it's
+      // theirs to act on -- not a task-assignment system, just naming
+      // what happens next.
       el.innerHTML = rows.map((r) => `
         <div style="margin:4px 0">
-          <span>${r.reference}${r.customer_name ? ` (${r.customer_name})` : ''} -- ${r.status}, ${r.scanned_count} scanned, ${r.pending_qc_count} awaiting QC</span>
+          <span>${r.reference}${r.customer_name ? ` (${r.customer_name})` : ''} -- ${r.status}, ${r.scanned_count} scanned, ${r.pending_qc_count} awaiting QC${r.pending_qc_count > 0 ? ' <span class="muted">(needs a QC decision: Resellable / Damaged / Reject)</span>' : ''}</span>
           ${r.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${r.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
+          ${r.status === 'CLOSED' && r.pending_qc_count > 0 ? ` <button type="button" class="secondary" data-review="${r.id}" style="padding:2px 8px;font-size:12px">Review / QC</button>` : ''}
         </div>
       `).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
-        btn.addEventListener('click', () => resumeIntake(btn.dataset.resume));
+        btn.addEventListener('click', () => resumeIntake(btn.dataset.resume, 'OPEN'));
+      });
+      el.querySelectorAll('button[data-review]').forEach((btn) => {
+        btn.addEventListener('click', () => resumeIntake(btn.dataset.review, 'CLOSED'));
       });
     }
 
-    async function resumeIntake(id) {
+    async function resumeIntake(id, status) {
       currentIntakeId = id;
       document.getElementById('intake-result').innerHTML = '';
       document.getElementById('scan-section').hidden = false;
       document.getElementById('close-result').innerHTML = '';
+      // A closed intake can no longer accept new scans (scanUnitIntoReturnIntake
+      // enforces that server-side) and is already closed, so those two
+      // controls would just produce confusing errors -- hide them, keep
+      // the units-list/QC buttons, which are what a CLOSED-but-pending
+      // intake is actually here for.
+      document.querySelector('#scan-section form#scan-form').hidden = status !== 'OPEN';
+      document.getElementById('close-btn').hidden = status !== 'OPEN';
       await refreshUnits();
     }
 
