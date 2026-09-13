@@ -28,6 +28,19 @@
         padding: 2mm;
       }
       .label:last-child { page-break-after: auto; }
+
+      /* A4 sheet mode: many labels per page, cut by hand -- for testing
+         before a thermal printer/driver is set up. Dashed border doubles
+         as a cut guide. */
+      body.print-a4 .label-grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8mm; }
+      body.print-a4 .label {
+        width: auto; height: auto;
+        page-break-after: auto;
+        page-break-inside: avoid;
+        border: 1px dashed #999;
+        border-radius: 0;
+        padding: 4mm;
+      }
     }
     .label-grid {
       display: grid;
@@ -62,9 +75,10 @@
 
   <label class="no-print">Label size (physical sticker size loaded in your printer)
     <select id="size-select">
-      <option value="40x30">40mm x 30mm</option>
-      <option value="50x30">50mm x 30mm</option>
-      <option value="60x40" selected>60mm x 40mm</option>
+      <option value="40x30">40mm x 30mm (thermal)</option>
+      <option value="50x30">50mm x 30mm (thermal)</option>
+      <option value="60x40" selected>60mm x 40mm (thermal)</option>
+      <option value="a4">A4 sheet — many per page, cut yourself</option>
     </select>
   </label>
 
@@ -85,6 +99,7 @@
       '40x30': { w: 40, h: 30, qr: 60 },
       '50x30': { w: 50, h: 30, qr: 70 },
       '60x40': { w: 60, h: 40, qr: 90 },
+      'a4': { a4: true, qr: 110 },
     };
 
     function applyPageSize() {
@@ -95,10 +110,16 @@
         styleTag.id = 'page-size-style';
         document.head.appendChild(styleTag);
       }
-      styleTag.textContent = `
-        @page { size: ${s.w}mm ${s.h}mm; margin: 0; }
-        :root { --label-w: ${s.w}mm; --label-h: ${s.h}mm; }
-      `;
+      if (s.a4) {
+        document.body.classList.add('print-a4');
+        styleTag.textContent = `@page { size: A4; margin: 10mm; }`;
+      } else {
+        document.body.classList.remove('print-a4');
+        styleTag.textContent = `
+          @page { size: ${s.w}mm ${s.h}mm; margin: 0; }
+          :root { --label-w: ${s.w}mm; --label-h: ${s.h}mm; }
+        `;
+      }
     }
     sizeSelect.addEventListener('change', () => { applyPageSize(); loadUnits(); });
 
