@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pack &amp; Ship — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+  <header class="page-header">
+    <h1>Pack &amp; Ship</h1>
+    <p class="muted">Scan units into a shipment to confirm an order is fulfilled correctly -- this is a different check from Stocktake (which confirms warehouse presence, not customer fulfillment).</p>
+  </header>
+
+  <fieldset>
+    <legend>Order Line</legend>
+    <label>Which order line is this shipment for?
+      <select id="line-select"><option value="">Loading…</option></select>
+    </label>
+    <div id="existing-shipments" class="muted"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>New Shipment</legend>
+    <form id="shipment-form">
+      <label>Reference
+        <input name="reference" required placeholder="e.g. Shipment 1">
+      </label>
+      <label>Planned quantity for this shipment
+        <input name="plannedQuantity" type="number" min="1" required placeholder="e.g. 60">
+      </label>
+      <button type="submit">Open Shipment</button>
+    </form>
+  </fieldset>
+
+  <div id="shipment-result"></div>
+
+  <fieldset id="scan-section" hidden>
+    <legend>Scan Units</legend>
+    <div class="stats" id="shipment-stats">
+      <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Planned</div></div>
+      <div class="stat"><div class="value" id="s-packed">0</div><div class="label">Packed</div></div>
+    </div>
+    <form id="scan-form">
+      <label>Scan / enter code
+        <input name="code" autofocus placeholder="000001">
+      </label>
+      <button type="submit">Record Scan</button>
+    </form>
+    <div id="scan-result"></div>
+    <button id="close-btn" class="secondary" style="margin-top:16px">Close Shipment</button>
+    <div id="close-result"></div>
+  </fieldset>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    let currentShipmentId = null;
+
+    async function loadLines() {
+      const orders = await fetch('/api/orders').then(r => r.json());
+      const select = document.getElementById('line-select');
+      const allLines = orders.flatMap((o) => o.lines.map((l) => ({ ...l, orderRef: o.order_reference, customerName: o.customer_name })));
+      if (!allLines.length) {
+        select.innerHTML = '<option value="">No order lines yet -- create one in Orders</option>';
+        return;
+      }
+      select.innerHTML = allLines.map((l) =>
+        `<option value="${l.id}">${l.customerName} · ${l.orderRef} · ${l.description || (l.product_name + ' ' + l.variant_label)} (${l.quantity_ordered})</option>`
+      ).join('');
+      loadExistingShipments();
+    }
+
+    async function loadExistingShipments() {
+      const lineId = document.getElementById('line-select').value;
+      const el = document.getElementById('existing-shipments');
+      if (!lineId) { el.textContent = ''; return; }
+      const rows = await fetch(`/api/order-lines/${lineId}/shipments`).then(r => r.json());
+      el.innerHTML = rows.length
+        ? 'Existing shipments: ' + rows.map((s) => `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`).join(', ')
+        : 'No shipments yet for this line.';
+    }
+    document.getElementById('line-select').addEventListener('change', loadExistingShipments);
+
+    document.getElementById('shipment-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = document.getElementById('shipment-result');
+      result.innerHTML = '';
+      try {
+        const orderLineId = document.getElementById('line-select').value;
+        if (!orderLineId) throw new Error('Select an order line first.');
+        const data = Object.fromEntries(new FormData(e.target));
+        const shipment = await fetch('/api/shipments', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderLineId, reference: data.reference, plannedQuantity: Number(data.plannedQuantity) }),
+        }).then(r => r.json());
+        if (shipment.error) throw new Error(shipment.error);
+
+        currentShipmentId = shipment.id;
+        result.innerHTML = `<div class="msg ok">Shipment "${shipment.reference}" opened.</div>`;
+        document.getElementById('scan-section').hidden = false;
+        document.getElementById('s-planned').textContent = shipment.plannedQuantity;
+        document.getElementById('s-packed').textContent = 0;
+        e.target.reset();
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+      }
+    });
+
+    document.getElementById('scan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const code = new FormData(form).get('code').trim();
+      const result = document.getElementById('scan-result');
+      try {
+        const httpRes = await fetch(`/api/shipments/${currentShipmentId}/scans`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, actor: 'izzat' }),
+        });
+        const res = await httpRes.json();
+        if (res.error) {
+          result.innerHTML = `<div class="msg error">${res.error}</div>`;
+        } else {
+          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode}${res.alreadyScanned ? ' -- already scanned' : ' -- packed'}</div>`;
+          const shipment = await fetch(`/api/shipments/${currentShipmentId}`).then(r => r.json());
+          document.getElementById('s-packed').textContent = shipment.scannedCount;
+        }
+      } catch (err) {
+        result.innerHTML = `<div class="msg error">Could not reach the server (${err.message}).</div>`;
+      }
+      form.reset();
+      form.code.focus();
+    });
+
+    document.getElementById('close-btn').addEventListener('click', async () => {
+      const res = await fetch(`/api/shipments/${currentShipmentId}/close`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'izzat' }),
+      }).then(r => r.json());
+      document.getElementById('close-result').innerHTML = res.error
+        ? `<div class="msg error">${res.error}</div>`
+        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}` : ''}.</div>`;
+    });
+
+    loadLines();
+  </script>
+</body>
+</html>

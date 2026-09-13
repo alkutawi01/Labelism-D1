@@ -4,6 +4,7 @@ import * as units from '../services/units.js';
 import * as stocktake from '../services/stocktake.js';
 import * as importManifest from '../services/importManifest.js';
 import * as orders from '../services/orders.js';
+import * as shipments from '../services/shipments.js';
 import { toErrorResponse } from '../domain/errors.js';
 import { verifyPassword, setSessionCookieHeader, clearSessionCookieHeader } from '../auth/index.js';
 
@@ -131,6 +132,32 @@ export async function routeApi(request, env) {
       const result = await orders.getOrderLine(env.DB, m[1]);
       if (!result) return notFound('Order line not found.');
       return ok(result);
+    }
+
+    if (pathname === '/api/shipments' && method === 'POST') {
+      const result = await shipments.createShipment(env.DB, await body(request));
+      if (result.notFound) return notFound('Order line not found.');
+      return ok(result, 201);
+    }
+    if ((m = pathname.match(/^\/api\/shipments\/([^/]+)$/)) && method === 'GET') {
+      const result = await shipments.getShipment(env.DB, m[1]);
+      if (!result) return notFound('Shipment not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/shipments\/([^/]+)\/scans$/)) && method === 'POST') {
+      const result = await shipments.scanUnitIntoShipment(env.DB, m[1], await body(request));
+      if (result.notFound && result.reason === 'unit') return notFound('Unit not found.');
+      if (result.notFound) return notFound('Shipment not found.');
+      return ok(result, result.alreadyScanned ? 200 : 201);
+    }
+    if ((m = pathname.match(/^\/api\/shipments\/([^/]+)\/close$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await shipments.closeShipment(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Shipment not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/shipments$/)) && method === 'GET') {
+      return ok(await shipments.listShipmentsForOrderLine(env.DB, m[1]));
     }
 
     if (pathname === '/api/locations' && method === 'GET') {
