@@ -120,7 +120,9 @@
         result.innerHTML = `<div class="msg error">${res.humanCode} -- already scanned into this intake.</div>`;
       } else {
         const context = res.orderReference ? ` -- from Order ${res.orderReference}${res.customerName ? ` (${res.customerName})` : ''}` : ' -- no order on record';
-        result.innerHTML = `<div class="msg ${res.expected ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${res.expected ? 'Expected return (was previously dispatched).' : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.'}</div>`;
+        const dispatchNote = res.expected ? 'Expected return (was previously dispatched).' : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.';
+        const mismatchNote = res.customerMismatch ? ` This unit belongs to ${res.customerName || 'a different customer'}, not this intake's customer -- verify who is actually returning it.` : '';
+        result.innerHTML = `<div class="msg ${res.expected && !res.customerMismatch ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${dispatchNote}${mismatchNote}</div>`;
         refreshUnits();
       }
       form.reset();
@@ -133,7 +135,7 @@
       if (!intake.units.length) { el.innerHTML = 'None yet.'; return; }
       el.innerHTML = intake.units.map((u) => `
         <div style="margin:4px 0">
-          <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'} --
+          <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'}${u.customer_mismatch ? ' <span class="badge">wrong customer</span>' : ''} --
           ${u.qc_outcome ? `QC: ${u.qc_outcome}` : `
             <button type="button" data-qc="${u.unit_id}" data-outcome="AVAILABLE" style="padding:2px 8px;font-size:12px">Resellable</button>
             <button type="button" data-qc="${u.unit_id}" data-outcome="DAMAGED" style="padding:2px 8px;font-size:12px" class="secondary">Damaged</button>

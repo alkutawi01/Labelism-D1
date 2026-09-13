@@ -44,7 +44,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
   const { results: matches } = await db
     .prepare(
       `SELECT u.*, v.variant_label, p.name AS product_name,
-              o.order_reference, c.name AS customer_name
+              o.order_reference, c.id AS customer_id, c.name AS customer_name
        FROM units u
        JOIN production_batches pb ON pb.id = u.batch_id
        JOIN variants v ON v.id = pb.variant_id
@@ -82,6 +82,16 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     .first();
   const expected = !!dispatched;
 
+  // Field Simulation P5 (Customer Verification) fix: a return intake
+  // already carries an optional customer_id (who called in to return
+  // something), but nothing ever checked a scanned unit against it -- any
+  // unit could be accepted into any customer's intake with no signal at
+  // all. Same "warn, don't block" philosophy as expected/unexpected: a
+  // legitimate reason to override still exists (staff correcting a
+  // mislabeled intake, a genuinely shared/company account), so this
+  // surfaces the mismatch rather than refusing the scan outright.
+  const customerMismatch = !!(intake.customer_id && unit.customer_id && unit.customer_id !== intake.customer_id);
+
   // Answers Question C: receiving is an explicit act of physically moving
   // the unit, not a passive observation -- so this DOES change location,
   // unlike Shipment packing.
@@ -91,16 +101,16 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     eventId,
     unitId: unit.id,
     eventType: 'RETURN_RECEIVED',
-    payload: { returnIntakeId, reference: intake.reference, expected },
+    payload: { returnIntakeId, reference: intake.reference, expected, customerMismatch },
     actor: actor ?? 'izzat',
     locationId: location.id,
   });
   statements.push(
     db
       .prepare(
-        'INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected) VALUES (?, ?, ?, ?)'
+        'INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected, customer_mismatch) VALUES (?, ?, ?, ?, ?)'
       )
-      .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0)
+      .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0)
   );
   await db.batch(statements);
 
@@ -111,6 +121,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     orderReference: unit.order_reference,
     customerName: unit.customer_name,
     expected,
+    customerMismatch,
     locationName: location.name,
     alreadyScanned: false,
   };
@@ -165,7 +176,7 @@ export async function getReturnIntake(db, id) {
 
   const { results: units } = await db
     .prepare(
-      `SELECT riu.unit_id, riu.expected, riu.qc_outcome, u.human_code
+      `SELECT riu.unit_id, riu.expected, riu.customer_mismatch, riu.qc_outcome, u.human_code
        FROM return_intake_units riu
        JOIN units u ON u.id = riu.unit_id
        WHERE riu.return_intake_id = ?
