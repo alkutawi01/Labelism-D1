@@ -1,0 +1,11 @@
+-- Productization Pass 3, Scenario 5 (two staff working the same unit
+-- concurrently). Live simulation found: Ali packs a unit into an OPEN
+-- shipment; Abu, unaware, scans the same unit into a Return Intake
+-- moments later. Nothing cross-checked the two domains -- the unit ended
+-- up simultaneously "packed, ready to ship" and physically relocated to
+-- the Returns Area. Same warn-don't-block pattern as the existing
+-- `expected`/`customer_mismatch` columns on this table (Field Simulation
+-- P4-D / P5): surfaced at scan time and kept on the row for later review,
+-- never a hard block, since a legitimate override may exist (e.g. the
+-- shipment itself is the mistake and is about to be corrected).
+ALTER TABLE return_intake_units ADD COLUMN active_shipment_conflict TEXT;

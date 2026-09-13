@@ -92,6 +92,29 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
   // surfaces the mismatch rather than refusing the scan outright.
   const customerMismatch = !!(intake.customer_id && unit.customer_id && unit.customer_id !== intake.customer_id);
 
+  // Field Simulation Pass 3 Scenario 5 fix: two staff working the same
+  // unit through two different domains with no cross-check at all. Found
+  // live: Ali packs a unit into an OPEN shipment (not yet dispatched);
+  // Abu, unaware, scans the same unit into a Return Intake moments later.
+  // Before this fix the return intake accepted it silently -- the unit
+  // ended up physically relocated to the Returns Area while STILL an
+  // active member of the open shipment, which would happily dispatch it
+  // later with no idea it never left the building the way the shipment
+  // record assumes. Same "warn, don't block" philosophy as
+  // expected/customerMismatch above: a legitimate reason to override can
+  // exist (the shipment itself may be about to be corrected), so this
+  // surfaces the conflict rather than refusing the scan -- the operator on
+  // THIS screen may not even be the one who can fix the other side.
+  const { results: activeShipments } = await db
+    .prepare(
+      `SELECT s.reference FROM shipment_units su
+       JOIN shipments s ON s.id = su.shipment_id
+       WHERE su.unit_id = ? AND s.status != 'DISPATCHED'`
+    )
+    .bind(unit.id)
+    .all();
+  const activeShipmentConflict = activeShipments.length ? activeShipments[0].reference : null;
+
   // Answers Question C: receiving is an explicit act of physically moving
   // the unit, not a passive observation -- so this DOES change location,
   // unlike Shipment packing.
@@ -101,16 +124,16 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     eventId,
     unitId: unit.id,
     eventType: 'RETURN_RECEIVED',
-    payload: { returnIntakeId, reference: intake.reference, expected, customerMismatch },
+    payload: { returnIntakeId, reference: intake.reference, expected, customerMismatch, activeShipmentConflict },
     actor: actor ?? 'izzat',
     locationId: location.id,
   });
   statements.push(
     db
       .prepare(
-        'INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected, customer_mismatch) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected, customer_mismatch, active_shipment_conflict) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0)
+      .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0, activeShipmentConflict)
   );
   await db.batch(statements);
 
@@ -122,6 +145,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     customerName: unit.customer_name,
     expected,
     customerMismatch,
+    activeShipmentConflict,
     locationName: location.name,
     alreadyScanned: false,
   };
@@ -176,7 +200,7 @@ export async function getReturnIntake(db, id) {
 
   const { results: units } = await db
     .prepare(
-      `SELECT riu.unit_id, riu.expected, riu.customer_mismatch, riu.qc_outcome, u.human_code
+      `SELECT riu.unit_id, riu.expected, riu.customer_mismatch, riu.active_shipment_conflict, riu.qc_outcome, u.human_code
        FROM return_intake_units riu
        JOIN units u ON u.id = riu.unit_id
        WHERE riu.return_intake_id = ?

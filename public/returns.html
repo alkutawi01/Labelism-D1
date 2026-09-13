@@ -122,7 +122,8 @@
         const context = res.orderReference ? ` -- from Order ${res.orderReference}${res.customerName ? ` (${res.customerName})` : ''}` : ' -- no order on record';
         const dispatchNote = res.expected ? 'Expected return (was previously dispatched).' : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.';
         const mismatchNote = res.customerMismatch ? ` This unit belongs to ${res.customerName || 'a different customer'}, not this intake's customer -- verify who is actually returning it.` : '';
-        result.innerHTML = `<div class="msg ${res.expected && !res.customerMismatch ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${dispatchNote}${mismatchNote}</div>`;
+        const shipmentConflictNote = res.activeShipmentConflict ? ` CONFLICT -- this unit is still packed in Shipment "${res.activeShipmentConflict}", which hasn't dispatched yet. Someone else may be actively working this unit -- check before that shipment ships.` : '';
+        result.innerHTML = `<div class="msg ${res.expected && !res.customerMismatch && !res.activeShipmentConflict ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${dispatchNote}${mismatchNote}${shipmentConflictNote}</div>`;
         refreshUnits();
       }
       form.reset();
@@ -135,7 +136,7 @@
       if (!intake.units.length) { el.innerHTML = 'None yet.'; return; }
       el.innerHTML = intake.units.map((u) => `
         <div style="margin:4px 0">
-          <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'}${u.customer_mismatch ? ' <span class="badge">wrong customer</span>' : ''} --
+          <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'}${u.customer_mismatch ? ' <span class="badge">wrong customer</span>' : ''}${u.active_shipment_conflict ? ` <span class="badge">still in Shipment "${u.active_shipment_conflict}"</span>` : ''} --
           ${u.qc_outcome ? `QC: ${u.qc_outcome}` : `
             <button type="button" data-qc="${u.unit_id}" data-outcome="AVAILABLE" style="padding:2px 8px;font-size:12px">Resellable</button>
             <button type="button" data-qc="${u.unit_id}" data-outcome="DAMAGED" style="padding:2px 8px;font-size:12px" class="secondary">Damaged</button>
