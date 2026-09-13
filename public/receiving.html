@@ -26,6 +26,7 @@
     <label>Quantity arrived
       <input name="observedQuantity" type="number" required min="0">
     </label>
+    <p class="muted" style="margin-top:-8px">Count what's physically in front of you, even if it doesn't match the delivery order or packing slip -- if those numbers disagree, the physical count is what matters here.</p>
     <label class="inline">
       <input type="checkbox" id="has-rejects">
       Some of it is damaged / incomplete / rejected
@@ -164,7 +165,18 @@
       }
       currentReceiptId = res.id;
       const unresolved = observed - rejected - accepted;
-      result.innerHTML = `<div class="msg ok">Receipt confirmed — ${accepted} accepted into stock${unresolved > 0 ? `, ${unresolved} left unresolved` : ''}, variance from plan: ${res.variance >= 0 ? '+' : ''}${res.variance}.</div>`;
+      // "Variance" alone is jargon -- say plainly whether more or fewer
+      // arrived than planned, and that it's informational, not an error,
+      // since a planned quantity is a forecast and a physical count is a
+      // fact (Director's "physical observation ≠ assumption" principle
+      // applies here too: don't imply the count is wrong just because it
+      // differs from what was planned).
+      const varianceNote = res.variance === 0
+        ? 'matches the planned quantity exactly.'
+        : res.variance > 0
+        ? `${res.variance} more than planned (${res.plannedQuantity}) -- not an error, just for your records.`
+        : `${Math.abs(res.variance)} fewer than planned (${res.plannedQuantity}) -- not an error, just for your records.`;
+      result.innerHTML = `<div class="msg ok">Receipt confirmed — ${accepted} accepted into stock${unresolved > 0 ? `, ${unresolved} left unresolved` : ''}. Quantity arrived ${varianceNote}</div>`;
       document.getElementById('register-step').style.display = 'block';
     });
 
@@ -177,7 +189,8 @@
         result.innerHTML = `<div class="msg error">${res.error}</div>`;
         return;
       }
-      result.innerHTML = `<div class="msg ok">${res.created} unit(s) registered${res.alreadyRegistered ? ' (' + res.alreadyRegistered + ' already existed)' : ''}.</div>`;
+      result.innerHTML = `<div class="msg ok">${res.created} unit(s) registered${res.alreadyRegistered ? ' (' + res.alreadyRegistered + ' already existed)' : ''}.<br>
+        Go to <a href="/label.html?batchId=${select.value}">Print Labels</a> to give each one a QR identity.</div>`;
       showPlanned();
     });
 
