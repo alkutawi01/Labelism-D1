@@ -153,7 +153,19 @@
       if (!line) { rollupEl.textContent = ''; return; }
       const rows = await fetch(`/api/order-lines/${lineId}/shipments`).then(r => r.json());
       const packedTotal = rows.reduce((sum, s) => sum + s.scanned_count, 0);
-      rollupEl.textContent = `Ordered: ${line.quantity_ordered} · Packed: ${packedTotal} · Remaining: ${Math.max(0, line.quantity_ordered - packedTotal)}`;
+      // Core Production Simulation, Priority 4 (partial shipment): after
+      // the pivot, all labels exist from day one, so "Remaining" here no
+      // longer means "not yet produced" -- confirmed live it can mean
+      // "produced and labeled, just not boxed into a shipment yet." Worse,
+      // "Packed" itself was ambiguous between "boxed into a CLOSED
+      // shipment still sitting in the warehouse" and "actually left on a
+      // DISPATCHED shipment" -- a real distinction Izzat's own business
+      // cares about (has it actually gone out the door?). Split it out so
+      // the rollup answers Director's three states directly: produced,
+      // packed-not-dispatched, and dispatched.
+      const dispatchedTotal = rows.filter((s) => s.status === 'DISPATCHED').reduce((sum, s) => sum + s.scanned_count, 0);
+      const packedNotDispatched = packedTotal - dispatchedTotal;
+      rollupEl.textContent = `Ordered: ${line.quantity_ordered} · Packed: ${packedTotal} (${dispatchedTotal} dispatched, ${packedNotDispatched} packed but not yet dispatched) · Remaining to pack: ${Math.max(0, line.quantity_ordered - packedTotal)}`;
       // Same staleness applied to each shipment's own row (e.g. "Shipment 1
       // (OPEN, 1/60)" frozen while the live scan count was already at 2) --
       // update it in place rather than re-rendering the whole list, which
