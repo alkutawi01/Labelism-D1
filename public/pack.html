@@ -297,9 +297,14 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
       }).then(r => r.json());
+      // Core Production Simulation, Priority 1 (production shortfall):
+      // a bare "MISSING 2" told Izzat something was wrong but not which
+      // two of the ten units to go find -- confirmed live this meant
+      // manually cross-checking the full unit list by hand. Name the
+      // actual codes so packing/QC can act immediately.
       const message = res.error
         ? `<div class="msg error">${res.error}</div>`
-        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}` : ''}.</div>`;
+        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}${res.missingUnits && res.missingUnits.length ? ` -- unit(s) ${res.missingUnits.join(', ')} never came back` : ''}` : ''}.</div>`;
       document.getElementById('close-result').innerHTML = message;
       if (!res.error) {
         // O5 finding: loadExistingShipments() hides the whole scan-section

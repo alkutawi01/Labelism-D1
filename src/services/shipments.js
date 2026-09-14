@@ -182,6 +182,20 @@ export async function getShipment(db, id) {
 // Closing returns the reconciliation summary directly -- the Error-C fix.
 // A caller that only looks at this response (not a separate GET) still
 // sees whether anything is missing.
+//
+// Core Production Simulation, Priority 1 (production shortfall) -- Izzat's
+// original problem: 10 labels generated, only 8 garments finished, and the
+// company only ever found out when the customer complained. Confirmed live
+// before this fix: closing a shipment with a shortfall returned only
+// `missing: 2` -- a bare count, with no way to tell WHICH two of the ten
+// units never showed up without cross-referencing the batch's full unit
+// list by hand. Now that units/labels exist immediately from the ordered
+// quantity (not gated behind Receiving), this is the actual moment Izzat
+// needs named, actionable output, not just a number. Named units are
+// scoped to this order line's batches, excluding units already committed
+// to a DIFFERENT shipment for the same line, so a legitimate partial
+// shipment (Priority 4: 500 of 1000 shipped now, 500 later) doesn't get
+// its still-to-ship units wrongly reported as "missing" here.
 export async function closeShipment(db, id, actor) {
   const shipment = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(id).first();
   if (!shipment) return { notFound: true };
@@ -189,6 +203,27 @@ export async function closeShipment(db, id, actor) {
 
   const countRow = await db.prepare('SELECT COUNT(*) AS n FROM shipment_units WHERE shipment_id = ?').bind(id).first();
   const packedCount = Number(countRow.n);
+  const missing = Math.max(0, shipment.planned_quantity - packedCount);
+
+  let missingUnits = [];
+  if (missing > 0) {
+    const { results } = await db
+      .prepare(
+        `SELECT u.human_code FROM units u
+         JOIN production_batches pb ON pb.id = u.batch_id
+         WHERE pb.order_line_id = ?
+           AND u.id NOT IN (SELECT unit_id FROM shipment_units WHERE shipment_id = ?)
+           AND u.id NOT IN (
+             SELECT su.unit_id FROM shipment_units su
+             JOIN shipments s ON s.id = su.shipment_id
+             WHERE s.order_line_id = ? AND s.id != ?
+           )
+         ORDER BY u.human_code`
+      )
+      .bind(shipment.order_line_id, id, shipment.order_line_id, id)
+      .all();
+    missingUnits = results.map((r) => r.human_code);
+  }
 
   await db
     .prepare("UPDATE shipments SET status = 'CLOSED', closed_at = datetime('now') WHERE id = ?")
@@ -200,7 +235,8 @@ export async function closeShipment(db, id, actor) {
     status: 'CLOSED',
     plannedQuantity: shipment.planned_quantity,
     packedCount,
-    missing: Math.max(0, shipment.planned_quantity - packedCount),
+    missing,
+    missingUnits,
   };
 }
 
