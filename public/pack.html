@@ -14,8 +14,15 @@
 
   <fieldset>
     <legend>Order Line</legend>
-    <label>Which order line is this shipment for?
-      <select id="line-select"><option value="">Loading…</option></select>
+    <p class="muted" style="margin-top:-4px">Find it the way you'd find a physical document: customer, then invoice, then the production batch (delivery order) to ship.</p>
+    <label>Customer
+      <select id="customer-select"><option value="">Loading…</option></select>
+    </label>
+    <label>Invoice (order)
+      <select id="invoice-select"><option value="">Select a customer first</option></select>
+    </label>
+    <label>Delivery order (production batch)
+      <select id="batch-select"><option value="">Select an invoice first</option></select>
     </label>
     <div id="order-rollup" class="muted"></div>
     <div id="existing-shipments" class="muted"></div>
@@ -57,22 +64,74 @@
   <script src="/nav.js"></script>
   <script>
     let currentShipmentId = null;
+    let currentOrderLineId = null;
     let linesById = new Map();
+    let ordersCache = [];
+    let batchesCache = [];
 
-    async function loadLines() {
+    // Izzat's feedback: the old single dropdown crammed customer + invoice +
+    // product into one long line per option, forcing a scroll-and-read
+    // search through every order line in the system to find the right one.
+    // Real-world habit is hierarchical -- find the customer's folder, then
+    // the invoice inside it, then the delivery order (production batch)
+    // being shipped -- so this replaces it with three cascading selects
+    // matching that search order instead of one flat list.
+    async function loadCustomers() {
       const orders = await fetch('/api/orders').then(r => r.json());
-      const select = document.getElementById('line-select');
-      const allLines = orders.flatMap((o) => o.lines.map((l) => ({ ...l, orderRef: o.order_reference, customerName: o.customer_name })));
-      if (!allLines.length) {
-        select.innerHTML = '<option value="">No order lines yet -- create one in Orders</option>';
+      ordersCache = orders;
+      linesById = new Map(orders.flatMap((o) => o.lines.map((l) => [l.id, { ...l, orderRef: o.order_reference, customerName: o.customer_name }])));
+
+      const customersById = new Map();
+      for (const o of orders) {
+        if (!customersById.has(o.customer_id)) customersById.set(o.customer_id, o.customer_name);
+      }
+      const select = document.getElementById('customer-select');
+      if (!customersById.size) {
+        select.innerHTML = '<option value="">No orders yet -- create one in Orders</option>';
         return;
       }
-      linesById = new Map(allLines.map((l) => [l.id, l]));
-      select.innerHTML = allLines.map((l) =>
-        `<option value="${l.id}">${l.customerName} · ${l.orderRef} · ${l.description || (l.product_name + ' ' + l.variant_label)} (${l.quantity_ordered})</option>`
-      ).join('');
+      select.innerHTML = '<option value="">Select a customer…</option>' +
+        [...customersById.entries()].map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+    }
+
+    function updateInvoiceOptions() {
+      const customerId = document.getElementById('customer-select').value;
+      const select = document.getElementById('invoice-select');
+      resetBatchOptions();
+      if (!customerId) { select.innerHTML = '<option value="">Select a customer first</option>'; return; }
+      const orders = ordersCache.filter((o) => o.customer_id === customerId);
+      select.innerHTML = orders.length
+        ? '<option value="">Select an invoice…</option>' + orders.map((o) => `<option value="${o.id}">${o.order_reference}</option>`).join('')
+        : '<option value="">No invoices for this customer</option>';
+    }
+
+    function resetBatchOptions() {
+      document.getElementById('batch-select').innerHTML = '<option value="">Select an invoice first</option>';
+      currentOrderLineId = null;
       loadExistingShipments();
     }
+
+    async function updateBatchOptions() {
+      const orderId = document.getElementById('invoice-select').value;
+      const select = document.getElementById('batch-select');
+      currentOrderLineId = null;
+      if (!orderId) { select.innerHTML = '<option value="">Select an invoice first</option>'; loadExistingShipments(); return; }
+      if (!batchesCache.length) batchesCache = await fetch('/api/production-batches').then(r => r.json());
+      const batches = batchesCache.filter((b) => b.order_id === orderId);
+      select.innerHTML = batches.length
+        ? '<option value="">Select a delivery order…</option>' + batches.map((b) =>
+            `<option value="${b.order_line_id}">${b.product_name} · ${b.variant_label} · Batch ${b.batch_number} (${b.registered_count}/${b.planned_quantity} registered)</option>`
+          ).join('')
+        : '<option value="">No production batches yet for this invoice</option>';
+      loadExistingShipments();
+    }
+
+    document.getElementById('customer-select').addEventListener('change', updateInvoiceOptions);
+    document.getElementById('invoice-select').addEventListener('change', updateBatchOptions);
+    document.getElementById('batch-select').addEventListener('change', () => {
+      currentOrderLineId = document.getElementById('batch-select').value || null;
+      loadExistingShipments();
+    });
 
     // Field Simulation P3 (Shipment Split): fixes two real gaps found when
     // an order is fulfilled across multiple shipments -- (1) there was no
@@ -117,7 +176,7 @@
     }
 
     async function loadExistingShipments() {
-      const lineId = document.getElementById('line-select').value;
+      const lineId = currentOrderLineId;
       const el = document.getElementById('existing-shipments');
       document.getElementById('scan-section').hidden = true;
       currentShipmentId = null;
@@ -170,8 +229,6 @@
         });
       });
     }
-    document.getElementById('line-select').addEventListener('change', loadExistingShipments);
-
     async function resumeShipment(shipmentId) {
       const shipment = await fetch(`/api/shipments/${shipmentId}`).then(r => r.json());
       if (shipment.error) return;
@@ -189,8 +246,8 @@
       const result = document.getElementById('shipment-result');
       result.innerHTML = '';
       try {
-        const orderLineId = document.getElementById('line-select').value;
-        if (!orderLineId) throw new Error('Select an order line first.');
+        const orderLineId = currentOrderLineId;
+        if (!orderLineId) throw new Error('Select a customer, invoice, and delivery order first.');
         const data = Object.fromEntries(new FormData(e.target));
         const shipment = await fetch('/api/shipments', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -226,7 +283,7 @@
           result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' -- already scanned' : ' -- packed'}</div>`;
           const shipment = await fetch(`/api/shipments/${currentShipmentId}`).then(r => r.json());
           document.getElementById('s-packed').textContent = shipment.scannedCount;
-          if (!res.alreadyScanned) refreshOrderRollup(document.getElementById('line-select').value);
+          if (!res.alreadyScanned) refreshOrderRollup(currentOrderLineId);
         }
       } catch (err) {
         result.innerHTML = `<div class="msg error">Could not reach the server (${err.message}).</div>`;
@@ -255,7 +312,7 @@
       }
     });
 
-    loadLines();
+    loadCustomers();
   </script>
 </body>
 </html>
