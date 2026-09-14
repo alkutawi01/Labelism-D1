@@ -132,6 +132,12 @@ export async function routeApi(request, env) {
       return ok(await orders.createOrder(env.DB, await body(request)), 201);
     }
 
+    if ((m = pathname.match(/^\/api\/orders\/([^/]+)\/reconciliation$/)) && method === 'GET') {
+      const result = await orders.getOrderReconciliation(env.DB, m[1]);
+      if (!result) return notFound('Order not found.');
+      return ok(result);
+    }
+
     if (pathname === '/api/order-lines' && method === 'POST') {
       return ok(await orders.createOrderLine(env.DB, await body(request)), 201);
     }

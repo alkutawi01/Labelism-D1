@@ -72,7 +72,7 @@
   </fieldset>
 
   <table id="orders-table" hidden>
-    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th><th>Notes</th><th></th></tr></thead>
     <tbody id="orders-body"></tbody>
   </table>
   </div>
@@ -129,9 +129,50 @@
           <td>${o.order_reference}</td>
           <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}<br><span class="muted" style="font-size:12px">${lineNoteHtml(l)}</span>`).join('<hr style="border:none;border-top:1px solid var(--line);margin:6px 0">') : '<span class="muted">No lines yet</span>'}</td>
           <td>${o.notes ? o.notes : '<span class="muted">—</span>'}</td>
+          <td><button type="button" class="secondary" data-reconcile="${o.id}" style="font-size:12px;padding:3px 8px">Reconciliation</button></td>
         </tr>
+        <tr id="reconcile-row-${o.id}" hidden><td colspan="5" id="reconcile-${o.id}"></td></tr>
       `).join('');
       const body = document.getElementById('orders-body');
+      // Priority 6 (F6-001): the one place a supervisor can see, per order,
+      // whether ordered/generated/attached/packed/dispatched actually line
+      // up -- instead of cross-referencing Product Setup and Pack & Ship
+      // per order line by hand.
+      body.querySelectorAll('button[data-reconcile]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const orderId = btn.dataset.reconcile;
+          const row = document.getElementById(`reconcile-row-${orderId}`);
+          if (!row.hidden) { row.hidden = true; return; }
+          const cell = document.getElementById(`reconcile-${orderId}`);
+          cell.innerHTML = '<span class="muted">Loading…</span>';
+          row.hidden = false;
+          const data = await fetch(`/api/orders/${orderId}/reconciliation`).then(r => r.json());
+          if (data.error) { cell.innerHTML = `<div class="msg error">${data.error}</div>`; return; }
+          const rowsHtml = data.lines.map((l) => {
+            const label = l.description || `${l.product_name} · ${l.variant_label}`;
+            const flag = l.units_generated !== l.quantity_ordered
+              ? ` <span class="msg error" style="display:inline;padding:1px 6px">generated ≠ ordered</span>`
+              : '';
+            return `<tr>
+              <td>${label}</td>
+              <td>${l.quantity_ordered}</td>
+              <td>${l.units_generated}${flag}</td>
+              <td>${l.units_attached}</td>
+              <td>${l.units_packed}</td>
+              <td>${l.units_dispatched}</td>
+            </tr>`;
+          }).join('');
+          cell.innerHTML = `
+            <table style="margin:6px 0">
+              <thead><tr><th>Line</th><th>Ordered</th><th>Labels generated</th><th>Attached</th><th>Packed</th><th>Dispatched</th></tr></thead>
+              <tbody>${rowsHtml}</tbody>
+              <tfoot><tr style="font-weight:600">
+                <td>Total</td><td>${data.totals.ordered}</td><td>${data.totals.generated}</td>
+                <td>${data.totals.attached}</td><td>${data.totals.packed}</td><td>${data.totals.dispatched}</td>
+              </tr></tfoot>
+            </table>`;
+        });
+      });
       body.querySelectorAll('button[data-edit-note]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const lineId = btn.dataset.editNote;

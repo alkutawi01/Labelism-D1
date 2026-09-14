@@ -121,6 +121,67 @@ export async function updateOrderLineNotes(db, id, notes) {
 // fulfilling it (with how many units each batch has actually produced) --
 // this is the view that answers "for this line, how much is planned vs.
 // actually in batches yet."
+// Core Production Simulation Priority 6 (F6-001), built without waiting for
+// Director sign-off since it's a pure read-model addition -- no new
+// mutation, no schema change (per the standing rule that small read/UI
+// fixes can proceed on their own). F6-001's live simulation confirmed there
+// is currently no view anywhere that answers, for a whole order (which
+// spans one production batch per variant/order-line), the exact numbers
+// Director's Fasa 7 asked a supervisor to produce in 30 seconds: a
+// customer's 100-unit order shows up as 3 separate unrelated batch rows in
+// Product Setup and 3 separate order-line pickers in Pack & Ship, with no
+// single place that sums them or flags a discrepancy.
+export async function getOrderReconciliation(db, orderId) {
+  const order = await db
+    .prepare(
+      `SELECT o.id, o.order_reference, c.name AS customer_name
+       FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`
+    )
+    .bind(orderId)
+    .first();
+  if (!order) return null;
+
+  const { results: lines } = await db
+    .prepare(
+      `SELECT
+         ol.id AS order_line_id, ol.quantity_ordered, ol.description,
+         v.variant_label, p.name AS product_name,
+         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id) AS units_generated,
+         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id AND u.label_confirmed_at IS NOT NULL) AS units_attached,
+         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id
+              AND EXISTS (SELECT 1 FROM shipment_units su WHERE su.unit_id = u.id)) AS units_packed,
+         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id
+              AND EXISTS (
+                SELECT 1 FROM shipment_units su JOIN shipments s ON s.id = su.shipment_id
+                WHERE su.unit_id = u.id AND s.status = 'DISPATCHED'
+              )) AS units_dispatched
+       FROM order_lines ol
+       LEFT JOIN variants v ON v.id = ol.variant_id
+       LEFT JOIN products p ON p.id = v.product_id
+       WHERE ol.order_id = ?
+       ORDER BY ol.created_at`
+    )
+    .bind(orderId)
+    .all();
+
+  const totals = lines.reduce(
+    (acc, l) => ({
+      ordered: acc.ordered + l.quantity_ordered,
+      generated: acc.generated + l.units_generated,
+      attached: acc.attached + l.units_attached,
+      packed: acc.packed + l.units_packed,
+      dispatched: acc.dispatched + l.units_dispatched,
+    }),
+    { ordered: 0, generated: 0, attached: 0, packed: 0, dispatched: 0 }
+  );
+
+  return { order, lines, totals };
+}
+
 export async function getOrderLine(db, id) {
   const line = await db
     .prepare(
