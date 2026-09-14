@@ -95,9 +95,20 @@ export async function confirmLabel(db, unitId, actor) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
 
+  // Scoped to seq > the unit's most recent LABEL_REISSUED (if any): after a
+  // post-attachment reissue (see reissueLabelAfterAttachment), the OLD
+  // LABEL_SCANNED_FOR_ATTACHMENT event is still sitting in this unit's
+  // history, but it proves the OLD (now-dead) QR was scanned, not the new
+  // one. Without this bound, confirming would silently skip re-verification
+  // against the physical object entirely.
   const scanned = await db
-    .prepare("SELECT 1 FROM unit_events WHERE unit_id = ? AND event_type = 'LABEL_SCANNED_FOR_ATTACHMENT' LIMIT 1")
-    .bind(unitId)
+    .prepare(
+      `SELECT 1 FROM unit_events
+       WHERE unit_id = ? AND event_type = 'LABEL_SCANNED_FOR_ATTACHMENT'
+         AND seq > COALESCE((SELECT MAX(seq) FROM unit_events WHERE unit_id = ? AND event_type = 'LABEL_REISSUED'), 0)
+       LIMIT 1`
+    )
+    .bind(unitId, unitId)
     .first();
   if (!scanned) {
     throw new ValidationError('Scan the label actually attached to this unit before confirming -- a click alone is not proof of physical attachment.');
@@ -153,6 +164,60 @@ export async function reissueLabel(db, unitId, actor) {
 
   await db.batch(statements);
   return { unitId, internalToken: newInternal, publicToken: newPublic };
+}
+
+// Priority 5B (Core Production Simulation), Director-approved 2026-09-14:
+// a label that tears/fails AFTER attachment is confirmed is a different
+// risk than reissueLabel()'s pre-attachment case -- the old physical label
+// may still be lying around as a scannable object, so simply printing a
+// second live QR for the same unit would mean two valid identities for one
+// obligation, which is exactly the failure mode Director ruled out. His
+// decision: rotate the token (old QR permanently dies, same mechanism as
+// reissueLabel), but do NOT touch the unit's own identity (id/batch never
+// change), and do NOT treat label_confirmed_at as an immutable "ever
+// confirmed" record -- it is current-state, like current_disposition/
+// current_condition, so it is cleared here to force a real re-verification
+// against the NEW physical label before it can be confirmed again. The
+// full history (that this unit went through a post-attachment reissue)
+// survives permanently in unit_events regardless of what the current-state
+// columns say. Also records DAMAGE_OBSERVED first so the reason a
+// previously-confirmed unit needed a new label is preserved in the audit
+// trail, per Director's expected event sequence.
+export async function reissueLabelAfterAttachment(db, unitId, actor) {
+  const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
+  if (!unit) return { notFound: true };
+  if (!unit.label_confirmed_at) {
+    throw new ValidationError(
+      'This unit was never confirmed attached -- use the "Lost -- Reissue" action on Print Labels instead.'
+    );
+  }
+
+  await db.batch(
+    buildEventBatch(db, {
+      eventId: newInternalId(),
+      unitId,
+      eventType: 'DAMAGE_OBSERVED',
+      payload: { reason: 'label_damaged_or_lost_after_attachment' },
+      actor: actor ?? 'izzat',
+    })
+  );
+
+  const newInternal = newOpaqueToken();
+  const newPublic = newOpaqueToken();
+  const statements = buildEventBatch(db, {
+    eventId: newInternalId(),
+    unitId,
+    eventType: 'LABEL_REISSUED',
+    payload: { reason: 'lost_or_spoiled_after_attachment', previousInternalToken: unit.internal_token },
+    actor: actor ?? 'izzat',
+  });
+  statements.push(
+    db.prepare('UPDATE units SET internal_token = ?, public_token = ?, label_confirmed_at = NULL WHERE id = ?')
+      .bind(newInternal, newPublic, unitId)
+  );
+  await db.batch(statements);
+
+  return { unitId, internalToken: newInternal, publicToken: newPublic, requiresReattachment: true };
 }
 
 // human_code is only unique WITHIN a batch (schema: UNIQUE(batch_id,

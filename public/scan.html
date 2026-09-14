@@ -46,6 +46,7 @@
             <button data-action="transfer" class="secondary">Transfer Location</button>
             <button data-action="return" class="secondary">Record Return</button>
             <button data-action="missing" class="secondary">Confirm Missing</button>
+            ${unit.labelConfirmedAt ? `<button data-action="reissue-after-attach" class="secondary">Label Lost/Damaged -- Reissue</button>` : ''}
           </div>
           <div id="action-result"></div>
 
@@ -71,6 +72,13 @@
       }).then(r => r.json());
     }
 
+    async function post(url, body) {
+      return fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(r => r.json());
+    }
+
     async function runAction(action) {
       const actionResult = document.getElementById('action-result');
       let res;
@@ -86,6 +94,34 @@
         res = await postEvent({ eventType: 'UNIT_RETURNED', disposition: 'RETURNED', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
       } else if (action === 'missing') {
         res = await postEvent({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+      } else if (action === 'reissue-after-attach') {
+        // Priority 5B: unlike the other guided actions above, this one
+        // permanently kills the current QR (same irreversible weight as
+        // Print Labels' "Lost -- Reissue" for a pre-attachment unit), so it
+        // gets its own inline confirm step instead of firing immediately.
+        actionResult.innerHTML = `
+          <div style="margin-top:10px;max-width:360px">
+            <p class="muted" style="font-size:12px">This permanently invalidates the current QR and requires production to re-attach and re-scan a new label. Only use this if the attached label is damaged, faded, or lost.</p>
+            <div style="display:flex;gap:8px">
+              <button id="reissue-after-attach-confirm">Yes, issue a replacement label</button>
+              <button id="reissue-after-attach-cancel" class="secondary">Cancel</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('reissue-after-attach-cancel').addEventListener('click', () => {
+          actionResult.innerHTML = '';
+        });
+        document.getElementById('reissue-after-attach-confirm').addEventListener('click', async () => {
+          const reissueRes = await post(`/api/units/${currentUnit.id}/reissue-label-after-attachment`, { actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+          if (reissueRes?.error) {
+            actionResult.innerHTML = `<div class="msg error">${reissueRes.error}</div>`;
+            return;
+          }
+          const fresh = await fetch(`/api/units/lookup/${reissueRes.internalToken}`).then(r => r.json());
+          render(fresh);
+          document.getElementById('action-result').innerHTML = `<div class="msg ok">New label issued -- the old QR no longer works. Print the new label from Print Labels, attach it, then scan to re-confirm.</div>`;
+        });
+        return;
       } else if (action === 'transfer') {
         // Inline form, not window.prompt() — a native browser dialog looks
         // out of place next to the rest of the UI and (found during the

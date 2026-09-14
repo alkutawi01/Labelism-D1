@@ -300,6 +300,9 @@ export async function listUnitsForBatch(db, batchId) {
               EXISTS(
                 SELECT 1 FROM unit_events ue
                 WHERE ue.unit_id = u.id AND ue.event_type = 'LABEL_SCANNED_FOR_ATTACHMENT'
+                  AND ue.seq > COALESCE(
+                    (SELECT MAX(seq) FROM unit_events WHERE unit_id = u.id AND event_type = 'LABEL_REISSUED'), 0
+                  )
               ) AS label_scan_verified
        FROM units u
        LEFT JOIN locations l ON l.id = u.current_location_id

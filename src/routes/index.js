@@ -238,6 +238,13 @@ export async function routeApi(request, env) {
       return ok(result, 201);
     }
 
+    if ((m = pathname.match(/^\/api\/units\/([^/]+)\/reissue-label-after-attachment$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await units.reissueLabelAfterAttachment(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Unit not found.');
+      return ok(result, 201);
+    }
+
     if ((m = pathname.match(/^\/api\/units\/lookup\/([^/]+)$/)) && method === 'GET') {
       const result = await units.lookupUnit(env.DB, m[1]);
       if (!result) return notFound('Unit not found.');
