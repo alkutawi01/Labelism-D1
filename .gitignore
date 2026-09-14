@@ -3,3 +3,8 @@ node_modules/
 *.sql.bak
 .dev.vars
 .claude/
+
+# Full-database dumps (D1 export / pre-migration snapshots) -- contain real
+# customer data and don't belong in git history. Keep them local only.
+backups/
+backup-*.sql
