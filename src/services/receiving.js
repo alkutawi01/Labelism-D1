@@ -39,6 +39,67 @@ export async function createReceipt(db, batchId, { observedQuantity, acceptedQua
   };
 }
 
+// Izzat's correction (2026-09-14): Labelism was drifting into an
+// inventory/ERP shape (Receiving confirms physical arrival BEFORE any
+// Unit/label can exist) that doesn't match his actual business -- a
+// custom-garment factory whose real problem is overproduction/
+// underproduction/wrong-size, caught only when the customer complains.
+// His model: an Order Line is a production OBLIGATION, so the label set
+// should be generated directly from quantity_ordered ("if there are 10
+// labels, all 10 must be used -- 9 used means 1 unit was never made; not
+// enough labels means there's an extra unit"), handed to production
+// immediately, with the packing scan as the actual reconciliation point
+// -- not a separate physical-count confirmation gate beforehand.
+// Receiving/batch_receipts stays available for whoever still wants that
+// reconciliation step, but is no longer mandatory before units can exist.
+// Mirrors registerUnits()'s unit-creation shape exactly, just keyed off
+// the batch's planned_quantity instead of a receipt's accepted_quantity,
+// and batch_receipt_id stays null (schema already allows this).
+export async function generateUnitsForBatch(db, batchId, actor) {
+  const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(batchId).first();
+  if (!batch) return { notFound: true };
+
+  const existingRow = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE batch_id = ?').bind(batchId).first();
+  const existingInBatch = Number(existingRow.n);
+  const toCreate = batch.planned_quantity - existingInBatch;
+  if (toCreate <= 0) {
+    return { created: 0, alreadyRegistered: existingInBatch, message: 'All units for this batch are already generated.' };
+  }
+
+  const created = [];
+  const statements = [];
+  for (let i = 0; i < toCreate; i++) {
+    const seqNo = existingInBatch + i + 1;
+    const unitId = newInternalId();
+    const humanCode = String(seqNo).padStart(6, '0');
+    const internalToken = newOpaqueToken();
+    const publicToken = newOpaqueToken();
+
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO units (id, batch_id, human_code, internal_token, public_token, current_disposition)
+           VALUES (?, ?, ?, ?, ?, 'AVAILABLE')`
+        )
+        .bind(unitId, batchId, humanCode, internalToken, publicToken)
+    );
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO unit_events (id, unit_id, seq, event_type, payload, actor)
+           VALUES (?, ?, 1, 'UNIT_REGISTERED', ?, ?)`
+        )
+        .bind(newInternalId(), unitId, JSON.stringify({ source: 'order_obligation' }), actor ?? 'system')
+    );
+    statements.push(db.prepare('UPDATE units SET last_event_seq = 1 WHERE id = ?').bind(unitId));
+
+    created.push({ id: unitId, humanCode });
+  }
+
+  await db.batch(statements);
+  return { created: created.length, units: created };
+}
+
 export async function registerUnits(db, receiptId, actor) {
   const receipt = await db.prepare('SELECT * FROM batch_receipts WHERE id = ?').bind(receiptId).first();
   if (!receipt) return { notFound: true };

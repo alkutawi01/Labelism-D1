@@ -256,8 +256,20 @@
         }).then(r => r.json());
         if (batch.error) throw new Error(batch.error);
 
-        result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''}. ID: ${batch.id}<br>
-          Go to <a href="/receiving.html?batchId=${batch.id}">Receiving &amp; Reconciliation</a> to continue.
+        // Izzat's correction (2026-09-14): a label represents an
+        // obligation to produce one unit, not a record of a unit that
+        // already physically exists -- so labels/units are generated
+        // straight from the ordered quantity the moment the batch is
+        // created, not gated behind a separate "confirm what arrived"
+        // Receiving step. Receiving still exists for whoever wants that
+        // reconciliation, but it's no longer the mandatory next step.
+        const generated = await fetch(`/api/production-batches/${batch.id}/generate-units`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
+        }).then(r => r.json());
+
+        result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''} -- ${generated.created || 0} label${generated.created === 1 ? '' : 's'} generated for the ${batch.plannedQuantity ?? data.plannedQuantity} unit(s) ordered.<br>
+          Go to <a href="/label.html?batchId=${batch.id}">Print Labels</a> to print and hand them to production.
           ${orderLineId ? '<br>Creating a batch for a <em>different</em> line on this order (e.g. another size)? Go back to <a href="/orders.html">Orders</a> and click Product Setup from that line -- reusing this page will link it to the same line again.' : ''}</div>`;
         form.reset();
         updateProductModeUI();

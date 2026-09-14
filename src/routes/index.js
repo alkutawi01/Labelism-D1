@@ -89,6 +89,12 @@ export async function routeApi(request, env) {
     if ((m = pathname.match(/^\/api\/production-batches\/([^/]+)\/units$/)) && method === 'GET') {
       return ok(await catalog.listUnitsForBatch(env.DB, m[1]));
     }
+    if ((m = pathname.match(/^\/api\/production-batches\/([^/]+)\/generate-units$/)) && method === 'POST') {
+      const b = await body(request);
+      const result = await receiving.generateUnitsForBatch(env.DB, m[1], b.actor);
+      if (result.notFound) return notFound('Production batch not found.');
+      return ok(result, result.created ? 201 : 200);
+    }
 
     if ((m = pathname.match(/^\/api\/receipts\/([^/]+)\/register-units$/)) && method === 'POST') {
       const b = await body(request);
