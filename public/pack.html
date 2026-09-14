@@ -280,7 +280,17 @@
         if (res.error) {
           result.innerHTML = `<div class="msg error">${res.error}</div>`;
         } else {
-          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' -- already scanned' : ' -- packed'}</div>`;
+          // Core Production Simulation, Priority 2B (duplicate label):
+          // "already scanned" alone reads as a harmless dedup notice (an
+          // operator naturally thinks "oh, I already did this one") -- it
+          // gives no cue that a SECOND physical garment holding a
+          // duplicated/counterfeit copy of the same label would produce
+          // this exact same message. The system genuinely cannot tell
+          // those two cases apart from a code match alone (a real,
+          // acknowledged boundary, not a bug to fix) -- so the wording
+          // has to carry the ambiguity instead, prompting a human check
+          // rather than a passive "already scanned = safe to ignore."
+          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' -- this code is already packed in this shipment. If you are holding a DIFFERENT physical item, its label may be a duplicate/counterfeit -- stop and check before continuing.' : ' -- packed'}</div>`;
           const shipment = await fetch(`/api/shipments/${currentShipmentId}`).then(r => r.json());
           document.getElementById('s-packed').textContent = shipment.scannedCount;
           if (!res.alreadyScanned) refreshOrderRollup(currentOrderLineId);
