@@ -56,6 +56,20 @@ async function canUnitFulfillShipment(db, unit, shipment) {
         : 'This unit is not linked to any order line, so it cannot fulfill this shipment.',
     };
   }
+  // Core Production Simulation Priority 6 (F6-001), Director-approved
+  // 2026-09-14: confirmed live that a unit whose label was NEVER confirmed
+  // attached (still sitting on Print Labels as "awaiting attachment") could
+  // still be scanned into a shipment and counted as packed -- silently
+  // bypassing the entire P2 attachment-verification discipline the rest of
+  // Labelism is built around. A label that was never confirmed attached is
+  // not known to be on any physical garment yet, so it cannot fulfill a
+  // shipment.
+  if (!unit.label_confirmed_at) {
+    return {
+      ok: false,
+      reason: `Unit ${unit.human_code}'s label has not been confirmed attached yet -- attach and confirm it on Print Labels before packing.`,
+    };
+  }
   return { ok: true };
 }
 
@@ -207,11 +221,22 @@ export async function closeShipment(db, id, actor) {
 
   let missingUnits = [];
   if (missing > 0) {
+    // Core Production Simulation Priority 6 (F6-001), Director-approved
+    // 2026-09-14: confirmed live that closing a partial shipment while
+    // OTHER units for the same order line were still legitimately awaiting
+    // attachment (production not finished yet, a normal and expected state
+    // visible on Print Labels) reported those units as "MISSING" alongside
+    // a genuinely unaccounted-for one. "Missing" should mean "confirmed
+    // attached to a real garment, but never came back" -- a unit that was
+    // never confirmed attached isn't missing, it just isn't produced yet,
+    // and label_confirmed_at IS NOT NULL is exactly the same test the
+    // shipment-scan gate above now enforces before packing.
     const { results } = await db
       .prepare(
         `SELECT u.human_code FROM units u
          JOIN production_batches pb ON pb.id = u.batch_id
          WHERE pb.order_line_id = ?
+           AND u.label_confirmed_at IS NOT NULL
            AND u.id NOT IN (SELECT unit_id FROM shipment_units WHERE shipment_id = ?)
            AND u.id NOT IN (
              SELECT su.unit_id FROM shipment_units su
