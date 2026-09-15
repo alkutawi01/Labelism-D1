@@ -158,7 +158,17 @@
             actionResult.innerHTML = `<div class="msg error">${transferRes.error}</div>`;
             return;
           }
-          const fresh = await fetch(`/api/units/lookup/${currentUnit.humanCode}`).then(r => r.json());
+          // Gate B readiness fix (2026-09-15): human_code is only unique
+          // WITHIN a batch (by design -- see units.js), so refreshing by it
+          // here is ambiguous the moment a second batch of anything has
+          // ever been created (i.e. almost immediately in real use, not
+          // just accumulated test data). The lookup API then returns
+          // {ambiguous, candidates} instead of a unit, which render()
+          // can't handle -- it crashes on unit.events.map(), even though
+          // the action itself already succeeded on the server. Refresh by
+          // internalToken (globally unique, always resolves this exact
+          // unit) instead.
+          const fresh = await fetch(`/api/units/lookup/${currentUnit.internalToken}`).then(r => r.json());
           render(fresh);
         });
         return;
@@ -168,7 +178,7 @@
         actionResult.innerHTML = `<div class="msg error">${res.error}</div>`;
         return;
       }
-      const fresh = await fetch(`/api/units/lookup/${currentUnit.humanCode}`).then(r => r.json());
+      const fresh = await fetch(`/api/units/lookup/${currentUnit.internalToken}`).then(r => r.json());
       render(fresh);
     }
 
