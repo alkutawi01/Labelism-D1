@@ -252,7 +252,15 @@
       });
       grid.querySelectorAll('button[data-action="confirm"]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          await fetch(`/api/units/${btn.dataset.id}/confirm-label`, { method: 'POST' });
+          // Gate B readiness fix (2026-09-15): this call sent no body at
+          // all, so every Confirm Attachment -- the single most common
+          // action on this page, and the one Gate B Test 2 is built
+          // around -- fell through to the server's own 'izzat' default,
+          // same silent-misattribution problem already fixed elsewhere.
+          await fetch(`/api/units/${btn.dataset.id}/confirm-label`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+          });
           loadUnits(false);
         });
       });
@@ -304,7 +312,10 @@
       });
       grid.querySelectorAll('button[data-action="reissue-confirm"]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const res = await fetch(`/api/units/${btn.dataset.id}/reissue-label`, { method: 'POST' }).then(r => r.json());
+          const res = await fetch(`/api/units/${btn.dataset.id}/reissue-label`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+          }).then(r => r.json());
           if (res.error) {
             grid.querySelector(`#reissue-confirm-${btn.dataset.id} .muted`).insertAdjacentHTML('afterend', `<div class="msg error">${res.error}</div>`);
             return;
