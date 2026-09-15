@@ -324,9 +324,21 @@
       // two of the ten units to go find -- confirmed live this meant
       // manually cross-checking the full unit list by hand. Name the
       // actual codes so packing/QC can act immediately.
+      // Gate B readiness fix: a missing count can be true while the
+      // SPECIFIC units behind it can't be -- e.g. this shipment only
+      // planned to take part of what's on hand, with the rest legitimately
+      // held for a later shipment. Naming units in that case would imply
+      // more is unaccounted for than really is.
+      const missingDetail = res.missing > 0
+        ? res.missingUnitsUncertain
+          ? ` -- can't pinpoint which specific unit(s) yet: more units are on hand awaiting a shipment than are missing here, so some may simply be reserved for a later shipment. Check Reconciliation for the full picture.`
+          : res.missingUnits && res.missingUnits.length
+          ? ` -- unit(s) ${res.missingUnits.join(', ')} never came back`
+          : ''
+        : '';
       const message = res.error
         ? `<div class="msg error">${res.error}</div>`
-        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}${res.missingUnits && res.missingUnits.length ? ` -- unit(s) ${res.missingUnits.join(', ')} never came back` : ''}` : ''}.</div>`;
+        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}${missingDetail}` : ''}.</div>`;
       document.getElementById('close-result').innerHTML = message;
       if (!res.error) {
         // O5 finding: loadExistingShipments() hides the whole scan-section

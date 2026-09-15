@@ -220,6 +220,7 @@ export async function closeShipment(db, id, actor) {
   const missing = Math.max(0, shipment.planned_quantity - packedCount);
 
   let missingUnits = [];
+  let missingUnitsUncertain = false;
   if (missing > 0) {
     // Core Production Simulation Priority 6 (F6-001), Director-approved
     // 2026-09-14: confirmed live that closing a partial shipment while
@@ -247,7 +248,27 @@ export async function closeShipment(db, id, actor) {
       )
       .bind(shipment.order_line_id, id, shipment.order_line_id, id)
       .all();
-    missingUnits = results.map((r) => r.human_code);
+    // Gate B readiness fix (2026-09-15), found live during the dry-run:
+    // a shipment's plannedQuantity is just a headcount, not a pre-committed
+    // list of which specific units belong to it -- so when MORE attached-
+    // and-unshipped units exist than are actually missing (a real partial
+    // shipment: 5 planned now out of 15 still on hand, meant for later
+    // batches), the query above can't know which specific unit(s) are the
+    // "real" missing ones out of that larger pool. Naming all of them
+    // anyway (the previous behaviour) told the operator e.g. "MISSING 1 --
+    // unit(s) 000020...000030" for an 11-unit list when only 1 was truly
+    // unaccounted for -- actively misleading, exactly the kind of "system
+    // tells people something that isn't true" gap Gate B exists to catch.
+    // Only name specific units when the candidate pool size exactly equals
+    // the missing count -- i.e. there is no other unit this order line
+    // could be legitimately holding back, so by elimination every
+    // candidate really is missing. Otherwise, report the count honestly
+    // and say why specific units can't be named yet.
+    if (results.length === missing) {
+      missingUnits = results.map((r) => r.human_code);
+    } else {
+      missingUnitsUncertain = true;
+    }
   }
 
   await db
@@ -262,6 +283,7 @@ export async function closeShipment(db, id, actor) {
     packedCount,
     missing,
     missingUnits,
+    missingUnitsUncertain,
   };
 }
 
