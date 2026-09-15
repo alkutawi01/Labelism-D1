@@ -135,7 +135,7 @@
       const result = document.getElementById('scan-result');
       const res = await fetch(`/api/return-intakes/${currentIntakeId}/scans`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
+        body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
       }).then(r => r.json());
       if (res.error) {
         result.innerHTML = `<div class="msg error">${res.error}</div>`;
@@ -171,7 +171,7 @@
         btn.addEventListener('click', async () => {
           await fetch(`/api/return-intakes/${currentIntakeId}/units/${btn.dataset.qc}/qc`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ outcome: btn.dataset.outcome, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
+            body: JSON.stringify({ outcome: btn.dataset.outcome, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
           });
           refreshUnits();
         });

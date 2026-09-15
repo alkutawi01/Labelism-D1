@@ -86,7 +86,8 @@
     </nav>
     <div class="sidebar-bottom">
       <div id="nav-actor-display" style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer"></div>
-      <div id="nav-actor-form" hidden style="width:72px;padding:4px 2px">
+      <div id="nav-actor-form" hidden style="width:72px;padding:5px 3px;background:#fff3d6;border:1px solid #e0ac3f;border-radius:4px">
+        <div style="font-size:9.5px;font-weight:700;color:#7a5a12;margin-bottom:3px;line-height:1.2">WHO ARE YOU?</div>
         <input id="nav-actor-input" type="text" placeholder="Your name" style="width:100%;font-size:10.5px;padding:3px;box-sizing:border-box">
         <button id="nav-actor-save" type="button" style="width:100%;font-size:10px;padding:2px;margin-top:3px">Save</button>
       </div>
@@ -98,22 +99,46 @@
   const actorDisplay = document.getElementById('nav-actor-display');
   const actorForm = document.getElementById('nav-actor-form');
   const actorInput = document.getElementById('nav-actor-input');
+  // Gate B readiness fix (2026-09-15): this used to be a passive, easy-to-
+  // miss corner label ("Set your name") that a first-time user had no
+  // reason to click -- every write everywhere then silently fell back to
+  // the literal string 'izzat', so an untrained staff member's ENTIRE
+  // session would be misattributed to the owner, destroying the actual
+  // audit trail Gate B is meant to observe. Now the input auto-opens and
+  // is auto-focused on any page load where no name is set yet, styled to
+  // actually draw the eye -- still just one click away from being ignored
+  // (not a login gate, per Director's explicit instruction not to build
+  // real auth), but no longer invisible.
   function renderActor() {
     const name = getActor();
-    actorDisplay.textContent = name ? `Working as ${name} · change` : 'Set your name';
+    if (name) {
+      actorDisplay.hidden = false;
+      actorForm.hidden = true;
+      actorDisplay.textContent = `Working as ${name} · change`;
+      actorDisplay.style.cssText = 'width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer';
+    } else {
+      actorDisplay.hidden = true;
+      actorForm.hidden = false;
+      actorInput.value = '';
+    }
   }
   renderActor();
+  if (!getActor()) {
+    actorInput.focus();
+  }
   actorDisplay.addEventListener('click', () => {
     actorDisplay.hidden = true;
     actorForm.hidden = false;
     actorInput.value = getActor();
     actorInput.focus();
   });
-  document.getElementById('nav-actor-save').addEventListener('click', () => {
+  function saveActor() {
     setActor(actorInput.value.trim());
-    actorForm.hidden = true;
-    actorDisplay.hidden = false;
     renderActor();
+  }
+  document.getElementById('nav-actor-save').addEventListener('click', saveActor);
+  actorInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveActor();
   });
 
   document.getElementById('nav-logout-btn').addEventListener('click', async () => {

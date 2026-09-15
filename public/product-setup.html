@@ -265,7 +265,7 @@
         // reconciliation, but it's no longer the mandatory next step.
         const generated = await fetch(`/api/production-batches/${batch.id}/generate-units`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
+          body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
         }).then(r => r.json());
 
         result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''} -- ${generated.created || 0} label${generated.created === 1 ? '' : 's'} generated for the ${batch.plannedQuantity ?? data.plannedQuantity} unit(s) ordered.<br>

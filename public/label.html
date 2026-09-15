@@ -268,7 +268,7 @@
           const resultEl = document.getElementById(`scan-verify-result-${unitId}`);
           const res = await fetch(`/api/units/${unitId}/verify-label-scan`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' }),
+            body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
           }).then(r => r.json());
           if (res.error) {
             resultEl.innerHTML = `<div class="msg error">${res.error}</div>`;

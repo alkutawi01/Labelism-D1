@@ -86,14 +86,14 @@
       // free-form form (Director's instruction: prevent operators from
       // creating invalid disposition/condition combinations).
       if (action === 'sold') {
-        res = await postEvent({ eventType: 'UNIT_SOLD', disposition: 'SOLD', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+        res = await postEvent({ eventType: 'UNIT_SOLD', disposition: 'SOLD', actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' });
       } else if (action === 'damage') {
         // Damage is recorded as an OBSERVATION — does NOT auto-change disposition.
-        res = await postEvent({ eventType: 'DAMAGE_OBSERVED', condition: 'DAMAGED', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+        res = await postEvent({ eventType: 'DAMAGE_OBSERVED', condition: 'DAMAGED', actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' });
       } else if (action === 'return') {
-        res = await postEvent({ eventType: 'UNIT_RETURNED', disposition: 'RETURNED', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+        res = await postEvent({ eventType: 'UNIT_RETURNED', disposition: 'RETURNED', actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' });
       } else if (action === 'missing') {
-        res = await postEvent({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+        res = await postEvent({ eventType: 'MISSING_CONFIRMED', disposition: 'MISSING', actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' });
       } else if (action === 'reissue-after-attach') {
         // Priority 5B: unlike the other guided actions above, this one
         // permanently kills the current QR (same irreversible weight as
@@ -112,7 +112,7 @@
           actionResult.innerHTML = '';
         });
         document.getElementById('reissue-after-attach-confirm').addEventListener('click', async () => {
-          const reissueRes = await post(`/api/units/${currentUnit.id}/reissue-label-after-attachment`, { actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat' });
+          const reissueRes = await post(`/api/units/${currentUnit.id}/reissue-label-after-attachment`, { actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' });
           if (reissueRes?.error) {
             actionResult.innerHTML = `<div class="msg error">${reissueRes.error}</div>`;
             return;
@@ -153,7 +153,7 @@
               body: JSON.stringify({ name: locationName }),
             }).then(r => r.json());
           }
-          const transferRes = await postEvent({ eventType: 'UNIT_TRANSFERRED', locationId: loc.id, actor: (window.LabelismActor && window.LabelismActor.get()) || 'izzat', payload: { locationName } });
+          const transferRes = await postEvent({ eventType: 'UNIT_TRANSFERRED', locationId: loc.id, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown', payload: { locationName } });
           if (transferRes?.error) {
             actionResult.innerHTML = `<div class="msg error">${transferRes.error}</div>`;
             return;
