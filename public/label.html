@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="ms">
 <head>
   <meta charset="utf-8">
-  <title>Print Labels — Labelism</title>
+  <title>Cetak &amp; Tampal — Labelism</title>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -63,34 +63,96 @@
     .label .status { font-size: 11px; color: var(--muted); }
     .label button { width: 100%; margin-top: 6px; padding: 6px; font-size: 12px; }
     .label.confirmed { border-style: solid; border-color: var(--ok); }
+    .workflow-note { max-width: 760px; font-size: 15px; line-height: 1.55; }
+    .batch-picker { display: block; max-width: 900px; margin-top: 20px; font-weight: 700; }
+    .batch-picker select { margin-top: 7px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 10px; margin-top: 16px; }
+    .summary-card { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .summary-card.wide { grid-column: span 3; }
+    .summary-label { color: var(--muted); font-size: 12px; }
+    .summary-value { margin-top: 4px; font-size: 20px; font-weight: 750; overflow-wrap: anywhere; }
+    .summary-card.wide .summary-value { font-size: 15px; }
+    .steps { margin: 18px 0; padding: 14px 18px; border-left: 4px solid var(--navy); background: var(--surface); border-radius: 6px; }
+    .steps ol { margin: 8px 0 0; padding-left: 22px; }
+    .print-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+    .scan-station { margin-top: 22px; padding: 18px; border: 2px solid var(--navy); border-radius: 10px; background: var(--surface); }
+    .scan-station h2 { margin: 0 0 5px; }
+    .scan-station form { display: flex; gap: 8px; margin-top: 12px; }
+    .scan-station input { flex: 1; min-width: 220px; font-size: 18px; padding: 12px; }
+    .scan-station button { white-space: nowrap; }
+    .settings { margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+    .settings summary { cursor: pointer; font-weight: 700; }
+    .settings label { display: block; margin-top: 12px; }
+    .completion { margin-top: 18px; padding: 16px; border: 1px solid var(--ok); border-radius: 8px; background: #ecfdf3; }
+    .completion a { display: inline-block; margin-top: 8px; }
+    @media (max-width: 720px) {
+      .summary-grid { grid-template-columns: 1fr 1fr; }
+      .summary-card.wide { grid-column: span 2; }
+      .scan-station form { display: block; }
+      .scan-station button { width: 100%; margin-top: 8px; }
+    }
   </style>
 </head>
 <body>
   <div class="page">
   <header class="page-header no-print">
-    <h1>Print Labels</h1>
-    <p class="muted">Print one label per copy, attach it, then scan the attached QR to verify it's the right label before confirming.</p>
+    <h1>Cetak &amp; Tampal</h1>
+    <p class="muted workflow-note">Setiap label mewakili satu unit yang dijanjikan. Cetak semua label dalam batch ini, tampal satu label pada setiap unit, kemudian scan untuk mengesahkan.</p>
   </header>
 
-  <label class="no-print">Production batch
+  <label class="no-print batch-picker">Pilih Tempahan / Batch
     <select id="batch-select"><option value="">Loading…</option></select>
   </label>
 
-  <label class="no-print">Label size (physical sticker size loaded in your printer)
-    <select id="size-select">
-      <option value="40x30">40mm x 30mm (thermal)</option>
-      <option value="50x30">50mm x 30mm (thermal)</option>
-      <option value="60x40" selected>60mm x 40mm (thermal)</option>
-      <option value="a4">A4 sheet — many per page, cut yourself</option>
-    </select>
-  </label>
+  <section id="batch-summary" class="no-print" hidden>
+    <div class="summary-grid">
+      <div class="summary-card wide"><div class="summary-label">Tempahan · Customer</div><div class="summary-value" id="summary-order">—</div></div>
+      <div class="summary-card wide"><div class="summary-label">Produk / Variant · Batch</div><div class="summary-value" id="summary-product">—</div></div>
+      <div class="summary-card"><div class="summary-label">Label Dijana</div><div class="summary-value" id="summary-generated">0</div></div>
+      <div class="summary-card"><div class="summary-label">Sudah Ditampal</div><div class="summary-value" id="summary-attached">0</div></div>
+      <div class="summary-card"><div class="summary-label">Belum Ditampal</div><div class="summary-value" id="summary-pending">0</div></div>
+    </div>
+
+    <div class="steps">
+      <strong>Langkah kerja</strong>
+      <ol><li>Cetak semua label.</li><li>Tampal satu label pada setiap unit.</li><li>Scan label untuk sahkan.</li></ol>
+    </div>
+
+    <div class="print-row">
+      <button id="print-btn">Cetak Semua Label Batch Ini</button>
+      <strong id="print-count"></strong>
+    </div>
+
+    <details class="settings">
+      <summary>Tetapan Cetakan</summary>
+      <label>Saiz label fizikal dalam printer
+        <select id="size-select">
+          <option value="40x30">40mm × 30mm (thermal)</option>
+          <option value="50x30">50mm × 30mm (thermal)</option>
+          <option value="60x40" selected>60mm × 40mm (thermal)</option>
+          <option value="a4">Kertas A4 — banyak label setiap halaman</option>
+        </select>
+      </label>
+    </details>
+
+    <section class="scan-station">
+      <h2>Scan Label yang Telah Ditampal</h2>
+      <p class="muted">Imbas QR pada unit fizikal. Sistem akan memastikan label itu milik batch ini sebelum membenarkan pengesahan.</p>
+      <form id="main-scan-form">
+        <input id="main-scan-input" autocomplete="off" placeholder="Imbas QR di sini…" required>
+        <button type="submit">Semak Label</button>
+      </form>
+      <div id="main-scan-feedback" aria-live="polite"></div>
+    </section>
+
+    <div id="completion" class="completion" hidden>
+      <strong id="completion-text"></strong><br>
+      <a class="button" href="/pack.html">Terus ke Packing &amp; QC</a>
+    </div>
+  </section>
 
   <p class="muted no-print" id="unit-count-summary" style="margin-top:12px"></p>
   <div class="no-print" id="pending-attachment" style="margin-top:8px"></div>
-
-  <div class="no-print" style="margin-top:12px">
-    <button id="print-btn" class="secondary">Print this page</button>
-  </div>
 
   <div id="pagination" class="no-print" style="margin-top:14px;display:flex;gap:10px;align-items:center"></div>
   <div id="grid" class="label-grid"></div>
@@ -136,11 +198,11 @@
       const rows = await fetch('/api/production-batches').then(r => r.json());
       batchesCache = rows;
       if (!rows.length) {
-        select.innerHTML = '<option value="">No production batches yet</option>';
+        select.innerHTML = '<option value="">Belum ada tempahan / batch</option>';
         return;
       }
       select.innerHTML = rows.map(r =>
-        `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}${r.order_reference ? ` -- ${r.order_reference}` : ''}</option>`
+        `<option value="${r.id}">${r.customer_name || 'Tanpa customer'} · ${r.order_reference || 'Tanpa rujukan'} · ${r.product_name} · ${r.variant_label} · Batch ${r.batch_number} · ${r.registered_count} label</option>`
       ).join('');
       const params = new URLSearchParams(location.search);
       if (params.get('batchId')) {
@@ -167,7 +229,12 @@
     }
 
     async function loadUnits(resetPage = true) {
-      if (!select.value) return;
+      if (!select.value) {
+        currentUnits = [];
+        document.getElementById('batch-summary').hidden = true;
+        grid.innerHTML = '';
+        return;
+      }
       currentUnits = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
       if (resetPage) currentPage = 1;
       renderUnits();
@@ -190,9 +257,20 @@
       // print -- the pagination summary only appeared once a batch was
       // large enough to need pages. Always state it plainly before Print.
       const confirmedCount = units.filter((u) => u.label_confirmed_at).length;
+      const pendingCount = units.length - confirmedCount;
+      document.getElementById('batch-summary').hidden = false;
+      document.getElementById('summary-order').textContent = `${batch?.order_reference || 'Tanpa rujukan'} · ${batch?.customer_name || 'Tanpa customer'}`;
+      document.getElementById('summary-product').textContent = `${batch?.product_name || '—'} · ${batch?.variant_label || '—'} · Batch ${batch?.batch_number || '—'}`;
+      document.getElementById('summary-generated').textContent = units.length;
+      document.getElementById('summary-attached').textContent = confirmedCount;
+      document.getElementById('summary-pending').textContent = pendingCount;
+      document.getElementById('print-count').textContent = `Anda akan mencetak ${units.length} label.`;
       document.getElementById('unit-count-summary').textContent = units.length
-        ? `${units.length} unit${units.length === 1 ? '' : 's'} in this batch — printing will produce ${units.length} label${units.length === 1 ? '' : 's'}.${confirmedCount ? ` ${confirmedCount} already confirmed attached.` : ''}`
-        : '';
+        ? `${pendingCount} daripada ${units.length} label masih perlu ditampal dan disahkan.`
+        : 'Batch ini belum mempunyai label.';
+      const completion = document.getElementById('completion');
+      completion.hidden = !units.length || pendingCount !== 0;
+      document.getElementById('completion-text').textContent = `Semua ${units.length} label telah ditampal dan disahkan.`;
 
       // Field Simulation Pass 3 Scenario B2 (exception recovery during
       // handover): confirmed live that a scattered handful of pending
@@ -207,13 +285,14 @@
       const pendingEl = document.getElementById('pending-attachment');
       const pending = units.filter((u) => !u.label_confirmed_at);
       pendingEl.innerHTML = pending.length
-        ? `<div class="msg error">${pending.length} unit${pending.length === 1 ? '' : 's'} still awaiting attachment: ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${u.human_code}</button>`).join('')}</div>`
+        ? `<div class="msg error"><strong>${pending.length} label belum ditampal:</strong> ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${u.human_code}</button>`).join('')}</div>`
         : '';
       pendingEl.querySelectorAll('button[data-jump]').forEach((btn) => {
         btn.addEventListener('click', () => jumpToUnit(btn.dataset.jump));
       });
 
-      units.forEach(u => {
+      const displayUnits = [...units].sort((a, b) => Number(!!a.label_confirmed_at) - Number(!!b.label_confirmed_at));
+      displayUnits.forEach(u => {
         const cell = document.createElement('div');
         cell.id = `label-cell-${u.id}`;
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
@@ -225,29 +304,23 @@
           ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${u.recipient_name}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${u.human_code}</div>
-          <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : verified ? 'Scan verified — ready to confirm' : 'Awaiting attachment scan'}</div>
+          <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : verified ? 'Scan Betul — Sedia Disahkan' : 'Belum Disahkan Ditampal'}</div>
           ${u.label_confirmed_at ? `
-            <button class="no-print" disabled>Confirmed</button>
+            <button class="no-print" disabled>Disahkan</button>
           ` : verified ? `
-            <button class="no-print" data-id="${u.id}" data-action="confirm">Confirm Attachment</button>
-          ` : `
-            <form class="no-print scan-verify-form" data-id="${u.id}" style="margin-top:6px">
-              <input name="code" placeholder="Scan the attached label's QR" style="font-size:12px;padding:6px" required>
-              <button type="submit" style="margin-top:4px">Verify Scan</button>
-            </form>
-            <div class="no-print scan-verify-result" id="scan-verify-result-${u.id}"></div>
-          `}
+            <button class="no-print" data-id="${u.id}" data-action="confirm">Sahkan Sudah Ditampal</button>
+          ` : '<div class="no-print muted" style="font-size:11px;margin-top:7px">Gunakan ruang scan utama di atas.</div>'}
           ${!u.label_confirmed_at ? `
-            <button class="no-print secondary" data-id="${u.id}" data-action="reissue">
-              Lost — Reissue
-            </button>
+            <details class="no-print" style="margin-top:7px;text-align:left"><summary style="cursor:pointer;font-size:11px">Tindakan Lanjutan</summary>
+            <button class="secondary" data-id="${u.id}" data-action="reissue">Cetak Semula / Ganti Label Rosak</button>
             <div class="no-print reissue-confirm" id="reissue-confirm-${u.id}" hidden style="margin-top:6px">
               <div class="muted" style="font-size:11px;margin-bottom:4px">
-                This permanently invalidates the current QR and prints a new one. Only if this label was lost/spoiled before attaching.
+                QR lama akan dibatalkan secara kekal. Gunakan hanya jika label hilang atau rosak sebelum ditampal.
               </div>
-              <button class="no-print" data-id="${u.id}" data-action="reissue-confirm">Yes, reissue</button>
-              <button class="no-print secondary" data-id="${u.id}" data-action="reissue-cancel">Cancel</button>
+              <button class="no-print" data-id="${u.id}" data-action="reissue-confirm">Ya, Ganti Label</button>
+              <button class="no-print secondary" data-id="${u.id}" data-action="reissue-cancel">Batal</button>
             </div>
+            </details>
           ` : ''}
         `;
         grid.appendChild(cell);
@@ -268,38 +341,6 @@
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
           });
-          loadUnits(false);
-        });
-      });
-      // P2 fix: attachment must be verified by actually scanning the
-      // physical label before Confirm Attachment is even shown -- catches
-      // both a swapped label (scan resolves to a different unit) and a
-      // mis-click (nothing was scanned at all).
-      grid.querySelectorAll('form.scan-verify-form').forEach(form => {
-        form.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const unitId = form.dataset.id;
-          const code = new FormData(form).get('code').trim();
-          const resultEl = document.getElementById(`scan-verify-result-${unitId}`);
-          const res = await fetch(`/api/units/${unitId}/verify-label-scan`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
-          }).then(r => r.json());
-          if (res.error) {
-            resultEl.innerHTML = `<div class="msg error">${res.error}</div>`;
-            return;
-          }
-          if (!res.verified) {
-            resultEl.innerHTML =
-              res.reason === 'mismatch'
-                ? `<div class="msg error">Wrong label — this QR belongs to Unit ${res.actualUnit.humanCode} (${res.actualUnit.product} · ${res.actualUnit.variant}), not this one.</div>`
-                : res.reason === 'ambiguous'
-                ? `<div class="msg error">That code matches more than one unit — scan the QR itself instead of typing a short code.</div>`
-                : `<div class="msg error">No unit matches that code.</div>`;
-            form.code.value = '';
-            form.code.focus();
-            return;
-          }
           loadUnits(false);
         });
       });
@@ -334,8 +375,86 @@
       applyPagination();
     }
 
+    function scannedCode(raw) {
+      const value = String(raw || '').trim();
+      try {
+        return new URL(value).searchParams.get('code') || value;
+      } catch {
+        return value;
+      }
+    }
+
+    function showScanFeedback(kind, html) {
+      const feedback = document.getElementById('main-scan-feedback');
+      feedback.innerHTML = `<div class="msg ${kind}" style="margin-top:12px">${html}</div>`;
+    }
+
+    async function confirmScannedUnit(unitId) {
+      const response = await fetch(`/api/units/${unitId}/confirm-label`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        showScanFeedback('error', result.error || 'Label tidak dapat disahkan.');
+        return;
+      }
+      const unit = currentUnits.find((u) => u.id === unitId);
+      await loadUnits(false);
+      showScanFeedback('ok', `Unit <strong>${unit?.human_code || ''}</strong> sudah disahkan ditampal.`);
+      const input = document.getElementById('main-scan-input');
+      input.value = '';
+      input.focus();
+    }
+
+    document.getElementById('main-scan-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.getElementById('main-scan-input');
+      const raw = input.value.trim();
+      const code = scannedCode(raw);
+      const unit = currentUnits.find((u) => u.internal_token === code || u.human_code === code);
+      if (!unit) {
+        showScanFeedback('error', 'Label ini bukan daripada batch yang sedang dipilih. Kiraan tidak diubah.');
+        input.select();
+        return;
+      }
+      if (unit.label_confirmed_at) {
+        showScanFeedback('ok', `Unit <strong>${unit.human_code}</strong> sudah pernah disahkan ditampal.`);
+        input.value = '';
+        input.focus();
+        return;
+      }
+
+      const response = await fetch(`/api/units/${unit.id}/verify-label-scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: raw, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.error || !result.verified) {
+        const message = result.reason === 'mismatch'
+          ? 'Label yang discan tidak sepadan dengan unit ini.'
+          : result.reason === 'ambiguous'
+          ? 'Kod ini tidak unik. Sila scan QR penuh.'
+          : result.error || 'Label tidak dikenali.';
+        showScanFeedback('error', message);
+        input.select();
+        return;
+      }
+
+      await loadUnits(false);
+      const recipient = unit.recipient_name ? ` · Penerima: ${unit.recipient_name}` : '';
+      showScanFeedback(
+        'ok',
+        `Scan betul: <strong>Unit ${unit.human_code}</strong> · ${batchesCache.find((b) => b.id === select.value)?.product_name || ''} · ${batchesCache.find((b) => b.id === select.value)?.variant_label || ''}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`
+      );
+      document.getElementById('main-confirm-btn').addEventListener('click', () => confirmScannedUnit(unit.id));
+    });
+
     function jumpToUnit(unitId) {
-      const index = currentUnits.findIndex((u) => u.id === unitId);
+      const cards = Array.from(grid.querySelectorAll('.label'));
+      const index = cards.findIndex((card) => card.id === `label-cell-${unitId}`);
       if (index === -1) return;
       currentPage = Math.floor(index / PAGE_SIZE) + 1;
       applyPagination();
@@ -353,9 +472,9 @@
       const pagination = document.getElementById('pagination');
       if (cards.length <= PAGE_SIZE) { pagination.innerHTML = ''; return; }
       pagination.innerHTML = `
-        <button type="button" class="secondary" id="page-prev" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Previous</button>
-        <span class="muted">Page ${currentPage} of ${totalPages} &middot; ${cards.length} units total (showing ${start + 1}-${Math.min(end, cards.length)}; printing includes all ${cards.length})</span>
-        <button type="button" class="secondary" id="page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+        <button type="button" class="secondary" id="page-prev" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Sebelumnya</button>
+        <span class="muted">Halaman ${currentPage} daripada ${totalPages} &middot; ${cards.length} unit (papar ${start + 1}-${Math.min(end, cards.length)}; cetakan merangkumi semua ${cards.length})</span>
+        <button type="button" class="secondary" id="page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Seterusnya &rarr;</button>
       `;
       document.getElementById('page-prev')?.addEventListener('click', () => { currentPage--; applyPagination(); window.scrollTo(0, 0); });
       document.getElementById('page-next')?.addEventListener('click', () => { currentPage++; applyPagination(); window.scrollTo(0, 0); });
