@@ -39,27 +39,15 @@
 
   document.body.classList.add('has-sidebar');
 
-  // Field Simulation Pass 3, Scenario B (multi-user handover): every write
-  // across the entire app hardcoded actor: 'izzat' regardless of who was
-  // physically at the keyboard -- confirmed by grepping every page. The
-  // actor column has been free text since the original schema specifically
-  // so it wouldn't need real accounts (a `users` table is reserved for
-  // later, per Director's note in schema-add-orders.sql), but nothing ever
-  // actually let the person using the device say who they are, so the one
-  // field a second shift could use to see "who did this" was a permanent
-  // lie. This is NOT a login/identity system (Director's explicit
-  // instruction not to build that yet) -- just letting the existing free-
-  // text field hold the truth. Persisted in localStorage (per-device, no
-  // server round-trip) so it survives across pages and a shift only sets
-  // it once at the start of their shift, not on every single action.
-  function getActor() {
-    return localStorage.getItem('labelism_actor') || '';
-  }
-  function setActor(name) {
-    if (name) localStorage.setItem('labelism_actor', name);
-    else localStorage.removeItem('labelism_actor');
-  }
-  window.LabelismActor = { get: getActor };
+  // Every write's actor is now the AUTHENTICATED session's name, resolved
+  // server-side (see routes/index.js's body() helper) -- this used to be a
+  // free-text field anyone could type any name into (or skip), which meant
+  // "who did this" was a permanent lie whenever a second shift shared a
+  // device. window.LabelismActor.get() still exists so page scripts don't
+  // need to change, but it now just mirrors the real logged-in identity;
+  // there is nothing left for the client to spoof.
+  let sessionName = '';
+  window.LabelismActor = { get: () => sessionName };
 
   const nav = document.createElement('div');
   // no-print: label.html hides everything with this class when printing a
@@ -71,60 +59,18 @@
       ${LINKS.map(l => `${l.newGroup ? '<div class="sidebar-divider"></div>' : ''}<a href="${l.href}" ${l.href === path ? 'class="active"' : ''}>${icon(l.icon)}${l.label}</a>`).join('')}
     </nav>
     <div class="sidebar-bottom">
-      <div id="nav-actor-display" style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer"></div>
-      <div id="nav-actor-form" hidden style="width:72px;padding:5px 3px;background:#fff3d6;border:1px solid #e0ac3f;border-radius:4px">
-        <div style="font-size:9.5px;font-weight:700;color:#7a5a12;margin-bottom:3px;line-height:1.2">NAMA STAF</div>
-        <input id="nav-actor-input" type="text" placeholder="Nama" style="width:100%;font-size:10.5px;padding:3px;box-sizing:border-box">
-        <button id="nav-actor-save" type="button" style="width:100%;font-size:10px;padding:2px;margin-top:3px">Simpan</button>
-      </div>
+      <a id="nav-staff-link" href="/staff.html" hidden style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;text-decoration:none">Urus Staf</a>
+      <div id="nav-actor-display" style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3"></div>
       <button id="nav-logout-btn" type="button">${icon('logout')}Log Out</button>
     </div>
   `;
   document.body.insertBefore(nav, document.body.firstChild);
 
   const actorDisplay = document.getElementById('nav-actor-display');
-  const actorForm = document.getElementById('nav-actor-form');
-  const actorInput = document.getElementById('nav-actor-input');
-  // Gate B readiness fix (2026-09-15): this used to be a passive, easy-to-
-  // miss corner label ("Set your name") that a first-time user had no
-  // reason to click -- every write everywhere then silently fell back to
-  // the literal string 'izzat', so an untrained staff member's ENTIRE
-  // session would be misattributed to the owner, destroying the actual
-  // audit trail Gate B is meant to observe. Now the input auto-opens and
-  // is auto-focused on any page load where no name is set yet, styled to
-  // actually draw the eye -- still just one click away from being ignored
-  // (not a login gate, per Director's explicit instruction not to build
-  // real auth), but no longer invisible.
-  function renderActor() {
-    const name = getActor();
-    if (name) {
-      actorDisplay.hidden = false;
-      actorForm.hidden = true;
-      actorDisplay.textContent = `${name} · tukar`;
-      actorDisplay.style.cssText = 'width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer';
-    } else {
-      actorDisplay.hidden = true;
-      actorForm.hidden = false;
-      actorInput.value = '';
-    }
-  }
-  renderActor();
-  if (!getActor()) {
-    actorInput.focus();
-  }
-  actorDisplay.addEventListener('click', () => {
-    actorDisplay.hidden = true;
-    actorForm.hidden = false;
-    actorInput.value = getActor();
-    actorInput.focus();
-  });
-  function saveActor() {
-    setActor(actorInput.value.trim());
-    renderActor();
-  }
-  document.getElementById('nav-actor-save').addEventListener('click', saveActor);
-  actorInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveActor();
+  fetch('/api/session').then((r) => r.json()).then((session) => {
+    sessionName = session.name || '';
+    actorDisplay.textContent = sessionName || '—';
+    document.getElementById('nav-staff-link').hidden = !session.isAdmin;
   });
 
   document.getElementById('nav-logout-btn').addEventListener('click', async () => {

@@ -23,11 +23,14 @@
       <span class="topbar-mark">L</span>
       <strong>Labelism</strong>
     </div>
-    <p class="muted" style="margin-top:-14px">Log in to continue.</p>
+    <p class="muted" style="margin-top:-14px">Log masuk dengan akaun anda sendiri.</p>
 
     <form id="form">
-      <label>Password
-        <input name="password" type="password" required autofocus>
+      <label>Nama
+        <input name="name" type="text" required autofocus autocomplete="username">
+      </label>
+      <label>Kata Laluan
+        <input name="password" type="password" required autocomplete="current-password">
       </label>
       <button type="submit">Log In</button>
     </form>
@@ -40,10 +43,12 @@
       e.preventDefault();
       const result = document.getElementById('result');
       result.innerHTML = '';
-      const password = new FormData(e.target).get('password');
+      const data = new FormData(e.target);
+      const name = data.get('name');
+      const password = data.get('password');
       const res = await fetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ name, password }),
       }).then(r => r.json());
       if (res.error) {
         result.innerHTML = `<div class="msg error">${res.error}</div>`;

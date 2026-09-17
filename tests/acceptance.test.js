@@ -6,7 +6,9 @@
  *
  * Prerequisites:
  *   - npx wrangler dev --port 8788  (running in background)
- *   - NODE_ENV=development in .dev.vars (skips auth)
+ *   - Either: no auth secrets in .dev.vars (dev-only bypass), OR
+ *     LABELISM_TEST_ADMIN_USER / LABELISM_TEST_ADMIN_PASSWORD set to a real
+ *     admin account so the suite can create its own 'test-suite' login.
  *
  * Run:
  *   node tests/acceptance.test.js
@@ -39,13 +41,53 @@ async function run(name, fn) {
   }
 }
 
+// Production requires per-staff login (staff_accounts table) -- the suite
+// used to rely on auth being bypassed in dev (no .dev.vars secrets set),
+// which meant it never actually exercised the auth path production runs
+// under. Now it logs in for real and carries the session cookie on every
+// request, so a broken auth gate fails the suite instead of silently
+// passing under a bypass that doesn't reflect prod.
+let sessionCookie = '';
+
+async function login() {
+  const res = await fetch(`${BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'test-suite', password: 'acceptance-test-password' }),
+  });
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) sessionCookie = setCookie.split(';')[0];
+}
+
+async function ensureTestAccount() {
+  // Bootstraps 'izzat' from LABELISM_ADMIN_PASSWORD_HASH if no staff exist
+  // yet (harmless no-op otherwise), then logs in as izzat once to get an
+  // admin session capable of creating a dedicated test-suite account --
+  // isolates the suite from whatever the real admin password happens to be.
+  const adminLogin = await fetch(`${BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: process.env.LABELISM_TEST_ADMIN_USER || 'izzat', password: process.env.LABELISM_TEST_ADMIN_PASSWORD || '' }),
+  });
+  if (adminLogin.status !== 200) return; // no admin creds available in this env -- fall through to plain login()
+  const adminCookie = (adminLogin.headers.get('set-cookie') || '').split(';')[0];
+  await fetch(`${BASE}/api/staff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ name: 'test-suite', password: 'acceptance-test-password' }),
+  }); // ignore "already exists" -- idempotent across repeated runs
+}
+
 async function api(path, { method = 'GET', body } = {}) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const opts = { method, headers: { 'Content-Type': 'application/json', Cookie: sessionCookie } };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(`${BASE}${path}`, opts);
   const json = await res.json();
   return { status: res.status, body: json };
 }
+
+await ensureTestAccount();
+await login();
 
 async function attachUnit(unit) {
   const verify = await api(`/api/units/${unit.id}/verify-label-scan`, {

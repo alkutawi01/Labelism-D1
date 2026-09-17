@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Urus Staf — Labelism</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page" style="max-width:600px">
+  <header class="page-header">
+    <h1>Urus Staf</h1>
+    <p class="muted">Setiap staf log masuk dengan akaun sendiri, supaya sistem tahu siapa buat apa.</p>
+  </header>
+
+  <div id="not-admin" class="msg error" hidden>Akses ditolak -- halaman ini untuk admin sahaja.</div>
+
+  <div id="admin-area" hidden>
+    <fieldset>
+      <legend>Tambah Staf Baru</legend>
+      <form id="add-staff-form">
+        <label>Nama
+          <input name="name" required placeholder="cth: Ali">
+        </label>
+        <label>Kata Laluan
+          <input name="password" type="password" required minlength="6" placeholder="Sekurang-kurangnya 6 aksara">
+        </label>
+        <label class="inline">
+          <input type="checkbox" name="isAdmin">
+          Jadikan admin (boleh urus staf lain)
+        </label>
+        <button type="submit">Tambah Staf</button>
+      </form>
+      <div id="add-result"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Senarai Staf</legend>
+      <table>
+        <thead><tr><th>Nama</th><th>Admin</th><th>Status</th></tr></thead>
+        <tbody id="staff-body"></tbody>
+      </table>
+    </fieldset>
+  </div>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    async function init() {
+      const session = await fetch('/api/session').then(r => r.json());
+      if (!session.isAdmin) {
+        document.getElementById('not-admin').hidden = false;
+        return;
+      }
+      document.getElementById('admin-area').hidden = false;
+      loadStaff();
+    }
+
+    async function loadStaff() {
+      const res = await fetch('/api/staff');
+      if (!res.ok) return;
+      const rows = await res.json();
+      document.getElementById('staff-body').innerHTML = rows.map((s) => `
+        <tr>
+          <td>${s.name}</td>
+          <td>${s.isAdmin ? 'Ya' : '—'}</td>
+          <td>${s.active ? 'Aktif' : 'Tidak aktif'}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('add-staff-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const resDiv = document.getElementById('add-result');
+      const data = Object.fromEntries(new FormData(e.target));
+      const res = await fetch('/api/staff', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: data.name, password: data.password, isAdmin: !!data.isAdmin }),
+      }).then(r => r.json());
+      if (res.error) {
+        resDiv.innerHTML = `<div class="msg error">${res.error}</div>`;
+        return;
+      }
+      resDiv.innerHTML = `<div class="msg ok">Staf "${res.name}" berjaya ditambah. Kongsikan nama dan kata laluan kepadanya.</div>`;
+      e.target.reset();
+      loadStaff();
+    });
+
+    init();
+  </script>
+</body>
+</html>

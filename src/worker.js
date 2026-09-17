@@ -1,7 +1,7 @@
 // Thin Worker entrypoint, per Director instruction: fetch() handles request/
 // response routing only, D1 binding is passed inward, business rules
 // (src/services, src/domain) never import Cloudflare globals directly.
-import { authGate, assertAuthSafeToBoot } from './auth/index.js';
+import { authGate, assertAuthSafeToBoot, getSession } from './auth/index.js';
 import { routeApi } from './routes/index.js';
 
 let bootChecked = false;
@@ -22,7 +22,8 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      const apiResponse = await routeApi(request, env);
+      const session = await getSession(request, env);
+      const apiResponse = await routeApi(request, env, session);
       if (apiResponse) return apiResponse;
       return Response.json({ error: 'Not found.' }, { status: 404 });
     }

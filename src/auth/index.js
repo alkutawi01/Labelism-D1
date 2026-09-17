@@ -1,8 +1,18 @@
-// Single-user session auth, ported from src/auth.js (Postgres/Express version).
-// Same design decisions carried over unchanged (Director-approved 2026-09-08):
-// fail-closed boot check, HMAC-signed stateless cookie, bcrypt password hash,
-// generic failed-login message. Only the runtime primitives changed --
-// Web Crypto (async) instead of node:crypto, since Workers have no Node APIs.
+// Per-staff session auth. Originally a single shared admin password (ported
+// from src/auth.js, Postgres/Express version) -- every write in the system
+// was attributable only to whoever knew that one password, with a free-text
+// "Working as" field staff had to remember to fill in honestly. Replaced
+// with real per-staff accounts (staff_accounts table) so the session cookie
+// itself carries a verified identity, and every write's `actor` comes from
+// that session server-side instead of a client-supplied string (see
+// routes/index.js's body() helper).
+//
+// The cookie is still a stateless HMAC-signed value, not a DB-backed
+// session, so revoking a compromised account requires rotating
+// LABELISM_SESSION_SECRET (logs everyone out) rather than a single DB
+// delete -- same tradeoff the original design made, kept deliberately so
+// authGate (run on every request, including static assets) never needs a
+// DB round trip.
 import bcrypt from 'bcryptjs';
 
 const COOKIE_NAME = 'labelism_session';
@@ -39,43 +49,75 @@ function timingSafeEqual(a, b) {
 }
 
 export function authConfigured(env) {
-  return Boolean(env.LABELISM_ADMIN_PASSWORD_HASH && env.LABELISM_SESSION_SECRET);
+  return Boolean(env.LABELISM_SESSION_SECRET);
 }
 
 export function assertAuthSafeToBoot(env) {
   if (env.NODE_ENV === 'production' && !authConfigured(env)) {
     throw new Error(
-      'REFUSE TO BOOT: NODE_ENV=production but LABELISM_ADMIN_PASSWORD_HASH / ' +
-      'LABELISM_SESSION_SECRET is not set.'
+      'REFUSE TO BOOT: NODE_ENV=production but LABELISM_SESSION_SECRET is not set.'
     );
   }
 }
 
-export async function verifyPassword(password, env) {
-  if (!env.LABELISM_ADMIN_PASSWORD_HASH) return false;
-  return bcrypt.compare(password, env.LABELISM_ADMIN_PASSWORD_HASH);
+// One-time bootstrap: if no staff accounts exist yet, seed 'izzat' from the
+// legacy LABELISM_ADMIN_PASSWORD_HASH secret (if still set) so the existing
+// password keeps working without anyone needing to know the plaintext to
+// re-hash it. No-ops once at least one staff account exists.
+export async function bootstrapAdminIfEmpty(db, env) {
+  if (!env.LABELISM_ADMIN_PASSWORD_HASH) return;
+  const { count } = await db.prepare('SELECT COUNT(*) AS count FROM staff_accounts').first();
+  if (count > 0) return;
+  const adminName = env.LABELISM_ADMIN_USER || 'izzat';
+  await db
+    .prepare(
+      `INSERT INTO staff_accounts (id, name, password_hash, is_admin, active)
+       VALUES (?, ?, ?, 1, 1)
+       ON CONFLICT (name) DO NOTHING`
+    )
+    .bind(crypto.randomUUID(), adminName, env.LABELISM_ADMIN_PASSWORD_HASH)
+    .run();
 }
 
-async function makeSessionCookieValue(env) {
-  const adminUser = env.LABELISM_ADMIN_USER || 'izzat';
+export async function hashPassword(password) {
+  return bcrypt.hash(password, 10);
+}
+
+// Verifies a staff login by name + password. Returns the staff row
+// (without password_hash) on success, or null.
+export async function verifyStaffLogin(db, name, password) {
+  if (!name || !password) return null;
+  const staff = await db
+    .prepare('SELECT id, name, password_hash, is_admin, active FROM staff_accounts WHERE name = ?')
+    .bind(name)
+    .first();
+  if (!staff || !staff.active) return null;
+  const valid = await bcrypt.compare(password, staff.password_hash);
+  if (!valid) return null;
+  return { id: staff.id, name: staff.name, isAdmin: Boolean(staff.is_admin) };
+}
+
+async function makeSessionCookieValue(staff, env) {
   const expires = Date.now() + SESSION_TTL_MS;
-  const payload = `${adminUser}.${expires}`;
+  const payload = `${staff.name}.${staff.isAdmin ? 1 : 0}.${expires}`;
   const signature = await sign(payload, env.LABELISM_SESSION_SECRET);
   return `${payload}.${signature}`;
 }
 
+// Returns { name, isAdmin } if the cookie is validly signed and unexpired,
+// or null. Pure HMAC verification, no DB read (see file header).
 async function verifySessionCookieValue(value, env) {
-  if (!value) return false;
+  if (!value) return null;
   const parts = value.split('.');
-  if (parts.length !== 3) return false;
-  const [user, expiresStr, signature] = parts;
-  const payload = `${user}.${expiresStr}`;
+  if (parts.length !== 4) return null;
+  const [name, isAdminStr, expiresStr, signature] = parts;
+  const payload = `${name}.${isAdminStr}.${expiresStr}`;
   const expected = await sign(payload, env.LABELISM_SESSION_SECRET);
-  if (!timingSafeEqual(signature, expected)) return false;
+  if (!timingSafeEqual(signature, expected)) return null;
   const expires = Number(expiresStr);
-  if (!Number.isFinite(expires) || Date.now() > expires) return false;
-  const adminUser = env.LABELISM_ADMIN_USER || 'izzat';
-  return user === adminUser;
+  if (!Number.isFinite(expires) || Date.now() > expires) return null;
+  if (!name) return null;
+  return { name, isAdmin: isAdminStr === '1' };
 }
 
 function parseCookies(req) {
@@ -89,9 +131,18 @@ function parseCookies(req) {
   );
 }
 
-export async function setSessionCookieHeader(env) {
+// Decodes the current request's session, or null if absent/invalid. Used
+// both by authGate (allow/deny) and by routeApi (to resolve the trusted
+// actor for writes, and to gate admin-only endpoints).
+export async function getSession(request, env) {
+  if (!authConfigured(env)) return null;
+  const cookies = parseCookies(request);
+  return verifySessionCookieValue(cookies[COOKIE_NAME], env);
+}
+
+export async function setSessionCookieHeader(staff, env) {
   const isSecureEnv = env.NODE_ENV === 'production';
-  const value = await makeSessionCookieValue(env);
+  const value = await makeSessionCookieValue(staff, env);
   const attrs = [
     `${COOKIE_NAME}=${encodeURIComponent(value)}`,
     'HttpOnly',
@@ -123,14 +174,12 @@ export async function authGate(request, env) {
 
   if (url.pathname.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(url.pathname)) return null;
-    const cookies = parseCookies(request);
-    if (await verifySessionCookieValue(cookies[COOKIE_NAME], env)) return null;
+    if (await getSession(request, env)) return null;
     return Response.json({ error: 'Not authenticated.' }, { status: 401 });
   }
 
   if (PUBLIC_PATHS.has(url.pathname)) return null;
-  const cookies = parseCookies(request);
-  if (await verifySessionCookieValue(cookies[COOKIE_NAME], env)) return null;
+  if (await getSession(request, env)) return null;
   return Response.redirect(new URL('/login.html', request.url), 302);
 }
 
