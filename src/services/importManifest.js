@@ -1,30 +1,38 @@
 // Document Import -- turns a small, versioned JSON contract ("Labelism
-// Import Manifest v1") into Products/Variants/ProductionBatches.
+// Import Manifest v1") into Customer/Order/OrderLines/ProductionBatches/Units.
 //
 // Origin: Izzat wants Labelism to absorb arbitrary source documents (job
 // orders, invoices, quotations, delivery orders, ...) without hardcoding a
 // parser per document type. The AI step (an external chatbot the user
 // already has -- no API/internet dependency inside Labelism) reads the
 // document and produces this manifest; Labelism only ever parses this one
-// fixed shape. See public/import.html for the prompt template shown to the
-// user, and HANDOFF.md / the Director thread for the full design history.
+// fixed shape.
 //
-// Deliberately simplified per Izzat's 2026-09-12 instruction: every source
-// document reduces to Product + Variant, which Labelism already models in
-// full (product_dimensions, variant_attributes). The only genuinely new
-// thing a document can carry is context that isn't a first-class Labelism
-// concept (planned per-unit names, a project/customer reference) -- that
-// goes into a plain "notes" field on the batch, not a new schema layer.
-//
-// Important: this only creates Products/Variants/ProductionBatches (an
-// order's planned quantity). It never creates Units directly -- Units are
-// only ever created via the existing Receiving flow, once physical goods
-// are actually observed and reconciled. Collapsing that distinction would
-// violate the "Intent (planned) != Observation != Accepted quantity"
-// invariant (see HANDOFF.md) that the rest of Labelism depends on: a job
-// order is an intent, not evidence that anything physically exists yet.
+// Manifest contract (schemaVersion: "1"):
+// {
+//   "schemaVersion": "1",        // optional, must be "1" if present
+//   "customerName": "...",       // required: name of customer to create/lookup
+//   "orderReference": "...",     // required: invoice/PO reference
+//   "products": [
+//     {
+//       "name": "...",
+//       "dimensions": ["Saiz"],   // optional list of dimension names
+//       "variants": [
+//         {
+//           "label": "Saiz M",
+//           "quantity": 500,
+//           "unitNames": ["Ahmad", ...],  // optional, 1-to-1 recipient names
+//           "batches": [                  // optional phased breakdown
+//             { "quantity": 300 },
+//             { "quantity": 200 }
+//           ]
+//         }
+//       ]
+//     }
+//   ]
+// }
 import { ValidationError } from '../domain/validation.js';
-import { getOrCreateProduct, getOrCreateVariant, addProductDimensions, nextBatchNumber, createProductionBatch } from './catalog.js';
+import { createOrderWithLabels } from './orders.js';
 
 const SUPPORTED_SCHEMA_VERSION = '1';
 
@@ -35,9 +43,8 @@ function deriveLabel(dimensions, attributes) {
 }
 
 // Parses and validates a raw (client-supplied) manifest object into a
-// normalized shape. Throws ValidationError with a specific, indexed message
-// on the first problem found -- this is untrusted input (AI-generated),
-// so every field is checked before anything is written.
+// normalized shape that preserves ALL identity fields.
+// Throws ValidationError on the first problem found.
 export function normalizeManifest(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new ValidationError('Import manifest must be a JSON object.');
@@ -47,6 +54,24 @@ export function normalizeManifest(raw) {
       `Unsupported schemaVersion "${raw.schemaVersion}" -- this Labelism only understands Import Manifest v${SUPPORTED_SCHEMA_VERSION}.`
     );
   }
+
+  // --- Customer identity ---
+  const customerName = raw.customerName !== undefined && raw.customerName !== null
+    ? String(raw.customerName).trim()
+    : '';
+  if (!customerName) {
+    throw new ValidationError('Import manifest requires "customerName" (non-empty string).');
+  }
+
+  // --- Order reference ---
+  const orderReference = raw.orderReference !== undefined && raw.orderReference !== null
+    ? String(raw.orderReference).trim()
+    : '';
+  if (!orderReference) {
+    throw new ValidationError('Import manifest requires "orderReference" (non-empty string).');
+  }
+
+  // --- Products ---
   if (!Array.isArray(raw.products) || raw.products.length === 0) {
     throw new ValidationError('Import manifest must have a non-empty "products" array.');
   }
@@ -100,14 +125,37 @@ export function normalizeManifest(raw) {
         }
       }
 
-      return { attributes, label, quantity, unitNames };
+      // --- Phased batch breakdown (optional) ---
+      let batches = null;
+      if (v.batches !== undefined) {
+        if (!Array.isArray(v.batches) || v.batches.length === 0) {
+          throw new ValidationError(`${vwhere}.batches must be a non-empty array if provided.`);
+        }
+        let batchSum = 0;
+        batches = v.batches.map((b, bIdx) => {
+          const bqty = Number(b.quantity);
+          if (!Number.isInteger(bqty) || bqty < 1) {
+            throw new ValidationError(`${vwhere}.batches[${bIdx}].quantity must be a whole number >= 1.`);
+          }
+          batchSum += bqty;
+          return { quantity: bqty };
+        });
+        if (batchSum > quantity) {
+          throw new ValidationError(
+            `${vwhere}.batches sum (${batchSum}) exceeds variant quantity (${quantity}).`
+          );
+        }
+      }
+
+      return { attributes, label, quantity, unitNames, batches };
     });
 
     return { name: String(p.name).trim(), dimensions, variants };
   });
 
+  // context is still accepted for backward compat but is not required
   const context = raw.context !== undefined && raw.context !== null ? String(raw.context).trim() : '';
-  return { context, products };
+  return { customerName, orderReference, context, products };
 }
 
 // Read-only: reports what applyManifest() would do, without writing
@@ -139,7 +187,8 @@ export async function previewManifest(db, manifest) {
           .first();
       }
       existingVariant ? totals.existingVariants++ : totals.newVariants++;
-      totals.productionBatches++;
+      const numBatches = v.batches ? v.batches.length : 1;
+      totals.productionBatches += numBatches;
       totals.plannedUnits += v.quantity;
       totals.namedUnits += v.unitNames.length;
 
@@ -147,6 +196,7 @@ export async function previewManifest(db, manifest) {
         label: v.label,
         attributes: v.attributes,
         quantity: v.quantity,
+        batches: v.batches ?? null,
         namedCount: v.unitNames.length,
         isNewVariant: !existingVariant,
       });
@@ -160,21 +210,20 @@ export async function previewManifest(db, manifest) {
     });
   }
 
-  return { context: manifest.context, products: productPreviews, totals };
+  return {
+    customerName: manifest.customerName,
+    orderReference: manifest.orderReference,
+    context: manifest.context,
+    products: productPreviews,
+    totals,
+  };
 }
 
-// Writes Products / dimensions / Variants / ProductionBatches. Never
-// creates Units -- see the module comment above for why that boundary
-// matters. Sequential awaits (not a single db.batch()) because each step
-// may need to read back an id it just decided to reuse or create; this
-// endpoint is single-operator/low-frequency, unlike the concurrent-scan
-// paths in units.js that need atomic batching.
-import { createOrderWithLabels } from './orders.js';
-
+// Writes Customer / Product / Dimensions / Variants / Order / OrderLines /
+// ProductionBatches / Units atomically via createOrderWithLabels().
+// All identity fields from the manifest (customerName, orderReference,
+// batch breakdown) are preserved.
 export async function applyManifest(db, manifest, actor) {
-  const customerName = manifest.customerName || manifest.context || 'Import Customer';
-  const orderReference = manifest.orderReference || manifest.context || `IMPORT-${Date.now()}`;
-
   const items = [];
   for (const p of manifest.products) {
     for (const v of p.variants) {
@@ -185,14 +234,16 @@ export async function applyManifest(db, manifest, actor) {
         attributes: v.attributes,
         quantity: v.quantity,
         unitNames: v.unitNames || [],
-        batches: v.batches || [{ quantity: v.quantity }],
+        // Pass phased batches if present; otherwise createOrderWithLabels
+        // will generate the full quantity in a single batch.
+        batches: v.batches || null,
       });
     }
   }
 
   const result = await createOrderWithLabels(db, {
-    customerName,
-    orderReference,
+    customerName: manifest.customerName,
+    orderReference: manifest.orderReference,
     items,
     actor: actor ?? 'system',
   });

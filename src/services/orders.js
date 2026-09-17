@@ -8,8 +8,7 @@
 // single order can be produced across multiple staged batches.
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
-import { getOrCreateProduct, getOrCreateVariant, addProductDimensions, createProductionBatch, nextBatchNumber } from './catalog.js';
-import { generateUnitsForBatch, buildUnitStatementsForBatch } from './receiving.js';
+import { buildUnitStatementsForBatch } from './receiving.js';
 
 export async function createCustomer(db, { name, contactInfo }) {
   if (!name) throw new ValidationError('Customer name is required.');
@@ -112,16 +111,6 @@ export async function createOrderLine(db, { orderId, variantId, description, qua
   return { id, orderId, variantId: variantId ?? null, quantityOrdered };
 }
 
-// Field Simulation Pass 3 Scenario 6 fix: order_lines.notes was already
-// part of the Director-approved Domain Model Revision Pass v1 schema and
-// accepted at creation, but there was no way to set or change it
-// afterward -- so it could never actually record the thing it exists for
-// ("customer changed this line to Size L on 20/9"), since that always
-// happens AFTER the line already exists, often after a batch is already
-// in progress. Deliberately notes-only: this does NOT touch
-// quantity_ordered or variant_id, which stay a real mutation-capability
-// gap requiring a design call (same class of risk as the Scenario 1
-// batch order-link correction question).
 export async function updateOrderLineNotes(db, id, notes) {
   const line = await db.prepare('SELECT id FROM order_lines WHERE id = ?').bind(id).first();
   if (!line) return { notFound: true };
@@ -129,20 +118,6 @@ export async function updateOrderLineNotes(db, id, notes) {
   return { id, notes: notes ?? null };
 }
 
-// One order line, its parent order/customer, and every production batch
-// fulfilling it (with how many units each batch has actually produced) --
-// this is the view that answers "for this line, how much is planned vs.
-// actually in batches yet."
-// Core Production Simulation Priority 6 (F6-001), built without waiting for
-// Director sign-off since it's a pure read-model addition -- no new
-// mutation, no schema change (per the standing rule that small read/UI
-// fixes can proceed on their own). F6-001's live simulation confirmed there
-// is currently no view anywhere that answers, for a whole order (which
-// spans one production batch per variant/order-line), the exact numbers
-// Director's Fasa 7 asked a supervisor to produce in 30 seconds: a
-// customer's 100-unit order shows up as 3 separate unrelated batch rows in
-// Product Setup and 3 separate order-line pickers in Pack & Ship, with no
-// single place that sums them or flags a discrepancy.
 export async function getOrderReconciliation(db, orderId) {
   const order = await db
     .prepare(
@@ -162,9 +137,14 @@ export async function getOrderReconciliation(db, orderId) {
             WHERE pb.order_line_id = ol.id) AS units_generated,
          (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
             WHERE pb.order_line_id = ol.id AND u.label_confirmed_at IS NOT NULL) AS units_attached,
-         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
-            WHERE pb.order_line_id = ol.id
-              AND EXISTS (SELECT 1 FROM shipment_units su WHERE su.unit_id = u.id)) AS units_packed,
+         (SELECT COALESCE(SUM(s.planned_quantity), 0)
+            FROM shipments s WHERE s.order_line_id = ol.id AND s.status NOT IN ('DISPATCHED','CANCELLED')
+         ) AS shipment_planned,
+         (SELECT COUNT(*) FROM shipment_units su
+            JOIN shipments s ON s.id = su.shipment_id
+            JOIN units u ON u.id = su.unit_id
+            JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id) AS units_packed,
          (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
             WHERE pb.order_line_id = ol.id
               AND EXISTS (
@@ -185,10 +165,11 @@ export async function getOrderReconciliation(db, orderId) {
       ordered: acc.ordered + l.quantity_ordered,
       generated: acc.generated + l.units_generated,
       attached: acc.attached + l.units_attached,
+      shipment_planned: acc.shipment_planned + l.shipment_planned,
       packed: acc.packed + l.units_packed,
       dispatched: acc.dispatched + l.units_dispatched,
     }),
-    { ordered: 0, generated: 0, attached: 0, packed: 0, dispatched: 0 }
+    { ordered: 0, generated: 0, attached: 0, shipment_planned: 0, packed: 0, dispatched: 0 }
   );
 
   return { order, lines, totals };
@@ -218,6 +199,133 @@ export async function getOrderLine(db, id) {
   return { ...line, batches };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PREFLIGHT HELPERS -- read-only, called before any writes are assembled.
+// These functions only query the DB and return IDs/statements to be included
+// in the main db.batch(). They never write anything themselves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns { variantId, productStatements } where productStatements is an
+// array of prepared D1 statements (for Product, Dimensions, Variant) that
+// must be included in the caller's db.batch() call BEFORE they are used.
+// variantId is pre-generated here so it can be referenced immediately.
+async function preflightVariant(db, { productName, variantLabel, dimensions, attributes }) {
+  const statements = [];
+
+  // 1. Resolve or plan Product
+  const trimmedProductName = String(productName).trim();
+  const existingProduct = await db
+    .prepare('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = LOWER(?)')
+    .bind(trimmedProductName)
+    .first();
+
+  let productId;
+  if (existingProduct) {
+    productId = existingProduct.id;
+  } else {
+    productId = newInternalId();
+    statements.push(
+      db.prepare('INSERT INTO products (id, name) VALUES (?, ?)').bind(productId, trimmedProductName)
+    );
+  }
+
+  // 2. Resolve or plan Dimensions (additive, INSERT OR IGNORE)
+  if (Array.isArray(dimensions) && dimensions.length > 0) {
+    const existingDims = existingProduct
+      ? await db
+          .prepare('SELECT name FROM product_dimensions WHERE product_id = ?')
+          .bind(productId)
+          .all()
+          .then((r) => new Set(r.results.map((d) => d.name.toLowerCase())))
+      : new Set();
+
+    const maxOrderRow = existingProduct
+      ? await db
+          .prepare('SELECT COALESCE(MAX(sort_order), -1) AS maxOrder FROM product_dimensions WHERE product_id = ?')
+          .bind(productId)
+          .first()
+      : { maxOrder: -1 };
+    let nextOrder = maxOrderRow.maxOrder + 1;
+
+    for (const rawName of dimensions) {
+      const name = String(rawName).trim();
+      if (!name || existingDims.has(name.toLowerCase())) continue;
+      statements.push(
+        db
+          .prepare('INSERT OR IGNORE INTO product_dimensions (id, product_id, name, sort_order) VALUES (?, ?, ?, ?)')
+          .bind(newInternalId(), productId, name, nextOrder++)
+      );
+    }
+  }
+
+  // 3. Resolve or plan Variant
+  const existingVariant = await db
+    .prepare('SELECT id FROM variants WHERE product_id = ? AND variant_label = ?')
+    .bind(productId, variantLabel)
+    .first();
+
+  let variantId;
+  if (existingVariant) {
+    variantId = existingVariant.id;
+  } else {
+    variantId = newInternalId();
+    statements.push(
+      db.prepare('INSERT INTO variants (id, product_id, variant_label) VALUES (?, ?, ?)').bind(variantId, productId, variantLabel)
+    );
+    // Variant attributes
+    if (attributes && typeof attributes === 'object') {
+      for (const [key, value] of Object.entries(attributes)) {
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          statements.push(
+            db.prepare('INSERT INTO variant_attributes (variant_id, key, value) VALUES (?, ?, ?)').bind(variantId, key, String(value))
+          );
+        }
+      }
+    }
+  }
+
+  return { variantId, statements };
+}
+
+// Determines the next safe batch numbers for a given variant, accounting
+// for both existing DB rows AND in-flight batches that haven't been committed yet.
+// inFlightCount: how many batches for this variant are already queued in the
+// current transaction (so we don't collide with them either).
+async function nextBatchNumbers(db, variantId, count, inFlightCount = 0) {
+  if (count <= 0) return [];
+  // Get the current maximum batch number used for this variant
+  const { results: existing } = await db
+    .prepare('SELECT batch_number FROM production_batches WHERE variant_id = ?')
+    .bind(variantId)
+    .all();
+  const usedNumbers = new Set(existing.map((r) => String(r.batch_number)));
+
+  const numbers = [];
+  let candidate = 1;
+  const totalNeeded = count + inFlightCount;
+  const allReserved = new Set(usedNumbers);
+
+  // Reserve both existing and in-flight numbers
+  // We'll collect `totalNeeded` free numbers but only return the last `count` of them
+  const allFree = [];
+  while (allFree.length < totalNeeded) {
+    if (!allReserved.has(String(candidate))) {
+      allFree.push(String(candidate));
+      allReserved.add(String(candidate));
+    }
+    candidate++;
+  }
+  // Return the last `count` numbers (the first `inFlightCount` are already taken by prior items)
+  return allFree.slice(inFlightCount, inFlightCount + count);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// createOrderWithLabels -- single atomic db.batch() covering:
+//   Customer (if new) → Product → Dimensions → Variant → Order →
+//   OrderLine → ProductionBatch(es) → Units
+//
+// All writes are in one db.batch(). Preflight reads only.
+// ─────────────────────────────────────────────────────────────────────────────
 export async function createOrderWithLabels(db, { customerId, customerName, orderReference, orderDate, dueDate, notes, items, actor }) {
   if (!orderReference || !String(orderReference).trim()) {
     throw new ValidationError('orderReference is required.');
@@ -226,29 +334,54 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     throw new ValidationError('At least one item is required in the order.');
   }
 
-  // Pre-validate all items & batch breakdowns before any writes
-  for (const item of items) {
+  // ── Fix 5: Pre-validate ALL items and ALL batch specs before any reads/writes ──
+  for (const [iIdx, item] of items.entries()) {
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity < 1) {
-      throw new ValidationError(`Invalid quantity (${item.quantity}) for item "${item.productName || 'unnamed'}".`);
+      throw new ValidationError(
+        `items[${iIdx}]: quantity must be a whole number >= 1, got: ${JSON.stringify(item.quantity)}.`
+      );
+    }
+    if (!item.productName || !String(item.productName).trim()) {
+      throw new ValidationError(`items[${iIdx}]: productName is required.`);
+    }
+    if (!item.variantLabel && !item.variantId && !item.description) {
+      throw new ValidationError(`items[${iIdx}]: variantLabel or variantId or description is required.`);
     }
 
     if (Array.isArray(item.batches) && item.batches.length > 0) {
-      const batchSum = item.batches.reduce((sum, b) => sum + Number(b.quantity || b.plannedQuantity || 0), 0);
+      let batchSum = 0;
+      for (const [bIdx, b] of item.batches.entries()) {
+        const bqty = Number(b.quantity ?? b.plannedQuantity);
+        if (!Number.isInteger(bqty) || bqty < 1) {
+          throw new ValidationError(
+            `items[${iIdx}].batches[${bIdx}]: quantity must be a whole number >= 1, got: ${JSON.stringify(b.quantity ?? b.plannedQuantity)}.`
+          );
+        }
+        if (b.batchNumber !== undefined && b.batchNumber !== null) {
+          const bn = String(b.batchNumber).trim();
+          if (!bn) throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchNumber must be a non-empty string if provided.`);
+        }
+        batchSum += bqty;
+      }
       if (batchSum > quantity) {
-        throw new ValidationError(`Sum of batch quantities (${batchSum}) exceeds ordered quantity (${quantity}) for "${item.productName}".`);
+        throw new ValidationError(
+          `items[${iIdx}]: sum of batch quantities (${batchSum}) exceeds ordered quantity (${quantity}).`
+        );
       }
     }
   }
 
-  // Handle Customer (Explicit customerId or create new Customer)
+  // ── Handle Customer (Preflight read only) ──
   let customer;
+  let customerStatement = null;
   if (customerId) {
     customer = await db.prepare('SELECT id, name FROM customers WHERE id = ?').bind(customerId).first();
     if (!customer) throw new ValidationError('Selected customer not found.');
   } else if (customerName && String(customerName).trim()) {
     const custId = newInternalId();
     customer = { id: custId, name: String(customerName).trim() };
+    customerStatement = db.prepare('INSERT INTO customers (id, name) VALUES (?, ?)').bind(customer.id, customer.name);
   } else {
     throw new ValidationError('Customer selection or name is required.');
   }
@@ -256,11 +389,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
   const orderId = newInternalId();
   const allStatements = [];
 
-  if (!customerId) {
-    allStatements.push(
-      db.prepare('INSERT INTO customers (id, name) VALUES (?, ?)').bind(customer.id, customer.name)
-    );
-  }
+  if (customerStatement) allStatements.push(customerStatement);
 
   allStatements.push(
     db.prepare(
@@ -271,23 +400,31 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
 
   const createdLines = [];
 
+  // Track in-flight batch counts per variantId to avoid batch number collisions
+  // within the same transaction (Fix 3).
+  const inFlightBatchCounts = new Map(); // variantId -> count already reserved
+
   for (const item of items) {
     const quantity = Number(item.quantity);
     let variantId = item.variantId;
-    let productName = item.productName;
-    let variantLabel = item.variantLabel;
 
-    if (!variantId && productName && variantLabel) {
-      const product = await getOrCreateProduct(db, productName);
-      if (item.dimensions && Array.isArray(item.dimensions)) {
-        await addProductDimensions(db, product.id, item.dimensions);
-      }
-      const variant = await getOrCreateVariant(db, product.id, variantLabel, item.attributes);
-      variantId = variant.id;
+    // ── Fix 2: ALL writes (Product/Variant/Dimensions) go into allStatements ──
+    let variantPreflight = null;
+    if (!variantId && item.productName && item.variantLabel) {
+      variantPreflight = await preflightVariant(db, {
+        productName: item.productName,
+        variantLabel: item.variantLabel,
+        dimensions: item.dimensions,
+        attributes: item.attributes,
+      });
+      variantId = variantPreflight.variantId;
+      allStatements.push(...variantPreflight.statements);
     }
 
     const lineId = newInternalId();
-    const description = item.description || (productName ? `${productName} (${variantLabel || ''})` : 'Custom Item');
+    const productName = item.productName || '';
+    const variantLabel = item.variantLabel || '';
+    const description = item.description || (productName ? `${productName} (${variantLabel})` : 'Custom Item');
     const unitNamesJson = item.unitNames && item.unitNames.length ? JSON.stringify(item.unitNames) : null;
 
     allStatements.push(
@@ -297,6 +434,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       ).bind(lineId, orderId, variantId ?? null, description, quantity, unitNamesJson, item.notes ?? null)
     );
 
+    // Determine batch breakdown
     const batchesToCreate = Array.isArray(item.batches) && item.batches.length > 0
       ? item.batches
       : [{ quantity }];
@@ -304,10 +442,22 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     const lineBatches = [];
     let processedUnitsCount = 0;
 
+    // ── Fix 3: Resolve batch numbers atomically, accounting for in-flight count ──
+    // Separate batches into those with explicit numbers vs those needing auto-assignment
+    const needsAutoNumber = batchesToCreate.filter(
+      (b) => !b.batchNumber || !String(b.batchNumber).trim()
+    );
+    const alreadyInFlight = inFlightBatchCounts.get(variantId) || 0;
+    const autoNumbers = variantId
+      ? await nextBatchNumbers(db, variantId, needsAutoNumber.length, alreadyInFlight)
+      : needsAutoNumber.map((_, i) => String(alreadyInFlight + i + 1));
+    let autoNumberIdx = 0;
+
     for (let bIdx = 0; bIdx < batchesToCreate.length; bIdx++) {
       const bSpec = batchesToCreate[bIdx];
-      const bQty = Number(bSpec.quantity || bSpec.plannedQuantity || quantity);
-      const bNum = bSpec.batchNumber ? String(bSpec.batchNumber) : String(bIdx + 1);
+      const bQty = Number(bSpec.quantity ?? bSpec.plannedQuantity ?? quantity);
+      const hasExplicit = bSpec.batchNumber && String(bSpec.batchNumber).trim();
+      const bNum = hasExplicit ? String(bSpec.batchNumber).trim() : autoNumbers[autoNumberIdx++];
       const batchId = newInternalId();
 
       allStatements.push(
@@ -328,48 +478,100 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       lineBatches.push({ batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length });
     }
 
+    // Update in-flight count for this variant
+    inFlightBatchCounts.set(variantId, (inFlightBatchCounts.get(variantId) || 0) + batchesToCreate.length);
+
     createdLines.push({ lineId, description, quantity, batches: lineBatches });
   }
 
+  // ── Single atomic db.batch() -- all or nothing ──
   await db.batch(allStatements);
 
   return { orderId, orderReference: String(orderReference).trim(), customerName: customer.name, lines: createdLines };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// addBatchToOrderLine -- Fix 6: atomic enforcement via DB-level guard.
+// Instead of read-then-write (race condition), we INSERT only if the remaining
+// balance is sufficient, then check D1's `meta.changes` to detect overflow.
+// ─────────────────────────────────────────────────────────────────────────────
 export async function addBatchToOrderLine(db, lineId, { quantity, batchNumber, actor }) {
   const line = await getOrderLine(db, lineId);
   if (!line) return { notFound: true };
   if (!line.variant_id) throw new ValidationError('Cannot create a production batch for an order line without an assigned variant.');
 
+  // ── Fix 5: validate batch quantity ──
   const bQty = Number(quantity);
-  if (!Number.isInteger(bQty) || bQty < 1) throw new ValidationError('Batch quantity must be >= 1.');
+  if (!Number.isInteger(bQty) || bQty < 1) throw new ValidationError('Batch quantity must be a whole number >= 1.');
 
-  const sumRow = await db.prepare('SELECT COALESCE(SUM(planned_quantity), 0) AS totalPlanned FROM production_batches WHERE order_line_id = ?').bind(lineId).first();
-  const existingPlanned = Number(sumRow.totalPlanned);
-  const unallocated = line.quantity_ordered - existingPlanned;
-  if (bQty > unallocated) {
-    throw new ValidationError(`Batch quantity (${bQty}) exceeds unallocated order line balance (${unallocated}).`);
-  }
-
-  const bNum = batchNumber ? String(batchNumber) : await nextBatchNumber(db, line.variant_id);
+  // Resolve batch number safely (reads current DB state)
+  const bNum = batchNumber && String(batchNumber).trim()
+    ? String(batchNumber).trim()
+    : await nextBatchNumberSafe(db, line.variant_id, lineId);
 
   let names = [];
   if (line.unit_names) {
     try {
       const parsed = JSON.parse(line.unit_names);
-      if (Array.isArray(parsed)) names = parsed.slice(existingPlanned, existingPlanned + bQty);
+      if (Array.isArray(parsed)) {
+        const existingSum = line.batches.reduce((s, b) => s + b.planned_quantity, 0);
+        names = parsed.slice(existingSum, existingSum + bQty);
+      }
     } catch {}
   }
 
   const batchId = newInternalId();
-  const batchStmt = db.prepare(
+
+  // ── Fix 6: Atomic guard using conditional INSERT ──
+  // The INSERT only executes if the remaining balance >= bQty.
+  // D1's meta.changes will be 0 if the condition failed.
+  const guardedInsert = db.prepare(
     `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id)
-     VALUES (?, ?, ?, ?, ?)`
-  ).bind(batchId, line.variant_id, bNum, bQty, lineId);
+     SELECT ?, ?, ?, ?, ?
+     WHERE (
+       SELECT COALESCE(SUM(planned_quantity), 0)
+       FROM production_batches
+       WHERE order_line_id = ?
+     ) + ? <= (
+       SELECT quantity_ordered FROM order_lines WHERE id = ?
+     )`
+  ).bind(batchId, line.variant_id, bNum, bQty, lineId, lineId, bQty, lineId);
 
   const { createdUnits, statements: unitStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, names, actor);
 
-  await db.batch([batchStmt, ...unitStmts]);
+  // Run the guarded insert first to check changes, then commit units
+  const guardResult = await db.batch([guardedInsert]);
+  const changes = guardResult[0]?.meta?.changes ?? guardResult[0]?.changes ?? 1;
+  if (changes === 0) {
+    const sumRow = await db
+      .prepare('SELECT COALESCE(SUM(planned_quantity), 0) AS totalPlanned FROM production_batches WHERE order_line_id = ?')
+      .bind(lineId)
+      .first();
+    const existing = Number(sumRow.totalPlanned);
+    const unallocated = line.quantity_ordered - existing;
+    throw new ValidationError(
+      `Batch quantity (${bQty}) exceeds unallocated order line balance (${unallocated}).`
+    );
+  }
+
+  // Batch insert was accepted; now atomically add unit statements
+  if (unitStmts.length > 0) {
+    await db.batch(unitStmts);
+  }
 
   return { batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length };
+}
+
+// nextBatchNumberSafe: reads current DB state plus the current lineId's
+// in-progress batches (none, since this is addBatchToOrderLine -- sequential
+// calls, not bulk). Returns the next free number as a string.
+async function nextBatchNumberSafe(db, variantId) {
+  const { results: existing } = await db
+    .prepare('SELECT batch_number FROM production_batches WHERE variant_id = ?')
+    .bind(variantId)
+    .all();
+  const used = new Set(existing.map((r) => String(r.batch_number)));
+  let n = 1;
+  while (used.has(String(n))) n++;
+  return String(n);
 }

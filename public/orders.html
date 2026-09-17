@@ -8,7 +8,7 @@
     .mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
     .mode-tab { padding: 8px 16px; border: 1px solid var(--border); background: #f8fafc; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
     .mode-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
-    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr auto; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; }
+    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr 1.5fr auto; gap: 8px; align-items: start; margin-bottom: 8px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; }
     .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     .badge-ok { background: #dcfce7; color: #166534; }
     .badge-partial { background: #fef3c7; color: #92400e; }
@@ -171,6 +171,12 @@
           </label>
         </div>
         <div>
+          <label style="font-size:11px;">Fasa Batch (Pilihan)
+            <input type="text" data-field="batchSplit" placeholder="cth: 500, 500  (atau kosong = jana semua)" style="font-size:12px;">
+            <small style="color:#64748b;font-size:10px;display:block;margin-top:2px;">Kosong = jana semua sekarang. Isi cth. <em>300, 200</em> untuk 2 fasa.</small>
+          </label>
+        </div>
+        <div>
           <button type="button" class="secondary" onclick="document.getElementById('${rowId}').remove()" style="color:red; font-size:11px; padding:3px 6px;">✕</button>
         </div>
       `;
@@ -238,13 +244,39 @@
               attachBadge = `<span class="status-badge badge-partial">${l.units_attached}/${l.units_generated} Attached</span>`;
             }
 
+            // Stage 3: Packing (units_packed vs shipment_planned for active shipments)
+            let packBadge = '';
+            if (l.units_generated === 0) {
+              packBadge = `<span class="muted" style="font-size:11px;">Belum ada label</span>`;
+            } else if (l.shipment_planned > 0) {
+              if (l.units_packed >= l.shipment_planned) {
+                packBadge = `<span class="status-badge badge-ok">${l.units_packed}/${l.shipment_planned} Packed (Siap)</span>`;
+              } else {
+                packBadge = `<span class="status-badge badge-partial">${l.units_packed}/${l.shipment_planned} Packed</span>`;
+              }
+            } else {
+              packBadge = `<span class="muted" style="font-size:11px;">${l.units_packed} packed (tiada shipment aktif)</span>`;
+            }
+
+            // Stage 4: Dispatched (units_dispatched vs units_generated)
+            let dispBadge = '';
+            if (l.units_generated === 0) {
+              dispBadge = `<span class="muted" style="font-size:11px;">Belum ada label</span>`;
+            } else if (l.units_dispatched === l.units_generated) {
+              dispBadge = `<span class="status-badge badge-ok">${l.units_dispatched}/${l.units_generated} Dihantar (Selesai)</span>`;
+            } else if (l.units_dispatched > 0) {
+              dispBadge = `<span class="status-badge badge-partial">${l.units_dispatched}/${l.units_generated} Dihantar</span>`;
+            } else {
+              dispBadge = `<span class="muted" style="font-size:11px;">0/${l.units_generated} belum dihantar</span>`;
+            }
+
             return `<tr>
               <td>${label}</td>
               <td>${l.quantity_ordered}</td>
               <td>${genBadge}</td>
               <td>${attachBadge}</td>
-              <td>${l.units_packed}</td>
-              <td>${l.units_dispatched}</td>
+              <td>${packBadge}</td>
+              <td>${dispBadge}</td>
             </tr>`;
           }).join('');
 
@@ -292,9 +324,27 @@
           const quantity = Number(row.querySelector('[data-field=quantity]').value);
           const rawNames = row.querySelector('[data-field=unitNames]').value.trim();
           const unitNames = rawNames ? rawNames.split(',').map(s => s.trim()).filter(Boolean) : [];
+          const rawBatchSplit = row.querySelector('[data-field=batchSplit]').value.trim();
 
           if (!productName || !variantLabel || !quantity) return;
-          items.push({ productName, variantLabel, quantity, unitNames });
+
+          // Parse batch split: "500, 500" -> [{quantity:500},{quantity:500}]
+          // Empty / blank -> null (server generates single batch for full quantity)
+          let batches = null;
+          if (rawBatchSplit) {
+            const splitParts = rawBatchSplit.split(',').map(s => s.trim()).filter(Boolean);
+            const parsed = splitParts.map(s => parseInt(s, 10));
+            if (parsed.some(n => !Number.isInteger(n) || n < 1)) {
+              throw new Error(`Fasa batch tidak sah untuk "${productName} ${variantLabel}": "${rawBatchSplit}". Sila masukkan nombor bulat positif dipisah koma.`);
+            }
+            const splitSum = parsed.reduce((a, b) => a + b, 0);
+            if (splitSum > quantity) {
+              throw new Error(`Jumlah fasa batch (${splitSum}) melebihi kuantiti order (${quantity}) untuk "${productName} ${variantLabel}".`);
+            }
+            batches = parsed.map(q => ({ quantity: q }));
+          }
+
+          items.push({ productName, variantLabel, quantity, unitNames, batches });
         });
 
         if (!items.length) throw new Error('Sila isi maklumat item dengan lengkap.');
