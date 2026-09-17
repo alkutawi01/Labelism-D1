@@ -22,9 +22,12 @@
 //           "label": "Saiz M",
 //           "quantity": 500,
 //           "unitNames": ["Ahmad", ...],  // optional, 1-to-1 recipient names
-//           "batches": [                  // optional phased breakdown
+//           "batches": [                  // optional phased/grouped breakdown
 //             { "quantity": 300 },
-//             { "quantity": 200 }
+//             { "quantity": 200, "batchNumber": "SK Sekolah A" }  // batchNumber
+//               // is a free-text name, not just a sequence number -- use it
+//               // to label a batch by recipient group (e.g. one batch per
+//               // school in a bulk order), not only by print phase.
 //           ]
 //         }
 //       ]
@@ -138,7 +141,29 @@ export function normalizeManifest(raw) {
             throw new ValidationError(`${vwhere}.batches[${bIdx}].quantity must be a whole number >= 1.`);
           }
           batchSum += bqty;
-          return { quantity: bqty };
+          // batchNumber doubles as a batch NAME (e.g. a school name for a
+          // KEMAS-style order split across 100 recipients), not just a
+          // sequence number -- orders.js's createOrderWithLabels already
+          // accepts arbitrary strings here, this was just being dropped on
+          // the way in from the AI-generated manifest.
+          let batchNumber;
+          if (b.batchNumber !== undefined && b.batchNumber !== null) {
+            batchNumber = String(b.batchNumber).trim();
+            if (!batchNumber) throw new ValidationError(`${vwhere}.batches[${bIdx}].batchNumber must be a non-empty string if provided.`);
+          }
+          let batchUnitNames;
+          if (b.unitNames !== undefined) {
+            if (!Array.isArray(b.unitNames)) throw new ValidationError(`${vwhere}.batches[${bIdx}].unitNames must be an array of strings.`);
+            batchUnitNames = b.unitNames.map((n) => String(n).trim()).filter(Boolean);
+            if (batchUnitNames.length > bqty) {
+              throw new ValidationError(`${vwhere}.batches[${bIdx}].unitNames has ${batchUnitNames.length} name(s) but this batch's quantity is only ${bqty}.`);
+            }
+          }
+          return {
+            quantity: bqty,
+            ...(batchNumber ? { batchNumber } : {}),
+            ...(batchUnitNames ? { unitNames: batchUnitNames } : {}),
+          };
         });
         if (batchSum > quantity) {
           throw new ValidationError(

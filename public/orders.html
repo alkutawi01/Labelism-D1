@@ -104,7 +104,7 @@
     <div class="ai-section">
       <h3 style="margin:0 0 12px 0; font-size:16px;">Langkah 1: Salin Prompt untuk AI</h3>
       <p class="muted" style="font-size:14px; margin-bottom:12px;">Gunakan prompt ini dengan AI untuk menghasilkan JSON tempahan standard.</p>
-      <textarea id="ai-prompt" rows="6" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;">Sila hasilkan JSON tempahan dengan format berikut:
+      <textarea id="ai-prompt" rows="12" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;">Sila hasilkan JSON tempahan dengan format berikut:
 {
   "customerName": "Nama Pelanggan",
   "orderReference": "No. Rujukan/Invoice",
@@ -117,7 +117,14 @@
       ]
     }
   ]
-}</textarea>
+}
+
+Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchNumber" sebagai nama kumpulan, bukan nombor:
+        { "label": "Saiz M", "quantity": 100, "batches": [
+            { "quantity": 10, "batchNumber": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
+            { "quantity": 10, "batchNumber": "SK Sekolah B", "unitNames": ["Chong", ...] }
+        ] }
+Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.</textarea>
       <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin-top:12px; font-size:14px; padding:12px 20px;">📋 Salin Prompt</button>
     </div>
 
@@ -583,7 +590,23 @@
             if (p.variants && p.variants.length) {
               p.variants.forEach((v) => {
                 totalQty += v.quantity || 0;
-                itemsHtml += `<tr><td>${p.name} - ${v.label}</td><td>${v.quantity || 0} unit${v.unitNames ? ' (' + v.unitNames.join(', ') + ')' : ''}</td></tr>`;
+                const namesSummary = (names) => !names || !names.length ? ''
+                  : names.length <= 6 ? ' (' + names.join(', ') + ')'
+                  : ` (${names.slice(0, 6).join(', ')}, +${names.length - 6} lagi)`;
+                itemsHtml += `<tr><td>${p.name} - ${v.label}</td><td>${v.quantity || 0} unit${namesSummary(v.unitNames)}</td></tr>`;
+                // Batches double as recipient groups (e.g. one batch per
+                // school) -- show the breakdown so Izzat can sanity-check a
+                // 100-school split BEFORE confirming, not after.
+                if (Array.isArray(v.batches) && v.batches.length) {
+                  v.batches.forEach((b, bIdx) => {
+                    const label = b.batchNumber ? b.batchNumber : `Batch ${bIdx + 1}`;
+                    itemsHtml += `<tr><td style="padding-left:24px;color:#64748b">↳ ${label}</td><td>${b.quantity} unit${namesSummary(b.unitNames)}</td></tr>`;
+                  });
+                  const batchSum = v.batches.reduce((s, b) => s + (b.quantity || 0), 0);
+                  if (batchSum < v.quantity) {
+                    itemsHtml += `<tr><td style="padding-left:24px;color:#92400e">↳ Baki belum dibatch</td><td>${v.quantity - batchSum} unit</td></tr>`;
+                  }
+                }
               });
             }
           });

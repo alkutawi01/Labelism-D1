@@ -369,6 +369,16 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
           const bn = String(b.batchNumber).trim();
           if (!bn) throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchNumber must be a non-empty string if provided.`);
         }
+        if (b.unitNames !== undefined) {
+          if (!Array.isArray(b.unitNames)) {
+            throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: unitNames must be an array of strings.`);
+          }
+          if (b.unitNames.length > bqty) {
+            throw new ValidationError(
+              `items[${iIdx}].batches[${bIdx}]: unitNames has ${b.unitNames.length} name(s) but this batch's quantity is only ${bqty}.`
+            );
+          }
+        }
         batchSum += bqty;
       }
       if (batchSum > quantity) {
@@ -480,10 +490,17 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
         ).bind(batchId, variantId, bNum, bQty, lineId)
       );
 
-      const batchUnitNames = Array.isArray(item.unitNames)
+      // Per-batch unitNames (e.g. each batch is one school's named
+      // students) takes priority when given -- more explicit and less
+      // error-prone for an AI-generated manifest than relying on positional
+      // slicing across one flat list in the same order as the batches.
+      // Falls back to that slicing for backward compatibility.
+      const batchUnitNames = Array.isArray(bSpec.unitNames)
+        ? bSpec.unitNames
+        : Array.isArray(item.unitNames)
         ? item.unitNames.slice(processedUnitsCount, processedUnitsCount + bQty)
         : [];
-      processedUnitsCount += bQty;
+      if (!Array.isArray(bSpec.unitNames)) processedUnitsCount += bQty;
 
       const { createdUnits, statements: uStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, batchUnitNames, actor);
       allStatements.push(...uStmts);
