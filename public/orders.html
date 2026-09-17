@@ -188,7 +188,7 @@
         <div class="value" id="sum-batches" style="font-size:20px;">-</div>
       </div>
     </div>
-    <a href="/print.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:12px;">🖨️ Terus ke Cetak &amp; Tampal</a>
+    <a href="/label.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:12px;">🖨️ Terus ke Cetak &amp; Tampal</a>
   </div>
 
   <div id="form-result" style="margin-top:20px;"></div>
@@ -303,14 +303,9 @@
         <tr id="reconcile-row-${o.id}" hidden><td colspan="5" id="reconcile-${o.id}"></td></tr>
       `).join('');
 
-      body.querySelectorAll('button[data-reconcile]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const orderId = btn.dataset.reconcile;
-          const row = document.getElementById(`reconcile-row-${orderId}`);
-          if (!row.hidden) { row.hidden = true; return; }
+      async function renderReconciliation(orderId) {
           const cell = document.getElementById(`reconcile-${orderId}`);
           cell.innerHTML = '<span class="muted">Loading…</span>';
-          row.hidden = false;
           const data = await fetch(`/api/orders/${orderId}/reconciliation`).then(r => r.json());
           if (data.error) { cell.innerHTML = `<div class="msg error">${data.error}</div>`; return; }
           
@@ -322,7 +317,9 @@
             if (l.units_generated === l.quantity_ordered) {
               genBadge = `<span class="status-badge badge-ok">${l.units_generated}/${l.quantity_ordered} Generated (100%)</span>`;
             } else if (l.units_generated < l.quantity_ordered) {
-              genBadge = `<span class="status-badge badge-partial">${l.units_generated}/${l.quantity_ordered} Generated (Baki ${l.quantity_ordered - l.units_generated} belum dijana)</span>`;
+              const remaining = l.quantity_ordered - l.units_generated;
+              genBadge = `<span class="status-badge badge-partial">${l.units_generated}/${l.quantity_ordered} Generated (Baki ${remaining} belum dijana)</span>
+                <button type="button" class="secondary" data-add-batch="${l.order_line_id}" data-remaining="${remaining}" style="font-size:11px;padding:2px 8px;margin-left:6px">+ Tambah Batch</button>`;
             } else {
               genBadge = `<span class="status-badge badge-error">${l.units_generated}/${l.quantity_ordered} Mismatch!</span>`;
             }
@@ -382,6 +379,37 @@
                 <td>${data.totals.attached} ditampal</td><td>${data.totals.packed} dipack</td><td>${data.totals.dispatched} dihantar</td>
               </tr></tfoot>
             </table>`;
+
+          cell.querySelectorAll('button[data-add-batch]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const lineId = btn.dataset.addBatch;
+              const remaining = Number(btn.dataset.remaining);
+              const qtyStr = prompt(`Berapa unit untuk batch seterusnya? (baki: ${remaining})`, String(remaining));
+              if (!qtyStr) return;
+              const qty = parseInt(qtyStr, 10);
+              if (!Number.isInteger(qty) || qty < 1 || qty > remaining) {
+                alert(`Kuantiti mesti nombor bulat antara 1 dan ${remaining}.`);
+                return;
+              }
+              const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
+              const res = await fetch(`/api/order-lines/${lineId}/batches`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantity: qty, actor }),
+              }).then(r => r.json());
+              if (res.error) { alert(res.error); return; }
+              renderReconciliation(orderId);
+            });
+          });
+      }
+
+      body.querySelectorAll('button[data-reconcile]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const orderId = btn.dataset.reconcile;
+          const row = document.getElementById(`reconcile-row-${orderId}`);
+          if (!row.hidden) { row.hidden = true; return; }
+          row.hidden = false;
+          renderReconciliation(orderId);
         });
       });
     }
@@ -410,6 +438,18 @@
         const itemRows = document.querySelectorAll('.item-row');
         if (!itemRows.length) throw new Error('Sila tambah sekurang-kurangnya 1 item pakaian.');
 
+        // Batch phasing is chosen once for the whole order (the "Pilihan Batch
+        // Label" radio group above), not per item -- a per-item text field
+        // used to exist here but was never rendered by addItemRow(), so this
+        // always crashed on submit. Baki (remaining) quantity is added later
+        // via the "+ Tambah Batch" button in Senarai Tempahan once this first
+        // phase's labels are confirmed attached.
+        const isPartialBatch = document.getElementById('batch-partial').checked;
+        const partialQty = isPartialBatch ? Number(document.getElementById('partial-qty').value) : null;
+        if (isPartialBatch && (!partialQty || partialQty < 1)) {
+          throw new Error('Sila masukkan kuantiti label untuk fasa pertama.');
+        }
+
         const items = [];
         itemRows.forEach((row) => {
           const productName = row.querySelector('[data-field=productName]').value.trim();
@@ -417,24 +457,15 @@
           const quantity = Number(row.querySelector('[data-field=quantity]').value);
           const rawNames = row.querySelector('[data-field=unitNames]').value.trim();
           const unitNames = rawNames ? rawNames.split(',').map(s => s.trim()).filter(Boolean) : [];
-          const rawBatchSplit = row.querySelector('[data-field=batchSplit]').value.trim();
 
           if (!productName || !variantLabel || !quantity) return;
 
-          // Parse batch split: "500, 500" -> [{quantity:500},{quantity:500}]
-          // Empty / blank -> null (server generates single batch for full quantity)
           let batches = null;
-          if (rawBatchSplit) {
-            const splitParts = rawBatchSplit.split(',').map(s => s.trim()).filter(Boolean);
-            const parsed = splitParts.map(s => parseInt(s, 10));
-            if (parsed.some(n => !Number.isInteger(n) || n < 1)) {
-              throw new Error(`Fasa batch tidak sah untuk "${productName} ${variantLabel}": "${rawBatchSplit}". Sila masukkan nombor bulat positif dipisah koma.`);
+          if (isPartialBatch) {
+            if (partialQty > quantity) {
+              throw new Error(`Kuantiti fasa pertama (${partialQty}) melebihi kuantiti order (${quantity}) untuk "${productName} ${variantLabel}".`);
             }
-            const splitSum = parsed.reduce((a, b) => a + b, 0);
-            if (splitSum > quantity) {
-              throw new Error(`Jumlah fasa batch (${splitSum}) melebihi kuantiti order (${quantity}) untuk "${productName} ${variantLabel}".`);
-            }
-            batches = parsed.map(q => ({ quantity: q }));
+            batches = [{ quantity: partialQty }];
           }
 
           items.push({ productName, variantLabel, quantity, unitNames, batches });
