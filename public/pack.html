@@ -1,62 +1,61 @@
 <!doctype html>
-<html lang="en">
+<html lang="ms">
 <head>
   <meta charset="utf-8">
-  <title>Pack &amp; Ship — Labelism</title>
+  <title>Scan Packing — Labelism</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    .packing-intro { max-width: 760px; font-size: 15px; line-height: 1.55; }
+    .start-card { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .start-card button { font-size: 17px; padding: 12px 18px; }
+    .scan-box { border: 2px solid var(--navy); border-radius: 10px; padding: 18px; margin-top: 20px; }
+    .scan-box input { font-size: 20px; padding: 13px; }
+    .scan-box button[type="submit"] { font-size: 17px; padding: 12px 18px; }
+  </style>
 </head>
 <body>
   <div class="page">
   <header class="page-header">
-    <h1>Pack &amp; Ship</h1>
-    <p class="muted">Scan units into a shipment to confirm an order is fulfilled correctly -- this is a different check from Stocktake (which confirms warehouse presence, not customer fulfillment).</p>
+    <h1>Scan Masa Packing</h1>
+    <p class="muted packing-intro">Pilih tempahan yang sedang dibungkus, kemudian scan setiap label. Sistem akan terus menunjukkan berapa unit sudah discan dan berapa yang masih kurang.</p>
   </header>
 
   <fieldset>
-    <legend>Order Line</legend>
-    <p class="muted" style="margin-top:-4px">Find it the way you'd find a physical document: customer, then invoice, then the production batch (delivery order) to ship.</p>
+    <legend>1. Pilih Tempahan untuk Packing</legend>
     <label>Customer
-      <select id="customer-select"><option value="">Loading…</option></select>
+      <select id="customer-select"><option value="">Memuatkan…</option></select>
     </label>
-    <label>Invoice (order)
-      <select id="invoice-select"><option value="">Select a customer first</option></select>
+    <label>No. Tempahan / Invois
+      <select id="invoice-select"><option value="">Pilih customer dahulu</option></select>
     </label>
-    <label>Delivery order (production batch)
-      <select id="batch-select"><option value="">Select an invoice first</option></select>
+    <label>Batch / Produk
+      <select id="batch-select"><option value="">Pilih tempahan dahulu</option></select>
     </label>
     <div id="order-rollup" class="muted"></div>
+    <div class="start-card">
+      <div id="selected-batch-summary" class="muted">Pilih tempahan dan batch dahulu.</div>
+      <button type="button" id="start-packing-btn" disabled>Mula Scan Packing</button>
+    </div>
     <div id="existing-shipments" class="muted"></div>
-  </fieldset>
-
-  <fieldset>
-    <legend>New Shipment</legend>
-    <form id="shipment-form">
-      <label>Reference
-        <input name="reference" required placeholder="e.g. Shipment 1">
-      </label>
-      <label>Planned quantity for this shipment
-        <input name="plannedQuantity" type="number" min="1" required placeholder="e.g. 60">
-      </label>
-      <button type="submit">Open Shipment</button>
-    </form>
   </fieldset>
 
   <div id="shipment-result"></div>
 
-  <fieldset id="scan-section" hidden>
-    <legend>Scan Units</legend>
+  <fieldset id="scan-section" class="scan-box" hidden>
+    <legend>2. Scan Semua Label</legend>
     <div class="stats" id="shipment-stats">
-      <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Planned</div></div>
-      <div class="stat"><div class="value" id="s-packed">0</div><div class="label">Packed</div></div>
+      <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Sepatutnya</div></div>
+      <div class="stat"><div class="value" id="s-packed">0</div><div class="label">Sudah Discan</div></div>
+      <div class="stat"><div class="value" id="s-missing">0</div><div class="label">Masih Kurang</div></div>
     </div>
     <form id="scan-form">
-      <label>Scan / enter code
-        <input name="code" autofocus placeholder="000001">
+      <label>Scan label pada unit yang sedang dimasukkan ke dalam bungkusan
+        <input name="code" autofocus autocomplete="off" placeholder="Imbas QR di sini…" required>
       </label>
-      <button type="submit">Record Scan</button>
+      <button type="submit">Scan Label untuk Packing</button>
     </form>
     <div id="scan-result"></div>
-    <button id="close-btn" class="secondary" style="margin-top:16px">Close Shipment</button>
+    <button id="close-btn" class="secondary" style="margin-top:16px">Selesai Packing &amp; Semak Kekurangan</button>
     <div id="close-result"></div>
   </fieldset>
   </div>
@@ -65,6 +64,8 @@
   <script>
     let currentShipmentId = null;
     let currentOrderLineId = null;
+    let currentBatchId = null;
+    let currentPackingQuantity = 0;
     let linesById = new Map();
     let ordersCache = [];
     let batchesCache = [];
@@ -87,10 +88,10 @@
       }
       const select = document.getElementById('customer-select');
       if (!customersById.size) {
-        select.innerHTML = '<option value="">No orders yet -- create one in Orders</option>';
+        select.innerHTML = '<option value="">Belum ada tempahan</option>';
         return;
       }
-      select.innerHTML = '<option value="">Select a customer…</option>' +
+      select.innerHTML = '<option value="">Pilih customer…</option>' +
         [...customersById.entries()].map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
     }
 
@@ -98,16 +99,20 @@
       const customerId = document.getElementById('customer-select').value;
       const select = document.getElementById('invoice-select');
       resetBatchOptions();
-      if (!customerId) { select.innerHTML = '<option value="">Select a customer first</option>'; return; }
+      if (!customerId) { select.innerHTML = '<option value="">Pilih customer dahulu</option>'; return; }
       const orders = ordersCache.filter((o) => o.customer_id === customerId);
       select.innerHTML = orders.length
-        ? '<option value="">Select an invoice…</option>' + orders.map((o) => `<option value="${o.id}">${o.order_reference}</option>`).join('')
-        : '<option value="">No invoices for this customer</option>';
+        ? '<option value="">Pilih tempahan…</option>' + orders.map((o) => `<option value="${o.id}">${o.order_reference}</option>`).join('')
+        : '<option value="">Tiada tempahan untuk customer ini</option>';
     }
 
     function resetBatchOptions() {
-      document.getElementById('batch-select').innerHTML = '<option value="">Select an invoice first</option>';
+      document.getElementById('batch-select').innerHTML = '<option value="">Pilih tempahan dahulu</option>';
       currentOrderLineId = null;
+      currentBatchId = null;
+      currentPackingQuantity = 0;
+      document.getElementById('start-packing-btn').disabled = true;
+      document.getElementById('selected-batch-summary').textContent = 'Pilih tempahan dan batch dahulu.';
       loadExistingShipments();
     }
 
@@ -115,21 +120,31 @@
       const orderId = document.getElementById('invoice-select').value;
       const select = document.getElementById('batch-select');
       currentOrderLineId = null;
-      if (!orderId) { select.innerHTML = '<option value="">Select an invoice first</option>'; loadExistingShipments(); return; }
+      currentBatchId = null;
+      currentPackingQuantity = 0;
+      if (!orderId) { select.innerHTML = '<option value="">Pilih tempahan dahulu</option>'; loadExistingShipments(); return; }
       if (!batchesCache.length) batchesCache = await fetch('/api/production-batches').then(r => r.json());
       const batches = batchesCache.filter((b) => b.order_id === orderId);
       select.innerHTML = batches.length
-        ? '<option value="">Select a delivery order…</option>' + batches.map((b) =>
-            `<option value="${b.order_line_id}">${b.product_name} · ${b.variant_label} · Batch ${b.batch_number} (${b.registered_count}/${b.planned_quantity} registered)</option>`
+        ? '<option value="">Pilih batch…</option>' + batches.map((b) =>
+            `<option value="${b.id}">${b.product_name} · ${b.variant_label} · Batch ${b.batch_number} · ${b.registered_count} label</option>`
           ).join('')
-        : '<option value="">No production batches yet for this invoice</option>';
+        : '<option value="">Belum ada batch untuk tempahan ini</option>';
       loadExistingShipments();
     }
 
     document.getElementById('customer-select').addEventListener('change', updateInvoiceOptions);
     document.getElementById('invoice-select').addEventListener('change', updateBatchOptions);
     document.getElementById('batch-select').addEventListener('change', () => {
-      currentOrderLineId = document.getElementById('batch-select').value || null;
+      currentBatchId = document.getElementById('batch-select').value || null;
+      const batch = batchesCache.find((b) => b.id === currentBatchId);
+      currentOrderLineId = batch?.order_line_id || null;
+      currentPackingQuantity = Number(batch?.registered_count || 0);
+      const startButton = document.getElementById('start-packing-btn');
+      startButton.disabled = !batch;
+      document.getElementById('selected-batch-summary').textContent = batch
+        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · Batch ${batch.batch_number}`
+        : 'Pilih tempahan dan batch dahulu.';
       loadExistingShipments();
     });
 
@@ -165,7 +180,14 @@
       // packed-not-dispatched, and dispatched.
       const dispatchedTotal = rows.filter((s) => s.status === 'DISPATCHED').reduce((sum, s) => sum + s.scanned_count, 0);
       const packedNotDispatched = packedTotal - dispatchedTotal;
-      rollupEl.textContent = `Ordered: ${line.quantity_ordered} · Packed: ${packedTotal} (${dispatchedTotal} dispatched, ${packedNotDispatched} packed but not yet dispatched) · Remaining to pack: ${Math.max(0, line.quantity_ordered - packedTotal)}`;
+      rollupEl.textContent = `Ditempah: ${line.quantity_ordered} · Sudah discan untuk packing: ${packedTotal} · Baki: ${Math.max(0, line.quantity_ordered - packedTotal)}`;
+      const batch = batchesCache.find((item) => item.id === currentBatchId);
+      const remainingForLine = Math.max(0, Number(line.quantity_ordered) - packedTotal);
+      currentPackingQuantity = Math.min(Number(batch?.registered_count || 0), remainingForLine);
+      document.getElementById('start-packing-btn').disabled = currentPackingQuantity < 1;
+      document.getElementById('selected-batch-summary').textContent = batch
+        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · Batch ${batch.batch_number} · Baki untuk scan sekarang: ${currentPackingQuantity}`
+        : 'Pilih tempahan dan batch dahulu.';
       // Same staleness applied to each shipment's own row (e.g. "Shipment 1
       // (OPEN, 1/60)" frozen while the live scan count was already at 2) --
       // update it in place rather than re-rendering the whole list, which
@@ -183,8 +205,8 @@
     // found the destination typed at dispatch was recorded per-unit only,
     // never surfaced at the shipment level at all.
     function shipmentRowLabel(s) {
-      const base = `${s.reference} (${s.status}, ${s.scanned_count}/${s.planned_quantity})`;
-      return s.status === 'DISPATCHED' && s.destination_name ? `${base} → ${s.destination_name}` : base;
+      const status = s.status === 'OPEN' ? 'Sedang Packing' : s.status === 'CLOSED' ? 'Selesai' : s.status;
+      return `${s.reference} · ${status} · ${s.scanned_count}/${s.planned_quantity} discan`;
     }
 
     async function loadExistingShipments() {
@@ -196,83 +218,56 @@
       const line = linesById.get(lineId);
       const rows = await refreshOrderRollup(lineId);
       if (!rows.length) {
-        el.innerHTML = 'No shipments yet for this line.';
+        el.innerHTML = '';
         return;
       }
       el.innerHTML = rows.map((s) => `
         <div style="margin:4px 0">
           <span id="shipment-row-label-${s.id}">${shipmentRowLabel(s)}</span>
-          ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
-          ${s.status === 'CLOSED' ? ` <button type="button" class="secondary" data-dispatch-open="${s.id}" style="padding:2px 8px;font-size:12px">Dispatch</button>` : ''}
-          <div class="dispatch-form" id="dispatch-form-${s.id}" hidden style="margin-top:4px">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">Dispatching <strong>${s.reference}</strong> (${s.scanned_count} units) for <strong>${line.customerName}</strong> — ${line.orderRef}. Double-check the destination below before confirming.</div>
-            <input type="text" placeholder="Destination (e.g. Customer -- School ABC)" data-dispatch-location="${s.id}" style="font-size:12px;padding:4px">
-            <button type="button" data-dispatch-confirm="${s.id}" style="padding:2px 8px;font-size:12px">Confirm Dispatch</button>
-          </div>
+          ${s.status === 'OPEN' ? ` <button type="button" data-resume="${s.id}" style="padding:5px 10px;font-size:12px">Sambung Scan</button>` : ''}
         </div>
       `).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
         btn.addEventListener('click', () => resumeShipment(btn.dataset.resume));
-      });
-      // Dispatch is deliberately its own step, separate from Close --
-      // Field Simulation P4 found closing a shipment never actually moved
-      // units anywhere, so "closed" and "left the building" need to stay
-      // distinguishable (a closed-but-undispatched shipment is real and
-      // common: packed today, courier picks up tomorrow).
-      el.querySelectorAll('button[data-dispatch-open]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          document.getElementById(`dispatch-form-${btn.dataset.dispatchOpen}`).hidden = false;
-        });
-      });
-      el.querySelectorAll('button[data-dispatch-confirm]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const shipmentId = btn.dataset.dispatchConfirm;
-          const locationName = el.querySelector(`[data-dispatch-location="${shipmentId}"]`).value.trim();
-          if (!locationName) return;
-          const res = await fetch(`/api/shipments/${shipmentId}/dispatch`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ locationName, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
-          }).then(r => r.json());
-          if (res.error) {
-            el.querySelector(`#dispatch-form-${shipmentId}`).insertAdjacentHTML('beforeend', `<div class="msg error">${res.error}</div>`);
-            return;
-          }
-          loadExistingShipments();
-        });
       });
     }
     async function resumeShipment(shipmentId) {
       const shipment = await fetch(`/api/shipments/${shipmentId}`).then(r => r.json());
       if (shipment.error) return;
       currentShipmentId = shipmentId;
-      document.getElementById('shipment-result').innerHTML = `<div class="msg ok">Resumed shipment "${shipment.reference}".</div>`;
+      document.getElementById('shipment-result').innerHTML = `<div class="msg ok">Sambung packing “${shipment.reference}”. Scan semua label di bawah.</div>`;
       document.getElementById('scan-section').hidden = false;
       document.getElementById('s-planned').textContent = shipment.planned_quantity;
       document.getElementById('s-packed').textContent = shipment.scannedCount;
+      document.getElementById('s-missing').textContent = Math.max(0, shipment.planned_quantity - shipment.scannedCount);
       document.getElementById('scan-result').innerHTML = '';
       document.getElementById('close-result').innerHTML = '';
+      document.querySelector('#scan-form input[name="code"]').focus();
     }
 
-    document.getElementById('shipment-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    document.getElementById('start-packing-btn').addEventListener('click', async () => {
       const result = document.getElementById('shipment-result');
       result.innerHTML = '';
       try {
         const orderLineId = currentOrderLineId;
-        if (!orderLineId) throw new Error('Select a customer, invoice, and delivery order first.');
-        const data = Object.fromEntries(new FormData(e.target));
+        const batch = batchesCache.find((b) => b.id === currentBatchId);
+        if (!orderLineId || !batch) throw new Error('Pilih customer, tempahan dan batch dahulu.');
+        const plannedQuantity = currentPackingQuantity;
+        if (!plannedQuantity) throw new Error('Batch ini belum mempunyai label untuk discan.');
+        const reference = `Packing ${batch.order_reference} · Batch ${batch.batch_number}`;
         const shipment = await fetch('/api/shipments', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderLineId, reference: data.reference, plannedQuantity: Number(data.plannedQuantity) }),
+          body: JSON.stringify({ orderLineId, reference, plannedQuantity }),
         }).then(r => r.json());
         if (shipment.error) throw new Error(shipment.error);
 
         currentShipmentId = shipment.id;
-        result.innerHTML = `<div class="msg ok">Shipment "${shipment.reference}" opened.</div>`;
+        result.innerHTML = `<div class="msg ok">Packing dimulakan. Scan kesemua ${shipment.plannedQuantity} label.</div>`;
         document.getElementById('scan-section').hidden = false;
         document.getElementById('s-planned').textContent = shipment.plannedQuantity;
         document.getElementById('s-packed').textContent = 0;
-        e.target.reset();
+        document.getElementById('s-missing').textContent = shipment.plannedQuantity;
+        document.querySelector('#scan-form input[name="code"]').focus();
       } catch (err) {
         result.innerHTML = `<div class="msg error">${err.message}</div>`;
       }
@@ -302,13 +297,14 @@
           // acknowledged boundary, not a bug to fix) -- so the wording
           // has to carry the ambiguity instead, prompting a human check
           // rather than a passive "already scanned = safe to ignore."
-          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' -- this code is already packed in this shipment. If you are holding a DIFFERENT physical item, its label may be a duplicate/counterfeit -- stop and check before continuing.' : ' -- packed'}</div>`;
+          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${res.humanCode} · ${res.product}${res.alreadyScanned ? ' — label ini sudah discan untuk packing. Jika ini unit fizikal yang berlainan, hentikan proses dan semak label pendua.' : ' — berjaya discan'}</div>`;
           const shipment = await fetch(`/api/shipments/${currentShipmentId}`).then(r => r.json());
           document.getElementById('s-packed').textContent = shipment.scannedCount;
+          document.getElementById('s-missing').textContent = Math.max(0, shipment.planned_quantity - shipment.scannedCount);
           if (!res.alreadyScanned) refreshOrderRollup(currentOrderLineId);
         }
       } catch (err) {
-        result.innerHTML = `<div class="msg error">Could not reach the server (${err.message}).</div>`;
+        result.innerHTML = `<div class="msg error">Tidak dapat menghubungi server (${err.message}).</div>`;
       }
       form.reset();
       form.code.focus();
@@ -331,14 +327,14 @@
       // more is unaccounted for than really is.
       const missingDetail = res.missing > 0
         ? res.missingUnitsUncertain
-          ? ` -- can't pinpoint which specific unit(s) yet: more units are on hand awaiting a shipment than are missing here, so some may simply be reserved for a later shipment. Check Reconciliation for the full picture.`
+          ? ` — unit tertentu belum dapat dikenal pasti kerana terdapat unit lain yang mungkin untuk batch penghantaran seterusnya.`
           : res.missingUnits && res.missingUnits.length
-          ? ` -- unit(s) ${res.missingUnits.join(', ')} never came back`
+          ? ` — label unit ${res.missingUnits.join(', ')} tidak discan`
           : ''
         : '';
       const message = res.error
         ? `<div class="msg error">${res.error}</div>`
-        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Closed. Planned ${res.plannedQuantity}, packed ${res.packedCount}${res.missing > 0 ? `, MISSING ${res.missing}${missingDetail}` : ''}.</div>`;
+        : `<div class="msg ${res.missing > 0 ? 'error' : 'ok'}">Packing selesai. Sepatutnya ${res.plannedQuantity}, discan ${res.packedCount}${res.missing > 0 ? `, MASIH KURANG ${res.missing}${missingDetail}` : ' — semua unit cukup'}.</div>`;
       document.getElementById('close-result').innerHTML = message;
       if (!res.error) {
         // O5 finding: loadExistingShipments() hides the whole scan-section

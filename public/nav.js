@@ -26,18 +26,13 @@
   }
   window.LabelismIcon = icon;
 
-  // Navigation restructure: Main navigation shows three core menus for daily
-  // operations. All other menus moved to Legacy/Admin section.
+  // The daily workflow is deliberately the whole navigation. Secondary
+  // modules may remain in the codebase, but they are not part of the
+  // operator journey: order -> attach labels -> scan every unit at packing.
   const LINKS = [
     { href: '/orders.html', label: 'Tempahan & Label', icon: 'bag' },
     { href: '/label.html', label: 'Cetak & Tampal', icon: 'tag' },
-    { href: '/pack.html', label: 'Packing & QC', icon: 'truck' },
-    { href: '/', label: 'Legacy/Admin', icon: 'home', newGroup: true },
-    { href: '/product-setup.html', label: 'Products', icon: 'package' },
-    { href: '/scan.html', label: 'Scan', icon: 'scan' },
-    { href: '/stocktake.html', label: 'Stocktake', icon: 'clipboard' },
-    { href: '/returns.html', label: 'Returns', icon: 'rotate' },
-    { href: '/import.html', label: 'Import', icon: 'download' },
+    { href: '/pack.html', label: 'Scan Packing', icon: 'scan' },
   ];
 
   const path = location.pathname === '/index.html' ? '/' : location.pathname;
@@ -71,16 +66,16 @@
   // physical label sheet -- harmless on pages without that print stylesheet.
   nav.className = 'sidebar no-print';
   nav.innerHTML = `
-    <a class="sidebar-mark" href="/" aria-label="Labelism">L</a>
+    <a class="sidebar-mark" href="/orders.html" aria-label="Labelism">L</a>
     <nav class="sidebar-nav">
       ${LINKS.map(l => `${l.newGroup ? '<div class="sidebar-divider"></div>' : ''}<a href="${l.href}" ${l.href === path ? 'class="active"' : ''}>${icon(l.icon)}${l.label}</a>`).join('')}
     </nav>
     <div class="sidebar-bottom">
       <div id="nav-actor-display" style="width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer"></div>
       <div id="nav-actor-form" hidden style="width:72px;padding:5px 3px;background:#fff3d6;border:1px solid #e0ac3f;border-radius:4px">
-        <div style="font-size:9.5px;font-weight:700;color:#7a5a12;margin-bottom:3px;line-height:1.2">WHO ARE YOU?</div>
-        <input id="nav-actor-input" type="text" placeholder="Your name" style="width:100%;font-size:10.5px;padding:3px;box-sizing:border-box">
-        <button id="nav-actor-save" type="button" style="width:100%;font-size:10px;padding:2px;margin-top:3px">Save</button>
+        <div style="font-size:9.5px;font-weight:700;color:#7a5a12;margin-bottom:3px;line-height:1.2">NAMA STAF</div>
+        <input id="nav-actor-input" type="text" placeholder="Nama" style="width:100%;font-size:10.5px;padding:3px;box-sizing:border-box">
+        <button id="nav-actor-save" type="button" style="width:100%;font-size:10px;padding:2px;margin-top:3px">Simpan</button>
       </div>
       <button id="nav-logout-btn" type="button">${icon('logout')}Log Out</button>
     </div>
@@ -105,7 +100,7 @@
     if (name) {
       actorDisplay.hidden = false;
       actorForm.hidden = true;
-      actorDisplay.textContent = `Working as ${name} · change`;
+      actorDisplay.textContent = `${name} · tukar`;
       actorDisplay.style.cssText = 'width:72px;text-align:center;font-size:10.5px;font-weight:600;color:var(--navy-muted);padding:4px 2px;line-height:1.3;cursor:pointer';
     } else {
       actorDisplay.hidden = true;
