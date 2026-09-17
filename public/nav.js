@@ -26,24 +26,16 @@
   }
   window.LabelismIcon = icon;
 
-  // Productization Pass 2 (Navigation + Terminology): the sidebar was a
-  // single flat list with no hierarchy at all, which meant Product Setup
-  // -- a page most operators only need when starting a new item, not when
-  // fulfilling a day's orders -- read as equally central as Receiving,
-  // Labels, and Pack, the pages someone actually clicks most days. Grouped
-  // by when each page is actually used, with a thin divider (not text --
-  // the rail is only 72px wide, a group label wouldn't fit without
-  // wrapping awkwardly): Orders on its own (the customer-facing entry
-  // point), then Setup (Products, Import -- occasional), then day-to-day
-  // Operations (Receiving through Returns -- frequent).
+  // Navigation restructure: Main navigation shows three core menus for daily
+  // operations. All other menus moved to Legacy/Admin section.
   const LINKS = [
-    { href: '/orders.html', label: '1. Tempahan', icon: 'bag' },
-    { href: '/label.html', label: '2. Cetak & Tampal', icon: 'tag' },
-    { href: '/pack.html', label: '3. Packing & QC', icon: 'truck' },
-    { href: '/', label: 'Dashboard', icon: 'home', newGroup: true },
+    { href: '/orders.html', label: 'Tempahan & Label', icon: 'bag' },
+    { href: '/label.html', label: 'Cetak & Tampal', icon: 'tag' },
+    { href: '/pack.html', label: 'Packing & QC', icon: 'truck' },
+    { href: '/', label: 'Legacy/Admin', icon: 'home', newGroup: true },
     { href: '/product-setup.html', label: 'Products', icon: 'package' },
     { href: '/scan.html', label: 'Scan', icon: 'scan' },
-    { href: '/stocktake.html', label: 'Stocktake', icon: 'clipboard', newGroup: true },
+    { href: '/stocktake.html', label: 'Stocktake', icon: 'clipboard' },
     { href: '/returns.html', label: 'Returns', icon: 'rotate' },
     { href: '/import.html', label: 'Import', icon: 'download' },
   ];
