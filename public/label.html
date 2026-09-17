@@ -222,6 +222,7 @@
           ${batch && (batch.customer_name || batch.order_reference) ? `<div class="context" style="font-weight:600;color:var(--navy);">${batch.customer_name || ''}${batch.order_reference ? ' · ' + batch.order_reference : ''}</div>` : ''}
           ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
           ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
+          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${u.recipient_name}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${u.human_code}</div>
           <div class="status no-print">${u.label_confirmed_at ? 'Attachment confirmed' : verified ? 'Scan verified — ready to confirm' : 'Awaiting attachment scan'}</div>

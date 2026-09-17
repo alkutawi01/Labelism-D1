@@ -60,6 +60,7 @@ CREATE TABLE units (
   current_condition TEXT,
   current_location_id TEXT REFERENCES locations(id),
   label_confirmed_at TEXT,
+  recipient_name TEXT,
   last_event_seq INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (batch_id, human_code),

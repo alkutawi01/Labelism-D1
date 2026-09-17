@@ -55,18 +55,11 @@ export async function createReceipt(db, batchId, { observedQuantity, acceptedQua
 // Mirrors registerUnits()'s unit-creation shape exactly, just keyed off
 // the batch's planned_quantity instead of a receipt's accepted_quantity,
 // and batch_receipt_id stays null (schema already allows this).
-export async function generateUnitsForBatch(db, batchId, actor) {
-  const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(batchId).first();
-  if (!batch) return { notFound: true };
+export function buildUnitStatementsForBatch(db, batchId, plannedQuantity, existingInBatch = 0, unitNames = [], actor = 'system') {
+  const toCreate = plannedQuantity - existingInBatch;
+  if (toCreate <= 0) return { createdUnits: [], statements: [] };
 
-  const existingRow = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE batch_id = ?').bind(batchId).first();
-  const existingInBatch = Number(existingRow.n);
-  const toCreate = batch.planned_quantity - existingInBatch;
-  if (toCreate <= 0) {
-    return { created: 0, alreadyRegistered: existingInBatch, message: 'All units for this batch are already generated.' };
-  }
-
-  const created = [];
+  const createdUnits = [];
   const statements = [];
   for (let i = 0; i < toCreate; i++) {
     const seqNo = existingInBatch + i + 1;
@@ -74,14 +67,15 @@ export async function generateUnitsForBatch(db, batchId, actor) {
     const humanCode = String(seqNo).padStart(6, '0');
     const internalToken = newOpaqueToken();
     const publicToken = newOpaqueToken();
+    const recipientName = unitNames[i] ? String(unitNames[i]).trim() : null;
 
     statements.push(
       db
         .prepare(
-          `INSERT INTO units (id, batch_id, human_code, internal_token, public_token, current_disposition)
-           VALUES (?, ?, ?, ?, ?, 'AVAILABLE')`
+          `INSERT INTO units (id, batch_id, human_code, internal_token, public_token, current_disposition, recipient_name)
+           VALUES (?, ?, ?, ?, ?, 'AVAILABLE', ?)`
         )
-        .bind(unitId, batchId, humanCode, internalToken, publicToken)
+        .bind(unitId, batchId, humanCode, internalToken, publicToken, recipientName)
     );
     statements.push(
       db
@@ -89,15 +83,37 @@ export async function generateUnitsForBatch(db, batchId, actor) {
           `INSERT INTO unit_events (id, unit_id, seq, event_type, payload, actor)
            VALUES (?, ?, 1, 'UNIT_REGISTERED', ?, ?)`
         )
-        .bind(newInternalId(), unitId, JSON.stringify({ source: 'order_obligation' }), actor ?? 'system')
+        .bind(newInternalId(), unitId, JSON.stringify({ source: 'order_obligation', recipientName }), actor ?? 'system')
     );
     statements.push(db.prepare('UPDATE units SET last_event_seq = 1 WHERE id = ?').bind(unitId));
 
-    created.push({ id: unitId, humanCode });
+    createdUnits.push({ id: unitId, humanCode, recipientName });
+  }
+  return { createdUnits, statements };
+}
+
+export async function generateUnitsForBatch(db, batchId, actor, unitNames = []) {
+  const batch = await db.prepare('SELECT * FROM production_batches WHERE id = ?').bind(batchId).first();
+  if (!batch) return { notFound: true };
+
+  let names = Array.isArray(unitNames) && unitNames.length ? unitNames : [];
+  if (!names.length && batch.notes) {
+    try {
+      const parsed = JSON.parse(batch.notes);
+      if (Array.isArray(parsed.plannedUnitNames)) names = parsed.plannedUnitNames;
+    } catch {}
+  }
+
+  const existingRow = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE batch_id = ?').bind(batchId).first();
+  const existingInBatch = Number(existingRow.n);
+  const { createdUnits, statements } = buildUnitStatementsForBatch(db, batchId, batch.planned_quantity, existingInBatch, names, actor);
+
+  if (!statements.length) {
+    return { created: 0, alreadyRegistered: existingInBatch, message: 'All units for this batch are already generated.' };
   }
 
   await db.batch(statements);
-  return { created: created.length, units: created };
+  return { created: createdUnits.length, units: createdUnits };
 }
 
 export async function registerUnits(db, receiptId, actor) {

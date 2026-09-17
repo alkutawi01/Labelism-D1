@@ -158,6 +158,12 @@ export async function scanUnitIntoShipment(db, shipmentId, { code, actor }) {
     return { unitId: unit.id, humanCode: unit.human_code, product: productLabel, alreadyScanned: true };
   }
 
+  const countRow = await db.prepare('SELECT COUNT(*) AS n FROM shipment_units WHERE shipment_id = ?').bind(shipmentId).first();
+  const currentScanned = Number(countRow.n);
+  if (currentScanned >= shipment.planned_quantity) {
+    throw new ValidationError(`Cannot pack unit: shipment planned capacity of ${shipment.planned_quantity} has already been reached.`);
+  }
+
   await db
     .prepare('INSERT INTO shipment_units (shipment_id, unit_id, actor) VALUES (?, ?, ?)')
     .bind(shipmentId, unit.id, actor ?? null)

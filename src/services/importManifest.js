@@ -169,43 +169,33 @@ export async function previewManifest(db, manifest) {
 // may need to read back an id it just decided to reuse or create; this
 // endpoint is single-operator/low-frequency, unlike the concurrent-scan
 // paths in units.js that need atomic batching.
+import { createOrderWithLabels } from './orders.js';
+
 export async function applyManifest(db, manifest, actor) {
-  const createdBatches = [];
+  const customerName = manifest.customerName || manifest.context || 'Import Customer';
+  const orderReference = manifest.orderReference || manifest.context || `IMPORT-${Date.now()}`;
 
+  const items = [];
   for (const p of manifest.products) {
-    const product = await getOrCreateProduct(db, p.name);
-    if (p.dimensions.length) {
-      await addProductDimensions(db, product.id, p.dimensions);
-    }
-
     for (const v of p.variants) {
-      const variant = await getOrCreateVariant(db, product.id, v.label, v.attributes);
-      const batchNumber = await nextBatchNumber(db, variant.id);
-
-      let notes = null;
-      const noteParts = {};
-      if (manifest.context) noteParts.context = manifest.context;
-      if (v.unitNames.length) noteParts.plannedUnitNames = v.unitNames;
-      if (Object.keys(noteParts).length) notes = JSON.stringify(noteParts);
-
-      const batch = await createProductionBatch(db, {
-        variantId: variant.id,
-        batchNumber,
-        plannedQuantity: v.quantity,
-        notes,
-      });
-
-      createdBatches.push({
-        batchId: batch.id,
-        productName: product.name,
-        productId: product.id,
-        variantLabel: variant.variantLabel ?? v.label,
-        variantId: variant.id,
-        plannedQuantity: v.quantity,
-        namedCount: v.unitNames.length,
+      items.push({
+        productName: p.name,
+        variantLabel: v.label,
+        dimensions: p.dimensions,
+        attributes: v.attributes,
+        quantity: v.quantity,
+        unitNames: v.unitNames || [],
+        batches: v.batches || [{ quantity: v.quantity }],
       });
     }
   }
 
-  return { createdBatches, actor: actor ?? 'system' };
+  const result = await createOrderWithLabels(db, {
+    customerName,
+    orderReference,
+    items,
+    actor: actor ?? 'system',
+  });
+
+  return { ...result, actor: actor ?? 'system' };
 }

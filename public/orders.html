@@ -11,19 +11,20 @@
     .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr auto; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; }
     .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     .badge-ok { background: #dcfce7; color: #166534; }
-    .badge-warn { background: #fef3c7; color: #92400e; }
+    .badge-partial { background: #fef3c7; color: #92400e; }
+    .badge-error { background: #fee2e2; color: #991b1b; }
   </style>
 </head>
 <body>
   <div class="page">
   <header class="page-header">
     <h1>1. Borang Pengesahan Tempahan &amp; Label</h1>
-    <p class="muted">Masukkan butiran tempahan/invois. Labelism akan meletakkan kuantiti sebagai JANJI pengeluaran dan terus menjana label untuk ditampal oleh pasukan pengeluaran.</p>
+    <p class="muted">Masukkan butiran tempahan/invois. Labelism akan meletakkan kuantiti pesanan sebagai JANJI pengeluaran dan terus menjana label mengikut fasa batch yang anda tetapkan.</p>
   </header>
 
   <div class="mode-tabs">
     <button type="button" class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">Borang Tempahan Manual</button>
-    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Pembantu AI / Parse Teks</button>
+    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Import JSON Manifest</button>
   </div>
 
   <!-- MOD A: BORANG MANUAL -->
@@ -61,7 +62,7 @@
 
     <fieldset style="margin-top:16px;">
       <legend>Senarai Item Pakaian / Barangan</legend>
-      <p class="muted" style="font-size:12px;">Setiap item akan terus dijana set label mengikut kuantiti pesanan.</p>
+      <p class="muted" style="font-size:12px;">Setiap item boleh dijana terus atau dipecahkan kepada fasa batch (cth: 500 awal + 500 kemudian untuk order 1,000).</p>
 
       <div id="items-container">
         <!-- Item row template injected here -->
@@ -72,34 +73,35 @@
     <button type="submit" style="margin-top:16px; font-size:14px; padding:10px 20px;">Sahkan Tempahan &amp; Hasilkan Label</button>
   </form>
 
-  <!-- MOD B: PARSE TEKS / AI -->
+  <!-- MOD B: IMPORT JSON MANIFEST -->
   <div id="ai-mode-container" hidden>
     <fieldset>
-      <legend>Parse Teks Pesanan / AI Manifest</legend>
-      <p class="muted">Tampal maklumat pesanan (seperti ringkasan WhatsApp atau format JSON manifest) untuk terus membina tempahan dan penjanaan label.</p>
+      <legend>Import JSON Manifest Standard</legend>
+      <p class="muted">Labelism mengesahkan, memapar pratonton, dan memproses JSON manifest standard yang dihasilkan daripada sistem luar secara atomik di pelayan.</p>
       <textarea id="ai-text-input" rows="8" placeholder="Contoh format JSON manifest:
 {
-  &quot;context&quot;: &quot;Order Sekolah SK Seri Indah&quot;,
+  &quot;customerName&quot;: &quot;Sekolah SK Seri Indah&quot;,
+  &quot;orderReference&quot;: &quot;PO-2026-99&quot;,
   &quot;products&quot;: [
     {
       &quot;name&quot;: &quot;Jersi Home SK Seri Indah&quot;,
       &quot;dimensions&quot;: [&quot;Saiz&quot;],
       &quot;variants&quot;: [
-        { &quot;label&quot;: &quot;Saiz M&quot;, &quot;quantity&quot;: 10, &quot;attributes&quot;: { &quot;Saiz&quot;: &quot;M&quot; } }
+        { &quot;label&quot;: &quot;Saiz M&quot;, &quot;quantity&quot;: 10, &quot;unitNames&quot;: [&quot;Ahmad&quot;, &quot;Ali&quot;, &quot;Abu&quot;, &quot;Bakar&quot;, &quot;Chai&quot;, &quot;Danial&quot;, &quot;Eason&quot;, &quot;Fahmi&quot;, &quot;Gani&quot;, &quot;Hafiz&quot;] }
       ]
     }
   ]
 }" style="width:100%; font-family:monospace; font-size:12px; padding:8px;"></textarea>
       <div style="margin-top:8px; display:flex; gap:8px;">
-        <button type="button" class="secondary" onclick="loadSampleAiText()">Beban Teks Contoh</button>
-        <button type="button" id="btn-apply-ai" onclick="submitAiManifest()">Parse &amp; Hasilkan Label</button>
+        <button type="button" class="secondary" onclick="loadSampleAiText()">Beban JSON Contoh</button>
+        <button type="button" id="btn-apply-ai" onclick="submitAiManifest()">Validate &amp; Process Manifest</button>
       </div>
     </fieldset>
   </div>
 
   <div id="form-result" style="margin-top:16px;"></div>
 
-  <!-- SENARAI ORDER & STATUS REKONSILIASI -->
+  <!-- SENARAI ORDER & STATUS REKONSILIASI BERPERINGKAT -->
   <h2 style="margin-top:32px;">Senarai Tempahan Kilang</h2>
   <table id="orders-table" hidden>
     <thead>
@@ -108,7 +110,7 @@
         <th>Rujukan Order</th>
         <th>Item &amp; Status Label</th>
         <th>Nota</th>
-        <th>Tindakan / Rekonsiliasi</th>
+        <th>Tindakan / Rekonsiliasi Berperingkat</th>
       </tr>
     </thead>
     <tbody id="orders-body"></tbody>
@@ -159,12 +161,12 @@
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Kuantiti (Label)
+          <label style="font-size:11px;">Kuantiti Order (Total)
             <input type="number" min="1" data-field="quantity" value="10" required style="font-size:12px;">
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Nama Penerima (Pilihan)
+          <label style="font-size:11px;">Nama Penerima (Pilihan, dipadankan 1-to-1)
             <input type="text" data-field="unitNames" placeholder="cth: Ahmad, Ali, Abu" style="font-size:12px;">
           </label>
         </div>
@@ -196,7 +198,7 @@
           </td>
           <td>${o.notes ? o.notes : '<span class="muted">—</span>'}</td>
           <td>
-            <button type="button" class="secondary" data-reconcile="${o.id}" style="font-size:12px;padding:3px 8px">📊 Semak Rekonsiliasi</button>
+            <button type="button" class="secondary" data-reconcile="${o.id}" style="font-size:12px;padding:3px 8px">📊 Rekonsiliasi Berperingkat</button>
           </td>
         </tr>
         <tr id="reconcile-row-${o.id}" hidden><td colspan="5" id="reconcile-${o.id}"></td></tr>
@@ -212,24 +214,47 @@
           row.hidden = false;
           const data = await fetch(`/api/orders/${orderId}/reconciliation`).then(r => r.json());
           if (data.error) { cell.innerHTML = `<div class="msg error">${data.error}</div>`; return; }
+          
           const rowsHtml = data.lines.map((l) => {
             const label = l.description || `${l.product_name} · ${l.variant_label}`;
+            
+            // Stage 1: Label Generation (Ordered vs Generated)
+            let genBadge = '';
+            if (l.units_generated === l.quantity_ordered) {
+              genBadge = `<span class="status-badge badge-ok">${l.units_generated}/${l.quantity_ordered} Generated (100%)</span>`;
+            } else if (l.units_generated < l.quantity_ordered) {
+              genBadge = `<span class="status-badge badge-partial">${l.units_generated}/${l.quantity_ordered} Generated (Baki ${l.quantity_ordered - l.units_generated} belum dijana)</span>`;
+            } else {
+              genBadge = `<span class="status-badge badge-error">${l.units_generated}/${l.quantity_ordered} Mismatch!</span>`;
+            }
+
+            // Stage 2: Attachment (Generated vs Attached)
+            let attachBadge = '';
+            if (l.units_generated === 0) {
+              attachBadge = `<span class="muted" style="font-size:11px;">Belum ada label</span>`;
+            } else if (l.units_attached === l.units_generated) {
+              attachBadge = `<span class="status-badge badge-ok">${l.units_attached}/${l.units_generated} Attached (100%)</span>`;
+            } else {
+              attachBadge = `<span class="status-badge badge-partial">${l.units_attached}/${l.units_generated} Attached</span>`;
+            }
+
             return `<tr>
               <td>${label}</td>
               <td>${l.quantity_ordered}</td>
-              <td><span class="status-badge badge-ok">${l.units_generated} generated</span></td>
-              <td>${l.units_attached}</td>
+              <td>${genBadge}</td>
+              <td>${attachBadge}</td>
               <td>${l.units_packed}</td>
               <td>${l.units_dispatched}</td>
             </tr>`;
           }).join('');
+
           cell.innerHTML = `
             <table style="margin:6px 0; background:#fff; width:100%;">
-              <thead><tr><th>Item Line</th><th>Order</th><th>Label Dijana</th><th>Ditampal</th><th>Dipack</th><th>Dihantar</th></tr></thead>
+              <thead><tr><th>Item Line</th><th>Order Total</th><th>Peringkat 1: Penjanaan Label</th><th>Peringkat 2: Penampalan Label</th><th>Peringkat 3: Packing</th><th>Peringkat 4: Dihantar</th></tr></thead>
               <tbody>${rowsHtml}</tbody>
               <tfoot><tr style="font-weight:600">
-                <td>Jumlah</td><td>${data.totals.ordered}</td><td>${data.totals.generated}</td>
-                <td>${data.totals.attached}</td><td>${data.totals.packed}</td><td>${data.totals.dispatched}</td>
+                <td>Jumlah Keseluruhan</td><td>${data.totals.ordered}</td><td>${data.totals.generated} dijana</td>
+                <td>${data.totals.attached} ditampal</td><td>${data.totals.packed} dipack</td><td>${data.totals.dispatched} dihantar</td>
               </tr></tfoot>
             </table>`;
         });
@@ -239,7 +264,7 @@
     document.getElementById('order-with-labels-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const resDiv = document.getElementById('form-result');
-      resDiv.innerHTML = '<span class="muted">Mencipta tempahan &amp; penjanaan label…</span>';
+      resDiv.innerHTML = '<span class="muted">Mencipta tempahan &amp; penjanaan label atomik…</span>';
       try {
         let customerId = document.getElementById('cust-select').value;
         let customerName = null;
@@ -292,7 +317,7 @@
 
         if (res.error) throw new Error(res.error);
 
-        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan "${res.orderReference}" berjaya dicipta! Kuantiti label telah dijana serta-merta. <a href="/label.html">Ke Cetak Label →</a></div>`;
+        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan "${res.orderReference}" berjaya dicipta! Kuantiti label telah dijana secara atomik. <a href="/label.html">Ke Cetak Label →</a></div>`;
         document.getElementById('items-container').innerHTML = '';
         addItemRow();
         loadCustomers();
@@ -304,7 +329,8 @@
 
     function loadSampleAiText() {
       document.getElementById('ai-text-input').value = JSON.stringify({
-        context: "Tempahan Sekolah SK Seri Indah PO #99",
+        customerName: "Sekolah SK Seri Indah",
+        orderReference: "PO-2026-99",
         products: [
           {
             name: "Jersi Home SK Seri Indah",
@@ -320,18 +346,12 @@
 
     async function submitAiManifest() {
       const resDiv = document.getElementById('form-result');
-      resDiv.innerHTML = '<span class="muted">Memproses teks AI &amp; menjana label…</span>';
+      resDiv.innerHTML = '<span class="muted">Memproses &amp; mengesahkan JSON manifest secara atomik di server…</span>';
       try {
         const text = document.getElementById('ai-text-input').value.trim();
-        if (!text) throw new Error('Sila masukkan teks manifest.');
+        if (!text) throw new Error('Sila masukkan teks JSON manifest.');
         const manifest = JSON.parse(text);
         const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
-
-        const previewRes = await fetch('/api/import/preview', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifest }),
-        }).then(r => r.json());
-        if (previewRes.error) throw new Error(previewRes.error);
 
         const applyRes = await fetch('/api/import/apply', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -339,15 +359,7 @@
         }).then(r => r.json());
         if (applyRes.error) throw new Error(applyRes.error);
 
-        // Auto-generate units for created batches
-        for (const b of applyRes.createdBatches) {
-          await fetch(`/api/production-batches/${b.batchId}/generate-units`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor }),
-          });
-        }
-
-        resDiv.innerHTML = `<div class="msg ok">✅ Manifest AI berjaya diproses! ${applyRes.createdBatches.length} batch &amp; label telah dijana serta-merta. <a href="/label.html">Ke Cetak Label →</a></div>`;
+        resDiv.innerHTML = `<div class="msg ok">✅ Import JSON Manifest berjaya diproses! Customer, Order, OrderLines, Batch, &amp; Label unit telah dicipta secara atomik. <a href="/label.html">Ke Cetak Label →</a></div>`;
         loadOrders();
       } catch (err) {
         resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;

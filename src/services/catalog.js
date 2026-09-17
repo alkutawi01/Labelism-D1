@@ -295,7 +295,7 @@ export async function getOrCreateLocation(db, name) {
 export async function listUnitsForBatch(db, batchId) {
   const { results } = await db
     .prepare(
-      `SELECT u.id, u.human_code, u.internal_token, u.current_disposition, u.label_confirmed_at,
+      `SELECT u.id, u.human_code, u.internal_token, u.current_disposition, u.label_confirmed_at, u.recipient_name,
               u.current_location_id, l.name AS location_name,
               EXISTS(
                 SELECT 1 FROM unit_events ue

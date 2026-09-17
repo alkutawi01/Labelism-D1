@@ -9,7 +9,7 @@
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 import { getOrCreateProduct, getOrCreateVariant, addProductDimensions, createProductionBatch, nextBatchNumber } from './catalog.js';
-import { generateUnitsForBatch } from './receiving.js';
+import { generateUnitsForBatch, buildUnitStatementsForBatch } from './receiving.js';
 
 export async function createCustomer(db, { name, contactInfo }) {
   if (!name) throw new ValidationError('Customer name is required.');
@@ -25,12 +25,10 @@ export async function getOrCreateCustomer(db, { id, name, contactInfo }) {
   if (id) {
     const existing = await db.prepare('SELECT id, name FROM customers WHERE id = ?').bind(id).first();
     if (existing) return existing;
+    throw new ValidationError('Selected customer not found.');
   }
   if (!name || !String(name).trim()) throw new ValidationError('Customer name is required.');
-  const trimmed = String(name).trim();
-  const existingByName = await db.prepare('SELECT id, name FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)').bind(trimmed).first();
-  if (existingByName) return existingByName;
-  return await createCustomer(db, { name: trimmed, contactInfo });
+  return await createCustomer(db, { name: String(name).trim(), contactInfo });
 }
 
 export async function listCustomers(db) {
@@ -228,23 +226,53 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     throw new ValidationError('At least one item is required in the order.');
   }
 
-  const customer = await getOrCreateCustomer(db, { id: customerId, name: customerName });
-  const order = await createOrder(db, {
-    customerId: customer.id,
-    orderReference: String(orderReference).trim(),
-    orderDate,
-    dueDate,
-    notes,
-  });
-
-  const createdLines = [];
-
+  // Pre-validate all items & batch breakdowns before any writes
   for (const item of items) {
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity < 1) {
       throw new ValidationError(`Invalid quantity (${item.quantity}) for item "${item.productName || 'unnamed'}".`);
     }
 
+    if (Array.isArray(item.batches) && item.batches.length > 0) {
+      const batchSum = item.batches.reduce((sum, b) => sum + Number(b.quantity || b.plannedQuantity || 0), 0);
+      if (batchSum > quantity) {
+        throw new ValidationError(`Sum of batch quantities (${batchSum}) exceeds ordered quantity (${quantity}) for "${item.productName}".`);
+      }
+    }
+  }
+
+  // Handle Customer (Explicit customerId or create new Customer)
+  let customer;
+  if (customerId) {
+    customer = await db.prepare('SELECT id, name FROM customers WHERE id = ?').bind(customerId).first();
+    if (!customer) throw new ValidationError('Selected customer not found.');
+  } else if (customerName && String(customerName).trim()) {
+    const custId = newInternalId();
+    customer = { id: custId, name: String(customerName).trim() };
+  } else {
+    throw new ValidationError('Customer selection or name is required.');
+  }
+
+  const orderId = newInternalId();
+  const allStatements = [];
+
+  if (!customerId) {
+    allStatements.push(
+      db.prepare('INSERT INTO customers (id, name) VALUES (?, ?)').bind(customer.id, customer.name)
+    );
+  }
+
+  allStatements.push(
+    db.prepare(
+      `INSERT INTO orders (id, customer_id, order_reference, order_date, due_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(orderId, customer.id, String(orderReference).trim(), orderDate ?? null, dueDate ?? null, notes ?? null)
+  );
+
+  const createdLines = [];
+
+  for (const item of items) {
+    const quantity = Number(item.quantity);
     let variantId = item.variantId;
     let productName = item.productName;
     let variantLabel = item.variantLabel;
@@ -258,45 +286,54 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       variantId = variant.id;
     }
 
-    const line = await createOrderLine(db, {
-      orderId: order.id,
-      variantId,
-      description: item.description || (productName ? `${productName} (${variantLabel || ''})` : 'Custom Item'),
-      quantityOrdered: quantity,
-      unitNames: item.unitNames,
-      notes: item.notes,
-    });
+    const lineId = newInternalId();
+    const description = item.description || (productName ? `${productName} (${variantLabel || ''})` : 'Custom Item');
+    const unitNamesJson = item.unitNames && item.unitNames.length ? JSON.stringify(item.unitNames) : null;
+
+    allStatements.push(
+      db.prepare(
+        `INSERT INTO order_lines (id, order_id, variant_id, description, quantity_ordered, unit_names, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(lineId, orderId, variantId ?? null, description, quantity, unitNamesJson, item.notes ?? null)
+    );
 
     const batchesToCreate = Array.isArray(item.batches) && item.batches.length > 0
       ? item.batches
       : [{ quantity }];
 
     const lineBatches = [];
-    for (const bSpec of batchesToCreate) {
+    let processedUnitsCount = 0;
+
+    for (let bIdx = 0; bIdx < batchesToCreate.length; bIdx++) {
+      const bSpec = batchesToCreate[bIdx];
       const bQty = Number(bSpec.quantity || bSpec.plannedQuantity || quantity);
-      const bNum = bSpec.batchNumber ? String(bSpec.batchNumber) : await nextBatchNumber(db, variantId);
+      const bNum = bSpec.batchNumber ? String(bSpec.batchNumber) : String(bIdx + 1);
+      const batchId = newInternalId();
 
-      let bNotes = null;
-      if (item.unitNames && item.unitNames.length) {
-        bNotes = JSON.stringify({ plannedUnitNames: item.unitNames });
-      }
+      allStatements.push(
+        db.prepare(
+          `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(batchId, variantId, bNum, bQty, lineId)
+      );
 
-      const pb = await createProductionBatch(db, {
-        variantId,
-        batchNumber: bNum,
-        plannedQuantity: bQty,
-        orderLineId: line.id,
-        notes: bNotes,
-      });
+      const batchUnitNames = Array.isArray(item.unitNames)
+        ? item.unitNames.slice(processedUnitsCount, processedUnitsCount + bQty)
+        : [];
+      processedUnitsCount += bQty;
 
-      const genResult = await generateUnitsForBatch(db, pb.id, actor);
-      lineBatches.push({ batchId: pb.id, batchNumber: bNum, plannedQuantity: bQty, createdUnits: genResult.created });
+      const { createdUnits, statements: uStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, batchUnitNames, actor);
+      allStatements.push(...uStmts);
+
+      lineBatches.push({ batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length });
     }
 
-    createdLines.push({ lineId: line.id, description: line.description, quantity, batches: lineBatches });
+    createdLines.push({ lineId, description, quantity, batches: lineBatches });
   }
 
-  return { orderId: order.id, orderReference: order.orderReference, customerName: customer.name, lines: createdLines };
+  await db.batch(allStatements);
+
+  return { orderId, orderReference: String(orderReference).trim(), customerName: customer.name, lines: createdLines };
 }
 
 export async function addBatchToOrderLine(db, lineId, { quantity, batchNumber, actor }) {
@@ -307,15 +344,32 @@ export async function addBatchToOrderLine(db, lineId, { quantity, batchNumber, a
   const bQty = Number(quantity);
   if (!Number.isInteger(bQty) || bQty < 1) throw new ValidationError('Batch quantity must be >= 1.');
 
+  const sumRow = await db.prepare('SELECT COALESCE(SUM(planned_quantity), 0) AS totalPlanned FROM production_batches WHERE order_line_id = ?').bind(lineId).first();
+  const existingPlanned = Number(sumRow.totalPlanned);
+  const unallocated = line.quantity_ordered - existingPlanned;
+  if (bQty > unallocated) {
+    throw new ValidationError(`Batch quantity (${bQty}) exceeds unallocated order line balance (${unallocated}).`);
+  }
+
   const bNum = batchNumber ? String(batchNumber) : await nextBatchNumber(db, line.variant_id);
 
-  const pb = await createProductionBatch(db, {
-    variantId: line.variant_id,
-    batchNumber: bNum,
-    plannedQuantity: bQty,
-    orderLineId: line.id,
-  });
+  let names = [];
+  if (line.unit_names) {
+    try {
+      const parsed = JSON.parse(line.unit_names);
+      if (Array.isArray(parsed)) names = parsed.slice(existingPlanned, existingPlanned + bQty);
+    } catch {}
+  }
 
-  const genResult = await generateUnitsForBatch(db, pb.id, actor);
-  return { batchId: pb.id, batchNumber: bNum, plannedQuantity: bQty, createdUnits: genResult.created };
+  const batchId = newInternalId();
+  const batchStmt = db.prepare(
+    `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(batchId, line.variant_id, bNum, bQty, lineId);
+
+  const { createdUnits, statements: unitStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, names, actor);
+
+  await db.batch([batchStmt, ...unitStmts]);
+
+  return { batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length };
 }
