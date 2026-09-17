@@ -2,142 +2,206 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Orders — Labelism</title>
+  <title>1. Tempahan &amp; Label — Labelism</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    .mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .mode-tab { padding: 8px 16px; border: 1px solid var(--border); background: #f8fafc; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .mode-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr auto; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; }
+    .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-ok { background: #dcfce7; color: #166534; }
+    .badge-warn { background: #fef3c7; color: #92400e; }
+  </style>
 </head>
 <body>
   <div class="page">
   <header class="page-header">
-    <h1>Customers &amp; Orders</h1>
-    <p class="muted">Track who ordered what before production starts. An order line is fulfilled by one or more production batches -- created here, then produced in Product Setup.</p>
+    <h1>1. Borang Pengesahan Tempahan &amp; Label</h1>
+    <p class="muted">Masukkan butiran tempahan/invois. Labelism akan meletakkan kuantiti sebagai JANJI pengeluaran dan terus menjana label untuk ditampal oleh pasukan pengeluaran.</p>
   </header>
 
-  <fieldset>
-    <legend>Customer</legend>
-    <label class="inline">
-      <input type="radio" name="customerMode" value="existing" checked> Existing customer
-    </label>
-    <label class="inline">
-      <input type="radio" name="customerMode" value="new"> New customer
-    </label>
-    <div id="existing-customer-field">
-      <label>Customer
-        <select name="existingCustomerId"><option value="">Loading…</option></select>
-      </label>
-    </div>
-    <div id="new-customer-field" hidden>
-      <label>Customer name
-        <input name="newCustomerName" placeholder="e.g. ABC School">
-      </label>
-    </div>
-  </fieldset>
+  <div class="mode-tabs">
+    <button type="button" class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">Borang Tempahan Manual</button>
+    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Pembantu AI / Parse Teks</button>
+  </div>
 
-  <form id="order-form">
+  <!-- MOD A: BORANG MANUAL -->
+  <form id="order-with-labels-form">
     <fieldset>
-      <legend>Order</legend>
-      <label>Order reference
-        <input name="orderReference" required placeholder="e.g. Order #001, Robothon 2026">
+      <legend>Maklumat Pelanggan &amp; Invois</legend>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label>Pelanggan
+            <select id="cust-select" name="customerId"><option value="">Loading…</option></select>
+          </label>
+          <div id="new-cust-div" style="margin-top:4px;" hidden>
+            <input id="new-cust-name" placeholder="Nama Pelanggan Baru (cth: Sekolah Seri Indah)">
+          </div>
+          <button type="button" class="secondary" id="btn-toggle-cust" style="font-size:11px; margin-top:4px;">+ Pelanggan Baru</button>
+        </div>
+        <div>
+          <label>No. Rujukan Order / Invois
+            <input name="orderReference" required placeholder="e.g. INV-2026-001 / Job Order #12">
+          </label>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top:8px;">
+        <label>Tarikh Order (Pilihan)
+          <input name="orderDate" type="date">
+        </label>
+        <label>Tarikh Siap / Delivery (Pilihan)
+          <input name="dueDate" type="date">
+        </label>
+      </div>
+      <label style="margin-top:8px;">Nota Catatan (Pilihan)
+        <input name="orderNotes" placeholder="Nota asas pesanan">
       </label>
-      <label>Order date (optional)
-        <input name="orderDate" type="date">
-      </label>
-      <label>Due date (optional)
-        <input name="dueDate" type="date">
-      </label>
-      <label>Notes (optional)
-        <input name="orderNotes" placeholder="anything worth keeping for reference">
-      </label>
-      <button type="submit">Create Order</button>
     </fieldset>
+
+    <fieldset style="margin-top:16px;">
+      <legend>Senarai Item Pakaian / Barangan</legend>
+      <p class="muted" style="font-size:12px;">Setiap item akan terus dijana set label mengikut kuantiti pesanan.</p>
+
+      <div id="items-container">
+        <!-- Item row template injected here -->
+      </div>
+      <button type="button" class="secondary" onclick="addItemRow()" style="margin-top:8px;">+ Tambah Item Pakaian</button>
+    </fieldset>
+
+    <button type="submit" style="margin-top:16px; font-size:14px; padding:10px 20px;">Sahkan Tempahan &amp; Hasilkan Label</button>
   </form>
 
-  <div id="order-result"></div>
+  <!-- MOD B: PARSE TEKS / AI -->
+  <div id="ai-mode-container" hidden>
+    <fieldset>
+      <legend>Parse Teks Pesanan / AI Manifest</legend>
+      <p class="muted">Tampal maklumat pesanan (seperti ringkasan WhatsApp atau format JSON manifest) untuk terus membina tempahan dan penjanaan label.</p>
+      <textarea id="ai-text-input" rows="8" placeholder="Contoh format JSON manifest:
+{
+  &quot;context&quot;: &quot;Order Sekolah SK Seri Indah&quot;,
+  &quot;products&quot;: [
+    {
+      &quot;name&quot;: &quot;Jersi Home SK Seri Indah&quot;,
+      &quot;dimensions&quot;: [&quot;Saiz&quot;],
+      &quot;variants&quot;: [
+        { &quot;label&quot;: &quot;Saiz M&quot;, &quot;quantity&quot;: 10, &quot;attributes&quot;: { &quot;Saiz&quot;: &quot;M&quot; } }
+      ]
+    }
+  ]
+}" style="width:100%; font-family:monospace; font-size:12px; padding:8px;"></textarea>
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button type="button" class="secondary" onclick="loadSampleAiText()">Beban Teks Contoh</button>
+        <button type="button" id="btn-apply-ai" onclick="submitAiManifest()">Parse &amp; Hasilkan Label</button>
+      </div>
+    </fieldset>
+  </div>
 
-  <fieldset id="line-section" hidden>
-    <legend>Order Line</legend>
-    <p class="muted" id="line-order-label"></p>
-    <form id="line-form">
-      <label>What's being ordered
-        <input name="description" placeholder="e.g. Jersey Home, Size M -- plain text is fine, no product needed yet">
-      </label>
-      <label>Quantity ordered
-        <input name="quantityOrdered" type="number" min="1" required placeholder="e.g. 50">
-      </label>
-      <label>Notes (optional)
-        <input name="lineNotes" placeholder="e.g. customer changed this to Size L on 20/9">
-      </label>
-      <button type="submit">Add Line</button>
-    </form>
-    <div id="line-result"></div>
-  </fieldset>
+  <div id="form-result" style="margin-top:16px;"></div>
 
+  <!-- SENARAI ORDER & STATUS REKONSILIASI -->
+  <h2 style="margin-top:32px;">Senarai Tempahan Kilang</h2>
   <table id="orders-table" hidden>
-    <thead><tr><th>Customer</th><th>Order</th><th>Lines</th><th>Notes</th><th></th></tr></thead>
+    <thead>
+      <tr>
+        <th>Pelanggan</th>
+        <th>Rujukan Order</th>
+        <th>Item &amp; Status Label</th>
+        <th>Nota</th>
+        <th>Tindakan / Rekonsiliasi</th>
+      </tr>
+    </thead>
     <tbody id="orders-body"></tbody>
   </table>
   </div>
 
   <script src="/nav.js"></script>
   <script>
-    const form = document.getElementById('order-form');
-    const existingField = document.getElementById('existing-customer-field');
-    const newField = document.getElementById('new-customer-field');
-    const existingSelect = existingField.querySelector('select');
-    let currentOrderId = null;
+    let isNewCustomer = false;
 
-    function updateCustomerModeUI() {
-      const mode = new FormData(form).get('customerMode') ?? document.querySelector('input[name=customerMode]:checked').value;
-      existingField.hidden = mode !== 'existing';
-      newField.hidden = mode !== 'new';
+    function switchMode(mode) {
+      document.getElementById('tab-manual').classList.toggle('active', mode === 'manual');
+      document.getElementById('tab-ai').classList.toggle('active', mode === 'ai');
+      document.getElementById('order-with-labels-form').hidden = mode !== 'manual';
+      document.getElementById('ai-mode-container').hidden = mode !== 'ai';
     }
-    document.querySelectorAll('input[name=customerMode]').forEach((el) => el.addEventListener('change', updateCustomerModeUI));
+
+    document.getElementById('btn-toggle-cust').addEventListener('click', () => {
+      isNewCustomer = !isNewCustomer;
+      document.getElementById('cust-select').hidden = isNewCustomer;
+      document.getElementById('new-cust-div').hidden = !isNewCustomer;
+      document.getElementById('btn-toggle-cust').textContent = isNewCustomer ? 'Pilih Pelanggan Sedia Ada' : '+ Pelanggan Baru';
+    });
 
     async function loadCustomers() {
       const rows = await fetch('/api/customers').then(r => r.json());
-      existingSelect.innerHTML = rows.length
+      const select = document.getElementById('cust-select');
+      select.innerHTML = rows.length
         ? rows.map((c) => `<option value="${c.id}">${c.name}</option>`).join('')
-        : '<option value="">No customers yet -- create one</option>';
+        : '<option value="">Tiada pelanggan lagi -- cipta baru</option>';
     }
 
-    // Field Simulation Pass 3 Scenario 6: a line's notes is the only place
-    // a post-creation change ("customer changed this to Size L") can be
-    // recorded today, since quantity_ordered/variant_id have no edit
-    // capability at all (a real gap, deferred pending Director's design
-    // call same as the Scenario 1 batch order-link correction). Shown
-    // inline per line, with a lightweight edit control, since this is the
-    // one list an operator would check to notice a change was flagged.
-    function lineNoteHtml(l) {
-      const noteText = l.notes ? l.notes : '<span class="muted">no note</span>';
-      return `
-        <span data-note-display="${l.id}">
-          <span id="line-note-${l.id}">${noteText}</span>
-          <button type="button" class="secondary" data-edit-note="${l.id}" style="padding:1px 6px;font-size:11px">Edit note</button>
-        </span>
-        <span data-note-form="${l.id}" hidden>
-          <input type="text" data-note-input="${l.id}" value="${l.notes ? l.notes.replace(/"/g, '&quot;') : ''}" placeholder="e.g. customer changed this to Size L on 20/9" style="font-size:12px;padding:3px;width:220px">
-          <button type="button" data-save-note="${l.id}" style="padding:1px 6px;font-size:11px">Save</button>
-        </span>`;
+    function addItemRow() {
+      const container = document.getElementById('items-container');
+      const rowId = 'row-' + Date.now() + '-' + Math.random().toString(36).substr(2,4);
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      div.id = rowId;
+      div.innerHTML = `
+        <div>
+          <label style="font-size:11px;">Nama Produk
+            <input type="text" data-field="productName" placeholder="cth: Jersi Home 2026" required style="font-size:12px;">
+          </label>
+        </div>
+        <div>
+          <label style="font-size:11px;">Varian / Saiz
+            <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" required style="font-size:12px;">
+          </label>
+        </div>
+        <div>
+          <label style="font-size:11px;">Kuantiti (Label)
+            <input type="number" min="1" data-field="quantity" value="10" required style="font-size:12px;">
+          </label>
+        </div>
+        <div>
+          <label style="font-size:11px;">Nama Penerima (Pilihan)
+            <input type="text" data-field="unitNames" placeholder="cth: Ahmad, Ali, Abu" style="font-size:12px;">
+          </label>
+        </div>
+        <div>
+          <button type="button" class="secondary" onclick="document.getElementById('${rowId}').remove()" style="color:red; font-size:11px; padding:3px 6px;">✕</button>
+        </div>
+      `;
+      container.appendChild(div);
     }
 
     async function loadOrders() {
       const rows = await fetch('/api/orders').then(r => r.json());
       if (!rows.length) return;
       document.getElementById('orders-table').hidden = false;
-      document.getElementById('orders-body').innerHTML = rows.map((o) => `
+      
+      const body = document.getElementById('orders-body');
+      body.innerHTML = rows.map((o) => `
         <tr>
-          <td>${o.customer_name}</td>
+          <td><strong>${o.customer_name}</strong></td>
           <td>${o.order_reference}</td>
-          <td>${o.lines.length ? o.lines.map((l) => `${l.description || (l.product_name + ' · ' + l.variant_label)} &times; ${l.quantity_ordered}<br><span class="muted" style="font-size:12px">${lineNoteHtml(l)}</span>`).join('<hr style="border:none;border-top:1px solid var(--line);margin:6px 0">') : '<span class="muted">No lines yet</span>'}</td>
+          <td>
+            ${o.lines.length ? o.lines.map((l) => `
+              <div style="margin-bottom:6px;">
+                <strong>${l.description || (l.product_name + ' · ' + l.variant_label)}</strong> &times; ${l.quantity_ordered} unit
+                <br>
+                <a href="/label.html?orderLineId=${l.id}" class="button secondary" style="font-size:11px; padding:2px 8px; margin-top:4px; display:inline-block;">🖨️ Cetak Label Line Ini</a>
+              </div>
+            `).join('<hr style="border:none;border-top:1px solid var(--line);margin:6px 0">') : '<span class="muted">Tiada line</span>'}
+          </td>
           <td>${o.notes ? o.notes : '<span class="muted">—</span>'}</td>
-          <td><button type="button" class="secondary" data-reconcile="${o.id}" style="font-size:12px;padding:3px 8px">Reconciliation</button></td>
+          <td>
+            <button type="button" class="secondary" data-reconcile="${o.id}" style="font-size:12px;padding:3px 8px">📊 Semak Rekonsiliasi</button>
+          </td>
         </tr>
         <tr id="reconcile-row-${o.id}" hidden><td colspan="5" id="reconcile-${o.id}"></td></tr>
       `).join('');
-      const body = document.getElementById('orders-body');
-      // Priority 6 (F6-001): the one place a supervisor can see, per order,
-      // whether ordered/generated/attached/packed/dispatched actually line
-      // up -- instead of cross-referencing Product Setup and Pack & Ship
-      // per order line by hand.
+
       body.querySelectorAll('button[data-reconcile]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const orderId = btn.dataset.reconcile;
@@ -150,122 +214,147 @@
           if (data.error) { cell.innerHTML = `<div class="msg error">${data.error}</div>`; return; }
           const rowsHtml = data.lines.map((l) => {
             const label = l.description || `${l.product_name} · ${l.variant_label}`;
-            const flag = l.units_generated !== l.quantity_ordered
-              ? ` <span class="msg error" style="display:inline;padding:1px 6px">generated ≠ ordered</span>`
-              : '';
             return `<tr>
               <td>${label}</td>
               <td>${l.quantity_ordered}</td>
-              <td>${l.units_generated}${flag}</td>
+              <td><span class="status-badge badge-ok">${l.units_generated} generated</span></td>
               <td>${l.units_attached}</td>
               <td>${l.units_packed}</td>
               <td>${l.units_dispatched}</td>
             </tr>`;
           }).join('');
           cell.innerHTML = `
-            <table style="margin:6px 0">
-              <thead><tr><th>Line</th><th>Ordered</th><th>Labels generated</th><th>Attached</th><th>Packed</th><th>Dispatched</th></tr></thead>
+            <table style="margin:6px 0; background:#fff; width:100%;">
+              <thead><tr><th>Item Line</th><th>Order</th><th>Label Dijana</th><th>Ditampal</th><th>Dipack</th><th>Dihantar</th></tr></thead>
               <tbody>${rowsHtml}</tbody>
               <tfoot><tr style="font-weight:600">
-                <td>Total</td><td>${data.totals.ordered}</td><td>${data.totals.generated}</td>
+                <td>Jumlah</td><td>${data.totals.ordered}</td><td>${data.totals.generated}</td>
                 <td>${data.totals.attached}</td><td>${data.totals.packed}</td><td>${data.totals.dispatched}</td>
               </tr></tfoot>
             </table>`;
         });
       });
-      body.querySelectorAll('button[data-edit-note]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const lineId = btn.dataset.editNote;
-          body.querySelector(`[data-note-display="${lineId}"]`).hidden = true;
-          body.querySelector(`[data-note-form="${lineId}"]`).hidden = false;
-        });
-      });
-      body.querySelectorAll('button[data-save-note]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const lineId = btn.dataset.saveNote;
-          const value = body.querySelector(`[data-note-input="${lineId}"]`).value.trim();
-          const res = await fetch(`/api/order-lines/${lineId}/notes`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notes: value || null }),
-          }).then(r => r.json());
-          if (!res.error) loadOrders();
-        });
-      });
     }
 
-    document.querySelectorAll('input[name=customerMode]').forEach((el) => el.addEventListener('change', updateCustomerModeUI));
-
-    document.getElementById('order-form').addEventListener('submit', async (e) => {
+    document.getElementById('order-with-labels-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const result = document.getElementById('order-result');
-      result.innerHTML = '';
+      const resDiv = document.getElementById('form-result');
+      resDiv.innerHTML = '<span class="muted">Mencipta tempahan &amp; penjanaan label…</span>';
       try {
-        const mode = document.querySelector('input[name=customerMode]:checked').value;
-        let customerId;
-        if (mode === 'new') {
-          const name = newField.querySelector('[name=newCustomerName]').value.trim();
-          if (!name) throw new Error('Customer name is required.');
-          const customer = await fetch('/api/customers', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-          }).then(r => r.json());
-          if (customer.error) throw new Error(customer.error);
-          customerId = customer.id;
-        } else {
-          customerId = existingSelect.value;
-          if (!customerId) throw new Error('Select an existing customer.');
+        let customerId = document.getElementById('cust-select').value;
+        let customerName = null;
+        if (isNewCustomer) {
+          customerName = document.getElementById('new-cust-name').value.trim();
+          if (!customerName) throw new Error('Nama pelanggan baru diperlukan.');
+          customerId = null;
+        } else if (!customerId) {
+          throw new Error('Sila pilih pelanggan sedia ada.');
         }
 
-        const data = Object.fromEntries(new FormData(form));
-        const order = await fetch('/api/orders', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const formData = new FormData(e.target);
+        const orderReference = formData.get('orderReference');
+        const orderDate = formData.get('orderDate') || undefined;
+        const dueDate = formData.get('dueDate') || undefined;
+        const notes = formData.get('orderNotes') || undefined;
+
+        const itemRows = document.querySelectorAll('.item-row');
+        if (!itemRows.length) throw new Error('Sila tambah sekurang-kurangnya 1 item pakaian.');
+
+        const items = [];
+        itemRows.forEach((row) => {
+          const productName = row.querySelector('[data-field=productName]').value.trim();
+          const variantLabel = row.querySelector('[data-field=variantLabel]').value.trim();
+          const quantity = Number(row.querySelector('[data-field=quantity]').value);
+          const rawNames = row.querySelector('[data-field=unitNames]').value.trim();
+          const unitNames = rawNames ? rawNames.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+          if (!productName || !variantLabel || !quantity) return;
+          items.push({ productName, variantLabel, quantity, unitNames });
+        });
+
+        if (!items.length) throw new Error('Sila isi maklumat item dengan lengkap.');
+
+        const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
+        const res = await fetch('/api/orders/create-with-labels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             customerId,
-            orderReference: data.orderReference,
-            orderDate: data.orderDate || undefined,
-            dueDate: data.dueDate || undefined,
-            notes: data.orderNotes || undefined,
+            customerName,
+            orderReference,
+            orderDate,
+            dueDate,
+            notes,
+            items,
+            actor,
           }),
         }).then(r => r.json());
-        if (order.error) throw new Error(order.error);
 
-        currentOrderId = order.id;
-        result.innerHTML = `<div class="msg ok">Order "${order.orderReference}" created.</div>`;
-        document.getElementById('line-section').hidden = false;
-        document.getElementById('line-order-label').textContent = `Adding lines to: ${order.orderReference}`;
+        if (res.error) throw new Error(res.error);
+
+        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan "${res.orderReference}" berjaya dicipta! Kuantiti label telah dijana serta-merta. <a href="/label.html">Ke Cetak Label →</a></div>`;
+        document.getElementById('items-container').innerHTML = '';
+        addItemRow();
         loadCustomers();
         loadOrders();
       } catch (err) {
-        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
       }
     });
 
-    document.getElementById('line-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const result = document.getElementById('line-result');
-      result.innerHTML = '';
+    function loadSampleAiText() {
+      document.getElementById('ai-text-input').value = JSON.stringify({
+        context: "Tempahan Sekolah SK Seri Indah PO #99",
+        products: [
+          {
+            name: "Jersi Home SK Seri Indah",
+            dimensions: ["Saiz"],
+            variants: [
+              { label: "Saiz M", quantity: 10, unitNames: ["Ahmad", "Ali", "Abu", "Bakar", "Chai", "Danial", "Eason", "Fahmi", "Gani", "Hafiz"] },
+              { label: "Saiz L", quantity: 5 }
+            ]
+          }
+        ]
+      }, null, 2);
+    }
+
+    async function submitAiManifest() {
+      const resDiv = document.getElementById('form-result');
+      resDiv.innerHTML = '<span class="muted">Memproses teks AI &amp; menjana label…</span>';
       try {
-        if (!currentOrderId) throw new Error('Create an order first.');
-        const data = Object.fromEntries(new FormData(e.target));
-        const line = await fetch('/api/order-lines', {
+        const text = document.getElementById('ai-text-input').value.trim();
+        if (!text) throw new Error('Sila masukkan teks manifest.');
+        const manifest = JSON.parse(text);
+        const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
+
+        const previewRes = await fetch('/api/import/preview', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: currentOrderId,
-            description: data.description || undefined,
-            quantityOrdered: Number(data.quantityOrdered),
-            notes: data.lineNotes || undefined,
-          }),
+          body: JSON.stringify({ manifest }),
         }).then(r => r.json());
-        if (line.error) throw new Error(line.error);
-        result.innerHTML = `<div class="msg ok">Line added. To produce it, go to <a href="/product-setup.html?orderLineId=${line.id}">Product Setup</a> and create a batch -- it'll be linked to this line.</div>`;
-        e.target.reset();
+        if (previewRes.error) throw new Error(previewRes.error);
+
+        const applyRes = await fetch('/api/import/apply', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest, actor }),
+        }).then(r => r.json());
+        if (applyRes.error) throw new Error(applyRes.error);
+
+        // Auto-generate units for created batches
+        for (const b of applyRes.createdBatches) {
+          await fetch(`/api/production-batches/${b.batchId}/generate-units`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor }),
+          });
+        }
+
+        resDiv.innerHTML = `<div class="msg ok">✅ Manifest AI berjaya diproses! ${applyRes.createdBatches.length} batch &amp; label telah dijana serta-merta. <a href="/label.html">Ke Cetak Label →</a></div>`;
         loadOrders();
       } catch (err) {
-        result.innerHTML = `<div class="msg error">${err.message}</div>`;
+        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
       }
-    });
+    }
 
-    updateCustomerModeUI();
+    addItemRow();
     loadCustomers();
     loadOrders();
   </script>

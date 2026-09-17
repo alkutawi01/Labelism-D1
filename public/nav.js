@@ -37,16 +37,15 @@
   // point), then Setup (Products, Import -- occasional), then day-to-day
   // Operations (Receiving through Returns -- frequent).
   const LINKS = [
-    { href: '/', label: 'Dashboard', icon: 'home' },
-    { href: '/orders.html', label: 'Orders', icon: 'bag' },
-    { href: '/product-setup.html', label: 'Products', icon: 'package', newGroup: true },
-    { href: '/import.html', label: 'Import', icon: 'download' },
-    { href: '/receiving.html', label: 'Receiving', icon: 'inbox', newGroup: true },
-    { href: '/label.html', label: 'Labels', icon: 'tag' },
-    { href: '/pack.html', label: 'Pack', icon: 'truck' },
+    { href: '/orders.html', label: '1. Tempahan', icon: 'bag' },
+    { href: '/label.html', label: '2. Cetak & Tampal', icon: 'tag' },
+    { href: '/pack.html', label: '3. Packing & QC', icon: 'truck' },
+    { href: '/', label: 'Dashboard', icon: 'home', newGroup: true },
+    { href: '/product-setup.html', label: 'Products', icon: 'package' },
     { href: '/scan.html', label: 'Scan', icon: 'scan' },
-    { href: '/stocktake.html', label: 'Stocktake', icon: 'clipboard' },
+    { href: '/stocktake.html', label: 'Stocktake', icon: 'clipboard', newGroup: true },
     { href: '/returns.html', label: 'Returns', icon: 'rotate' },
+    { href: '/import.html', label: 'Import', icon: 'download' },
   ];
 
   const path = location.pathname === '/index.html' ? '/' : location.pathname;

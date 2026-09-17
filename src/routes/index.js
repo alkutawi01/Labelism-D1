@@ -131,6 +131,9 @@ export async function routeApi(request, env) {
     if (pathname === '/api/orders' && method === 'POST') {
       return ok(await orders.createOrder(env.DB, await body(request)), 201);
     }
+    if (pathname === '/api/orders/create-with-labels' && method === 'POST') {
+      return ok(await orders.createOrderWithLabels(env.DB, await body(request)), 201);
+    }
 
     if ((m = pathname.match(/^\/api\/orders\/([^/]+)\/reconciliation$/)) && method === 'GET') {
       const result = await orders.getOrderReconciliation(env.DB, m[1]);
@@ -145,6 +148,11 @@ export async function routeApi(request, env) {
       const result = await orders.getOrderLine(env.DB, m[1]);
       if (!result) return notFound('Order line not found.');
       return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/batches$/)) && method === 'POST') {
+      const result = await orders.addBatchToOrderLine(env.DB, m[1], await body(request));
+      if (result.notFound) return notFound('Order line not found.');
+      return ok(result, 201);
     }
     if ((m = pathname.match(/^\/api\/order-lines\/([^/]+)\/notes$/)) && method === 'POST') {
       const b = await body(request);

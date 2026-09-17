@@ -143,7 +143,12 @@
         `<option value="${r.id}">${r.product_name} · ${r.variant_label} · Batch ${r.batch_number}${r.order_reference ? ` -- ${r.order_reference}` : ''}</option>`
       ).join('');
       const params = new URLSearchParams(location.search);
-      if (params.get('batchId')) select.value = params.get('batchId');
+      if (params.get('batchId')) {
+        select.value = params.get('batchId');
+      } else if (params.get('orderLineId')) {
+        const match = rows.find(r => r.order_line_id === params.get('orderLineId'));
+        if (match) select.value = match.id;
+      }
       loadUnits();
     }
 
@@ -214,6 +219,7 @@
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         const verified = !!u.label_scan_verified;
         cell.innerHTML = `
+          ${batch && (batch.customer_name || batch.order_reference) ? `<div class="context" style="font-weight:600;color:var(--navy);">${batch.customer_name || ''}${batch.order_reference ? ' · ' + batch.order_reference : ''}</div>` : ''}
           ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
           ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
