@@ -2,119 +2,218 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>1. Tempahan &amp; Label — Labelism</title>
+  <title>Tempahan &amp; Label — Labelism</title>
   <link rel="stylesheet" href="/style.css">
   <style>
-    .mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-    .mode-tab { padding: 8px 16px; border: 1px solid var(--border); background: #f8fafc; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .page-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .mode-tabs { display: flex; gap: 12px; margin-bottom: 24px; }
+    .mode-tab { padding: 14px 24px; border: 2px solid var(--border); background: #f8fafc; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 15px; color: #334155; transition: all 0.2s; }
+    .mode-tab:hover { background: #e2e8f0; border-color: #94a3b8; }
     .mode-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
-    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr 1.5fr auto; gap: 8px; align-items: start; margin-bottom: 8px; padding: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; }
-    .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr 1fr auto; gap: 12px; align-items: start; margin-bottom: 12px; padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
     .badge-ok { background: #dcfce7; color: #166534; }
     .badge-partial { background: #fef3c7; color: #92400e; }
     .badge-error { background: #fee2e2; color: #991b1b; }
+    .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }
+    .summary-card { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 20px; text-align: center; }
+    .summary-card h3 { margin: 0 0 8px 0; font-size: 14px; color: #64748b; }
+    .summary-card .value { font-size: 32px; font-weight: 800; color: var(--navy); }
+    .batch-option { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    .batch-option input[type="radio"] { width: 18px; height: 18px; }
+    .batch-option label { font-weight: 600; font-size: 14px; cursor: pointer; flex: 1; }
+    .ai-section { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .preview-table { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; }
+    .preview-table th, .preview-table td { border: 1px solid var(--border); padding: 12px; text-align: left; }
+    .preview-table th { background: #f1f5f9; font-weight: 700; }
+    .btn-primary { background: var(--navy); color: #fff; border: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: #e2e8f0; color: #334155; border: 1px solid var(--border); padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    fieldset { border: 2px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    legend { font-weight: 700; font-size: 15px; padding: 0 8px; }
+    input, select, textarea { font-size: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; width: 100%; box-sizing: border-box; }
+    label { font-weight: 600; font-size: 14px; display: block; margin-bottom: 6px; }
+    .orders-section { margin-top: 40px; }
+    .orders-collapsed { max-height: 400px; overflow-y: auto; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="page">
+  <div class="page page-container">
   <header class="page-header">
-    <h1>1. Borang Pengesahan Tempahan &amp; Label</h1>
-    <p class="muted">Masukkan butiran tempahan/invois. Labelism akan meletakkan kuantiti pesanan sebagai JANJI pengeluaran dan terus menjana label mengikut fasa batch yang anda tetapkan.</p>
+    <h1>Tempahan &amp; Label</h1>
+    <p class="muted" style="font-size: 16px;">Setiap 1 unit tempahan akan menghasilkan 1 label.</p>
   </header>
 
   <div class="mode-tabs">
-    <button type="button" class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">Borang Tempahan Manual</button>
-    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Import JSON Manifest</button>
+    <button type="button" class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">Masukkan Manual</button>
+    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Tampal Output AI</button>
   </div>
 
   <!-- MOD A: BORANG MANUAL -->
   <form id="order-with-labels-form">
     <fieldset>
       <legend>Maklumat Pelanggan &amp; Invois</legend>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <div>
           <label>Pelanggan
-            <select id="cust-select" name="customerId"><option value="">Loading…</option></select>
+            <select id="cust-select" name="customerId" style="font-size:14px; padding:12px;"><option value="">Loading…</option></select>
           </label>
-          <div id="new-cust-div" style="margin-top:4px;" hidden>
-            <input id="new-cust-name" placeholder="Nama Pelanggan Baru (cth: Sekolah Seri Indah)">
+          <div id="new-cust-div" style="margin-top:8px;" hidden>
+            <input id="new-cust-name" placeholder="Nama Pelanggan Baru (cth: Sekolah Seri Indah)" style="font-size:14px; padding:12px;">
           </div>
-          <button type="button" class="secondary" id="btn-toggle-cust" style="font-size:11px; margin-top:4px;">+ Pelanggan Baru</button>
+          <button type="button" class="btn-secondary" id="btn-toggle-cust" style="font-size:13px; margin-top:8px;">+ Pelanggan Baru</button>
         </div>
         <div>
           <label>No. Rujukan Order / Invois
-            <input name="orderReference" required placeholder="e.g. INV-2026-001 / Job Order #12">
+            <input name="orderReference" required placeholder="e.g. INV-2026-001 / Job Order #12" style="font-size:14px; padding:12px;">
           </label>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top:8px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top:12px;">
         <label>Tarikh Order (Pilihan)
-          <input name="orderDate" type="date">
+          <input name="orderDate" type="date" style="font-size:14px; padding:12px;">
         </label>
         <label>Tarikh Siap / Delivery (Pilihan)
-          <input name="dueDate" type="date">
+          <input name="dueDate" type="date" style="font-size:14px; padding:12px;">
         </label>
       </div>
-      <label style="margin-top:8px;">Nota Catatan (Pilihan)
-        <input name="orderNotes" placeholder="Nota asas pesanan">
+      <label style="margin-top:12px; display:block;">Nota Catatan (Pilihan)
+        <input name="orderNotes" placeholder="Nota asas pesanan" style="font-size:14px; padding:12px;">
       </label>
     </fieldset>
 
-    <fieldset style="margin-top:16px;">
-      <legend>Senarai Item Pakaian / Barangan</legend>
-      <p class="muted" style="font-size:12px;">Setiap item boleh dijana terus atau dipecahkan kepada fasa batch (cth: 500 awal + 500 kemudian untuk order 1,000).</p>
+    <fieldset style="margin-top:20px;">
+      <legend>Item Tempahan</legend>
+      <p class="muted" style="font-size:14px; margin-bottom:16px;">Masukkan produk, variant, kuantiti dan nama penerima jika ada.</p>
 
       <div id="items-container">
         <!-- Item row template injected here -->
       </div>
-      <button type="button" class="secondary" onclick="addItemRow()" style="margin-top:8px;">+ Tambah Item Pakaian</button>
+      <button type="button" class="btn-secondary" onclick="addItemRow()" style="margin-top:12px; font-size:14px; padding:12px 20px;">+ Tambah Item</button>
+      
+      <div style="margin-top:20px; padding:16px; background:#fff; border:1px solid var(--border); border-radius:8px;">
+        <label style="font-size:15px; margin-bottom:12px; display:block;">Pilihan Batch Label:</label>
+        <div class="batch-option">
+          <input type="radio" name="batchMode" id="batch-all" value="all" checked onchange="toggleBatchInput()">
+          <label for="batch-all" style="margin:0;">Jana semua label sekarang</label>
+        </div>
+        <div class="batch-option">
+          <input type="radio" name="batchMode" id="batch-partial" value="partial" onchange="toggleBatchInput()">
+          <label for="batch-partial" style="margin:0;">Jana sebahagian dahulu</label>
+        </div>
+        <div id="partial-batch-input" hidden style="margin-top:12px;">
+          <label>Jumlah label untuk fasa ini:
+            <input type="number" id="partial-qty" min="1" placeholder="Masukkan kuantiti" style="font-size:14px; padding:12px; max-width:200px;">
+          </label>
+          <p class="muted" id="batch-remaining" style="font-size:13px; margin-top:8px; color:#64748b;"></p>
+        </div>
+      </div>
     </fieldset>
 
-    <button type="submit" style="margin-top:16px; font-size:14px; padding:10px 20px;">Sahkan Tempahan &amp; Hasilkan Label</button>
+    <button type="submit" class="btn-primary" style="width:100%; margin-top:20px;">Sahkan Tempahan &amp; Jana Label</button>
   </form>
 
-  <!-- MOD B: IMPORT JSON MANIFEST -->
+  <!-- MOD B: TAMPAL OUTPUT AI -->
   <div id="ai-mode-container" hidden>
-    <fieldset>
-      <legend>Import JSON Manifest Standard</legend>
-      <p class="muted">Labelism mengesahkan, memapar pratonton, dan memproses JSON manifest standard yang dihasilkan daripada sistem luar secara atomik di pelayan.</p>
-      <textarea id="ai-text-input" rows="8" placeholder="Contoh format JSON manifest:
+    <div class="ai-section">
+      <h3 style="margin:0 0 12px 0; font-size:16px;">Langkah 1: Salin Prompt untuk AI</h3>
+      <p class="muted" style="font-size:14px; margin-bottom:12px;">Gunakan prompt ini dengan AI untuk menghasilkan JSON tempahan standard.</p>
+      <textarea id="ai-prompt" rows="6" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;">Sila hasilkan JSON tempahan dengan format berikut:
 {
-  &quot;customerName&quot;: &quot;Sekolah SK Seri Indah&quot;,
-  &quot;orderReference&quot;: &quot;PO-2026-99&quot;,
-  &quot;products&quot;: [
+  "customerName": "Nama Pelanggan",
+  "orderReference": "No. Rujukan/Invoice",
+  "products": [
     {
-      &quot;name&quot;: &quot;Jersi Home SK Seri Indah&quot;,
-      &quot;dimensions&quot;: [&quot;Saiz&quot;],
-      &quot;variants&quot;: [
-        { &quot;label&quot;: &quot;Saiz M&quot;, &quot;quantity&quot;: 10, &quot;unitNames&quot;: [&quot;Ahmad&quot;, &quot;Ali&quot;, &quot;Abu&quot;, &quot;Bakar&quot;, &quot;Chai&quot;, &quot;Danial&quot;, &quot;Eason&quot;, &quot;Fahmi&quot;, &quot;Gani&quot;, &quot;Hafiz&quot;] }
+      "name": "Nama Produk",
+      "dimensions": ["Saiz"],
+      "variants": [
+        { "label": "Saiz M", "quantity": 10, "unitNames": ["Ahmad", "Ali", ...] }
       ]
     }
   ]
-}" style="width:100%; font-family:monospace; font-size:12px; padding:8px;"></textarea>
-      <div style="margin-top:8px; display:flex; gap:8px;">
-        <button type="button" class="secondary" onclick="loadSampleAiText()">Beban JSON Contoh</button>
-        <button type="button" id="btn-apply-ai" onclick="submitAiManifest()">Validate &amp; Process Manifest</button>
+}</textarea>
+      <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin-top:12px; font-size:14px; padding:12px 20px;">📋 Salin Prompt</button>
+    </div>
+
+    <div class="ai-section">
+      <h3 style="margin:0 0 12px 0; font-size:16px;">Langkah 2: Tampal JSON Output AI</h3>
+      <p class="muted" style="font-size:14px; margin-bottom:12px;">Tampal JSON yang dihasilkan oleh AI di bawah.</p>
+      <textarea id="ai-text-input" rows="10" placeholder='Contoh:
+{
+  "customerName": "Sekolah SK Seri Indah",
+  "orderReference": "PO-2026-99",
+  "products": [
+    {
+      "name": "Jersi Home SK Seri Indah",
+      "dimensions": ["Saiz"],
+      "variants": [
+        { "label": "Saiz M", "quantity": 10, "unitNames": ["Ahmad", "Ali", "Abu"] }
+      ]
+    }
+  ]
+}' style="font-family:monospace; font-size:13px; padding:12px; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;"></textarea>
+      <div style="margin-top:16px; display:flex; gap:12px;">
+        <button type="button" class="btn-secondary" onclick="loadSampleAiText()" style="font-size:14px; padding:12px 20px;">Beban Contoh</button>
+        <button type="button" class="btn-primary" onclick="previewAiManifest()" style="font-size:14px; padding:12px 20px;">🔍 Semak Tempahan</button>
       </div>
-    </fieldset>
+    </div>
+
+    <!-- Preview Section -->
+    <div id="ai-preview-section" hidden class="ai-section" style="background:#fff;">
+      <h3 style="margin:0 0 16px 0; font-size:16px;">Preview Tempahan</h3>
+      <div id="ai-preview-content"></div>
+      <button type="button" class="btn-primary" id="btn-confirm-ai" onclick="confirmAiManifest()" style="margin-top:16px; font-size:15px; padding:14px 28px; width:100%;" hidden>Sahkan &amp; Hasilkan Label</button>
+    </div>
   </div>
 
-  <div id="form-result" style="margin-top:16px;"></div>
+  <!-- Summary Cards (shown after successful submission) -->
+  <div id="summary-section" hidden>
+    <div class="summary-cards">
+      <div class="summary-card">
+        <h3>Ditempah</h3>
+        <div class="value" id="sum-ordered">0</div>
+      </div>
+      <div class="summary-card">
+        <h3>Label Dijana</h3>
+        <div class="value" id="sum-generated">0</div>
+      </div>
+      <div class="summary-card">
+        <h3>Baki Belum Dijana</h3>
+        <div class="value" id="sum-remaining">0</div>
+      </div>
+      <div class="summary-card">
+        <h3>Pecahan Batch</h3>
+        <div class="value" id="sum-batches" style="font-size:20px;">-</div>
+      </div>
+    </div>
+    <a href="/print.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:12px;">🖨️ Terus ke Cetak &amp; Tampal</a>
+  </div>
+
+  <div id="form-result" style="margin-top:20px;"></div>
 
   <!-- SENARAI ORDER & STATUS REKONSILIASI BERPERINGKAT -->
-  <h2 style="margin-top:32px;">Senarai Tempahan Kilang</h2>
-  <table id="orders-table" hidden>
-    <thead>
-      <tr>
-        <th>Pelanggan</th>
-        <th>Rujukan Order</th>
-        <th>Item &amp; Status Label</th>
-        <th>Nota</th>
-        <th>Tindakan / Rekonsiliasi Berperingkat</th>
-      </tr>
-    </thead>
-    <tbody id="orders-body"></tbody>
-  </table>
+  <div class="orders-section">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="margin:0;">Senarai Tempahan</h2>
+      <button type="button" class="btn-secondary" id="btn-toggle-orders" onclick="toggleOrdersView()" style="font-size:13px; padding:8px 16px;">Lihat Semua</button>
+    </div>
+    <div id="orders-wrapper" class="orders-collapsed">
+      <table id="orders-table" hidden>
+        <thead>
+          <tr>
+            <th>Pelanggan</th>
+            <th>Rujukan Order</th>
+            <th>Item Tempahan</th>
+            <th>Nota</th>
+            <th>Tindakan / Rekonsiliasi Berperingkat</th>
+          </tr>
+        </thead>
+        <tbody id="orders-body"></tbody>
+      </table>
+    </div>
+  </div>
   </div>
 
   <script src="/nav.js"></script>
@@ -151,33 +250,27 @@
       div.id = rowId;
       div.innerHTML = `
         <div>
-          <label style="font-size:11px;">Nama Produk
-            <input type="text" data-field="productName" placeholder="cth: Jersi Home 2026" required style="font-size:12px;">
+          <label style="font-size:14px;">Nama Produk
+            <input type="text" data-field="productName" placeholder="cth: Jersi Home 2026" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Varian / Saiz
-            <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" required style="font-size:12px;">
+          <label style="font-size:14px;">Varian / Saiz
+            <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Kuantiti Order (Total)
-            <input type="number" min="1" data-field="quantity" value="10" required style="font-size:12px;">
+          <label style="font-size:14px;">Kuantiti Order (Total)
+            <input type="number" min="1" data-field="quantity" value="10" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Nama Penerima (Pilihan, dipadankan 1-to-1)
-            <input type="text" data-field="unitNames" placeholder="cth: Ahmad, Ali, Abu" style="font-size:12px;">
+          <label style="font-size:14px;">Nama Penerima (Pilihan)
+            <input type="text" data-field="unitNames" placeholder="cth: Ahmad, Ali, Abu" style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:11px;">Fasa Batch (Pilihan)
-            <input type="text" data-field="batchSplit" placeholder="cth: 500, 500  (atau kosong = jana semua)" style="font-size:12px;">
-            <small style="color:#64748b;font-size:10px;display:block;margin-top:2px;">Kosong = jana semua sekarang. Isi cth. <em>300, 200</em> untuk 2 fasa.</small>
-          </label>
-        </div>
-        <div>
-          <button type="button" class="secondary" onclick="document.getElementById('${rowId}').remove()" style="color:red; font-size:11px; padding:3px 6px;">✕</button>
+          <button type="button" class="btn-secondary" onclick="document.getElementById('${rowId}').remove()" style="color:#dc2626; font-size:13px; padding:8px 12px;">✕ Buang</button>
         </div>
       `;
       container.appendChild(div);
@@ -377,6 +470,140 @@
       }
     });
 
+    // Toggle batch input visibility
+    function toggleBatchInput() {
+      const isPartial = document.getElementById('batch-partial').checked;
+      document.getElementById('partial-batch-input').hidden = !isPartial;
+    }
+
+    // Copy AI prompt to clipboard
+    function copyAiPrompt() {
+      const promptText = document.getElementById('ai-prompt');
+      promptText.select();
+      document.execCommand('copy');
+      alert('Prompt telah disalin ke clipboard!');
+    }
+
+    // Preview AI manifest before applying
+    async function previewAiManifest() {
+      const resDiv = document.getElementById('form-result');
+      const previewSection = document.getElementById('ai-preview-section');
+      const previewContent = document.getElementById('ai-preview-content');
+      const confirmBtn = document.getElementById('btn-confirm-ai');
+      
+      previewSection.hidden = true;
+      confirmBtn.hidden = true;
+      
+      try {
+        const text = document.getElementById('ai-text-input').value.trim();
+        if (!text) throw new Error('Sila masukkan teks JSON manifest.');
+        
+        let manifest;
+        try {
+          manifest = JSON.parse(text);
+        } catch (e) {
+          throw new Error('JSON tidak sah. Sila semak format.');
+        }
+
+        // Call preview endpoint
+        const previewRes = await fetch('/api/import/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest }),
+        }).then(r => r.json());
+        
+        if (previewRes.error) throw new Error(previewRes.error);
+
+        // Display preview
+        let html = '<table class="preview-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>';
+        html += `<tr><td><strong>Pelanggan</strong></td><td>${manifest.customerName || '-'}</td></tr>`;
+        html += `<tr><td><strong>No. Rujukan</strong></td><td>${manifest.orderReference || '-'}</td></tr>`;
+        
+        let totalQty = 0;
+        let itemsHtml = '';
+        if (manifest.products && manifest.products.length) {
+          manifest.products.forEach((p, idx) => {
+            if (p.variants && p.variants.length) {
+              p.variants.forEach((v) => {
+                totalQty += v.quantity || 0;
+                itemsHtml += `<tr><td>${p.name} - ${v.label}</td><td>${v.quantity || 0} unit${v.unitNames ? ' (' + v.unitNames.join(', ') + ')' : ''}</td></tr>`;
+              });
+            }
+          });
+        }
+        html += `<tr><td><strong>Jumlah Item</strong></td><td>${totalQty} unit</td></tr>`;
+        html += itemsHtml;
+        html += '</tbody></table>';
+        
+        previewContent.innerHTML = html;
+        previewSection.hidden = false;
+        confirmBtn.hidden = false;
+        
+        // Store manifest for confirmation
+        window._pendingManifest = manifest;
+        
+      } catch (err) {
+        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
+      }
+    }
+
+    // Confirm and apply AI manifest
+    async function confirmAiManifest() {
+      const resDiv = document.getElementById('form-result');
+      resDiv.innerHTML = '<span class="muted">Memproses &amp; mengesahkan JSON manifest secara atomik di server…</span>';
+      
+      try {
+        const manifest = window._pendingManifest;
+        if (!manifest) throw new Error('Tiada data untuk diproses. Sila buat preview dahulu.');
+        
+        const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
+
+        const applyRes = await fetch('/api/import/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest, actor }),
+        }).then(r => r.json());
+        
+        if (applyRes.error) throw new Error(applyRes.error);
+
+        // Show summary cards
+        const totalOrdered = applyRes.summary?.ordered || 0;
+        const totalGenerated = applyRes.summary?.generated || 0;
+        const remaining = totalOrdered - totalGenerated;
+        const batches = applyRes.summary?.batches || 1;
+
+        document.getElementById('sum-ordered').textContent = totalOrdered;
+        document.getElementById('sum-generated').textContent = totalGenerated;
+        document.getElementById('sum-remaining').textContent = remaining;
+        document.getElementById('sum-batches').textContent = batches + ' fasa';
+        
+        document.getElementById('summary-section').hidden = false;
+        document.getElementById('ai-preview-section').hidden = true;
+        document.getElementById('ai-text-input').value = '';
+        window._pendingManifest = null;
+        
+        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan berjaya dicipta! Label telah dijana.</div>`;
+        loadOrders();
+      } catch (err) {
+        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
+      }
+    }
+
+    // Toggle orders view (collapsed/expanded)
+    let ordersExpanded = false;
+    function toggleOrdersView() {
+      const wrapper = document.getElementById('orders-wrapper');
+      const btn = document.getElementById('btn-toggle-orders');
+      ordersExpanded = !ordersExpanded;
+      if (ordersExpanded) {
+        wrapper.classList.remove('orders-collapsed');
+        btn.textContent = 'Tutup Senarai';
+      } else {
+        wrapper.classList.add('orders-collapsed');
+        btn.textContent = 'Lihat Semua';
+      }
+    }
+
     function loadSampleAiText() {
       document.getElementById('ai-text-input').value = JSON.stringify({
         customerName: "Sekolah SK Seri Indah",
@@ -394,26 +621,10 @@
       }, null, 2);
     }
 
+    // Old function kept for compatibility (now uses preview flow)
     async function submitAiManifest() {
-      const resDiv = document.getElementById('form-result');
-      resDiv.innerHTML = '<span class="muted">Memproses &amp; mengesahkan JSON manifest secara atomik di server…</span>';
-      try {
-        const text = document.getElementById('ai-text-input').value.trim();
-        if (!text) throw new Error('Sila masukkan teks JSON manifest.');
-        const manifest = JSON.parse(text);
-        const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
-
-        const applyRes = await fetch('/api/import/apply', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifest, actor }),
-        }).then(r => r.json());
-        if (applyRes.error) throw new Error(applyRes.error);
-
-        resDiv.innerHTML = `<div class="msg ok">✅ Import JSON Manifest berjaya diproses! Customer, Order, OrderLines, Batch, &amp; Label unit telah dicipta secara atomik. <a href="/label.html">Ke Cetak Label →</a></div>`;
-        loadOrders();
-      } catch (err) {
-        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
-      }
+      // Deprecated - use previewAiManifest + confirmAiManifest instead
+      console.warn('submitAiManifest is deprecated. Use previewAiManifest first.');
     }
 
     addItemRow();
