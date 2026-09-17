@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 11 acceptance tests against a live local wrangler dev server.
+ * Runs 13 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -12,7 +12,7 @@
  *   node tests/acceptance.test.js
  */
 
-const BASE = 'http://127.0.0.1:8788';
+const BASE = process.env.LABELISM_TEST_BASE_URL || 'http://127.0.0.1:8788';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimal test harness
@@ -45,6 +45,23 @@ async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(`${BASE}${path}`, opts);
   const json = await res.json();
   return { status: res.status, body: json };
+}
+
+async function attachUnit(unit) {
+  const verify = await api(`/api/units/${unit.id}/verify-label-scan`, {
+    method: 'POST',
+    body: { code: unit.internal_token, actor: 'test' },
+  });
+  assert(verify.status === 201 || verify.status === 200,
+    `Label verification failed for ${unit.id}: ${verify.status} ${JSON.stringify(verify.body)}`);
+  assert(verify.body.verified === true, `Label was not verified for ${unit.id}`);
+
+  const confirm = await api(`/api/units/${unit.id}/confirm-label`, {
+    method: 'POST',
+    body: { actor: 'test' },
+  });
+  assert(confirm.status === 201 || confirm.status === 200,
+    `Label attachment failed for ${unit.id}: ${confirm.status} ${JSON.stringify(confirm.body)}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,29 +325,41 @@ await run('Test 7 – addBatchToOrderLine adds batch to existing order line', as
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEST 8 (Fix 8): Atomic failure – bad batch data causes DB constraint;
-// verify NO orphan rows remain after the failed request.
+// TEST 8: A late UNIQUE failure inside db.batch() must roll back every
+// earlier statement, including a new customer/product/order/units.
 // ─────────────────────────────────────────────────────────────────────────────
-await run('Test 8 – Atomic failure: invalid batch rejects entire order, no orphan rows', async () => {
+await run('Test 8 – Atomic rollback on a mid-transaction DB constraint failure', async () => {
   const ts = Date.now();
-  // Count rows before
-  const beforeOrders = await api('/api/orders');
-  const beforeCount = Array.isArray(beforeOrders.body) ? beforeOrders.body.length : 0;
+  const seedProduct = `T8-Seed-Product-${ts}`;
+  const seed = await api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: {
+      customerName: `T8-Seed-Customer-${ts}`,
+      orderReference: `T8-SEED-${ts}`,
+      items: [{ productName: seedProduct, variantLabel: 'Size M', quantity: 1, batches: [{ quantity: 1, batchNumber: 'DUPLICATE' }] }],
+      actor: 'test',
+    },
+  });
+  assert(seed.status === 201, `Seed order failed: ${seed.status} ${JSON.stringify(seed.body)}`);
 
-  // Send a payload where batch sum EXCEEDS quantity -- server must reject before writing
+  const beforeCustomers = await api('/api/customers');
+  const beforeOrders = await api('/api/orders');
+  const beforeProducts = await api('/api/products');
+  const beforeBatches = await api('/api/production-batches');
+  const orphanCustomer = `T8-Orphan-Customer-${ts}`;
+  const orphanProduct = `T8-Orphan-Product-${ts}`;
+  const orphanReference = `T8-ROLLBACK-${ts}`;
+
+  // Item 1 queues valid new product/order/unit rows. Item 2 fails late on
+  // UNIQUE(variant_id, batch_number), proving the preceding writes roll back.
   const res = await api('/api/orders/create-with-labels', {
     method: 'POST',
     body: {
-      customerName: `T8-Orphan-${ts}`,
-      orderReference: `T8-FAIL-REF-${ts}`,
+      customerName: orphanCustomer,
+      orderReference: orphanReference,
       items: [
-        {
-          productName: `T8-Product-${ts}`,
-          variantLabel: 'Size XS',
-          quantity: 50,
-          unitNames: [],
-          batches: [{ quantity: 30 }, { quantity: 30 }],  // 60 > 50, must fail
-        },
+        { productName: orphanProduct, variantLabel: 'Size S', quantity: 2, batches: [{ quantity: 2 }] },
+        { productName: seedProduct, variantLabel: 'Size M', quantity: 1, batches: [{ quantity: 1, batchNumber: 'DUPLICATE' }] },
       ],
       actor: 'test',
     },
@@ -338,11 +367,17 @@ await run('Test 8 – Atomic failure: invalid batch rejects entire order, no orp
   assert(res.status >= 400, `Expected error status, got ${res.status}`);
   assert(res.body.error, 'Expected error field in response');
 
-  // Count rows after -- must be same
+  const afterCustomers = await api('/api/customers');
   const afterOrders = await api('/api/orders');
-  const afterCount = Array.isArray(afterOrders.body) ? afterOrders.body.length : 0;
-  assert(afterCount === beforeCount,
-    `Order count changed after failed request: before=${beforeCount}, after=${afterCount}. Orphan row(s) detected!`);
+  const afterProducts = await api('/api/products');
+  const afterBatches = await api('/api/production-batches');
+  assert(afterCustomers.body.length === beforeCustomers.body.length, 'Customer row escaped failed transaction');
+  assert(afterOrders.body.length === beforeOrders.body.length, 'Order row escaped failed transaction');
+  assert(afterProducts.body.length === beforeProducts.body.length, 'Product row escaped failed transaction');
+  assert(afterBatches.body.length === beforeBatches.body.length, 'Batch row escaped failed transaction');
+  assert(!afterCustomers.body.some(c => c.name === orphanCustomer), 'Orphan customer found after rollback');
+  assert(!afterOrders.body.some(o => o.order_reference === orphanReference), 'Orphan order found after rollback');
+  assert(!afterProducts.body.some(p => p.name === orphanProduct), 'Orphan product found after rollback');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -444,9 +479,6 @@ await run('Test 11 – Shipment scan guard: rejects unit from wrong order line',
   assert(res2.status === 201, `Order B must succeed, got ${res2.status}`);
 
   const lineIdA = res1.body.lines[0].lineId;
-  const lineIdB = res2.body.lines[0].lineId;
-  const batchIdA = res1.body.lines[0].batches[0].batchId;
-
   // Create shipment for line A
   const shipRes = await api('/api/shipments', {
     method: 'POST',
@@ -460,14 +492,86 @@ await run('Test 11 – Shipment scan guard: rejects unit from wrong order line',
   const unitsB = await api(`/api/production-batches/${batchIdB}/units`);
   assert(unitsB.body.length > 0, 'Line B must have units');
   const wrongUnit = unitsB.body[0];
+  await attachUnit(wrongUnit);
 
   // Try to scan wrong unit into shipment for line A -- must be rejected
   const scanRes = await api(`/api/shipments/${shipmentId}/scans`, {
     method: 'POST',
-    body: { token: wrongUnit.internal_token, actor: 'test' },
+    body: { code: wrongUnit.internal_token, actor: 'test' },
   });
   assert(scanRes.status >= 400, `Expected error when scanning wrong order line unit, got ${scanRes.status}: ${JSON.stringify(scanRes.body)}`);
   assert(scanRes.body.error, 'Expected error message for wrong order line scan');
+  assert(/belongs to order|not this shipment/i.test(scanRes.body.error),
+    `Expected wrong-order guard message, got: ${scanRes.body.error}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST 12: Shipment must reject the (N+1)th valid attached unit.
+// ─────────────────────────────────────────────────────────────────────────────
+await run('Test 12 – Shipment scan guard rejects units beyond planned capacity', async () => {
+  const ts = Date.now();
+  const order = await api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: {
+      customerName: `T12-Customer-${ts}`,
+      orderReference: `T12-REF-${ts}`,
+      items: [{ productName: `T12-Product-${ts}`, variantLabel: 'Size M', quantity: 3, batches: null }],
+      actor: 'test',
+    },
+  });
+  assert(order.status === 201, `Order failed: ${order.status} ${JSON.stringify(order.body)}`);
+  const lineId = order.body.lines[0].lineId;
+  const batchId = order.body.lines[0].batches[0].batchId;
+  const units = await api(`/api/production-batches/${batchId}/units`);
+  assert(units.body.length === 3, `Expected 3 units, got ${units.body.length}`);
+  for (const unit of units.body) await attachUnit(unit);
+
+  const shipment = await api('/api/shipments', {
+    method: 'POST',
+    body: { orderLineId: lineId, reference: `T12-SHIP-${ts}`, plannedQuantity: 2 },
+  });
+  assert(shipment.status === 201, `Shipment failed: ${shipment.status} ${JSON.stringify(shipment.body)}`);
+
+  for (const unit of units.body.slice(0, 2)) {
+    const scan = await api(`/api/shipments/${shipment.body.id}/scans`, {
+      method: 'POST', body: { code: unit.internal_token, actor: 'test' },
+    });
+    assert(scan.status === 201, `Valid scan failed: ${scan.status} ${JSON.stringify(scan.body)}`);
+  }
+  const overflow = await api(`/api/shipments/${shipment.body.id}/scans`, {
+    method: 'POST', body: { code: units.body[2].internal_token, actor: 'test' },
+  });
+  assert(overflow.status >= 400, `Expected capacity rejection, got ${overflow.status}`);
+  assert(/capacity|planned/i.test(overflow.body.error || ''), `Unexpected capacity error: ${overflow.body.error}`);
+  const state = await api(`/api/shipments/${shipment.body.id}`);
+  assert(state.body.scannedCount === 2, `Overflow scan mutated shipment: scannedCount=${state.body.scannedCount}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST 13: Multiple variants of one new product in one request share one
+// product row and receive independent, collision-free batches.
+// ─────────────────────────────────────────────────────────────────────────────
+await run('Test 13 – One new product with multiple variants is planned once', async () => {
+  const ts = Date.now();
+  const productName = `T13-Product-${ts}`;
+  const order = await api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: {
+      customerName: `T13-Customer-${ts}`,
+      orderReference: `T13-REF-${ts}`,
+      items: [
+        { productName, variantLabel: 'Size S', quantity: 2, dimensions: ['Size'], batches: null },
+        { productName, variantLabel: 'Size M', quantity: 2, dimensions: ['Size'], batches: null },
+        { productName, variantLabel: 'Size L', quantity: 2, dimensions: ['Size'], batches: null },
+      ],
+      actor: 'test',
+    },
+  });
+  assert(order.status === 201, `Multi-variant order failed: ${order.status} ${JSON.stringify(order.body)}`);
+  assert(order.body.lines.length === 3, `Expected 3 order lines, got ${order.body.lines.length}`);
+  const products = await api('/api/products');
+  assert(products.body.filter(p => p.name === productName).length === 1,
+    `Expected exactly one product row for ${productName}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

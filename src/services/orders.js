@@ -1,11 +1,10 @@
 // Customer -> Order -> OrderLine -- Domain Model Revision Pass v1
 // (Director-approved 2026-09-13). Sits alongside Product/Variant/
 // ProductionBatch/Unit, does not replace it. The golden rule from the
-// original model is preserved here: a Customer/Order/OrderLine is intent
-// only -- it never creates Units. Only Receiving/register-units does that
-// (see services/receiving.js). An OrderLine is fulfilled by zero or more
-// ProductionBatches (production_batches.order_line_id), which is how a
-// single order can be produced across multiple staged batches.
+// An order is the production promise. Creating a production batch creates
+// exactly one label/unit record per promised unit; physical existence is only
+// confirmed later when production attaches the label. Multiple batches let a
+// single order line be generated in delivery phases.
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 import { buildUnitStatementsForBatch } from './receiving.js';
@@ -209,66 +208,74 @@ export async function getOrderLine(db, id) {
 // array of prepared D1 statements (for Product, Dimensions, Variant) that
 // must be included in the caller's db.batch() call BEFORE they are used.
 // variantId is pre-generated here so it can be referenced immediately.
-async function preflightVariant(db, { productName, variantLabel, dimensions, attributes }) {
+async function preflightVariant(db, { productName, variantLabel, dimensions, attributes }, registry) {
   const statements = [];
 
   // 1. Resolve or plan Product
   const trimmedProductName = String(productName).trim();
-  const existingProduct = await db
-    .prepare('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = LOWER(?)')
-    .bind(trimmedProductName)
-    .first();
-
-  let productId;
-  if (existingProduct) {
-    productId = existingProduct.id;
-  } else {
-    productId = newInternalId();
-    statements.push(
-      db.prepare('INSERT INTO products (id, name) VALUES (?, ?)').bind(productId, trimmedProductName)
-    );
+  const productKey = trimmedProductName.toLowerCase();
+  let productPlan = registry.products.get(productKey);
+  if (!productPlan) {
+    const existingProduct = await db
+      .prepare('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = LOWER(?)')
+      .bind(trimmedProductName)
+      .first();
+    productPlan = existingProduct
+      ? { id: existingProduct.id, exists: true }
+      : { id: newInternalId(), exists: false };
+    registry.products.set(productKey, productPlan);
+    if (!productPlan.exists) {
+      statements.push(
+        db.prepare('INSERT INTO products (id, name) VALUES (?, ?)').bind(productPlan.id, trimmedProductName)
+      );
+    }
   }
+  const productId = productPlan.id;
 
   // 2. Resolve or plan Dimensions (additive, INSERT OR IGNORE)
   if (Array.isArray(dimensions) && dimensions.length > 0) {
-    const existingDims = existingProduct
-      ? await db
-          .prepare('SELECT name FROM product_dimensions WHERE product_id = ?')
-          .bind(productId)
-          .all()
-          .then((r) => new Set(r.results.map((d) => d.name.toLowerCase())))
-      : new Set();
-
-    const maxOrderRow = existingProduct
-      ? await db
-          .prepare('SELECT COALESCE(MAX(sort_order), -1) AS maxOrder FROM product_dimensions WHERE product_id = ?')
-          .bind(productId)
-          .first()
-      : { maxOrder: -1 };
-    let nextOrder = maxOrderRow.maxOrder + 1;
+    let dimensionPlan = registry.dimensions.get(productId);
+    if (!dimensionPlan) {
+      const existingRows = productPlan.exists
+        ? await db.prepare('SELECT name, sort_order FROM product_dimensions WHERE product_id = ?').bind(productId).all()
+        : { results: [] };
+      const existingDims = new Set(existingRows.results.map((d) => d.name.toLowerCase()));
+      const maxOrder = existingRows.results.reduce((max, d) => Math.max(max, Number(d.sort_order)), -1);
+      dimensionPlan = { names: existingDims, nextOrder: maxOrder + 1 };
+      registry.dimensions.set(productId, dimensionPlan);
+    }
 
     for (const rawName of dimensions) {
       const name = String(rawName).trim();
-      if (!name || existingDims.has(name.toLowerCase())) continue;
+      const dimensionKey = name.toLowerCase();
+      if (!name || dimensionPlan.names.has(dimensionKey)) continue;
       statements.push(
         db
           .prepare('INSERT OR IGNORE INTO product_dimensions (id, product_id, name, sort_order) VALUES (?, ?, ?, ?)')
-          .bind(newInternalId(), productId, name, nextOrder++)
+          .bind(newInternalId(), productId, name, dimensionPlan.nextOrder++)
       );
+      dimensionPlan.names.add(dimensionKey);
     }
   }
 
   // 3. Resolve or plan Variant
-  const existingVariant = await db
-    .prepare('SELECT id FROM variants WHERE product_id = ? AND variant_label = ?')
-    .bind(productId, variantLabel)
-    .first();
+  const variantKey = `${productId}\u0000${String(variantLabel)}`;
+  let variantPlan = registry.variants.get(variantKey);
+  if (!variantPlan) {
+    const existingVariant = productPlan.exists
+      ? await db
+          .prepare('SELECT id FROM variants WHERE product_id = ? AND variant_label = ?')
+          .bind(productId, variantLabel)
+          .first()
+      : null;
+    variantPlan = existingVariant
+      ? { id: existingVariant.id, exists: true }
+      : { id: newInternalId(), exists: false };
+    registry.variants.set(variantKey, variantPlan);
+  }
 
-  let variantId;
-  if (existingVariant) {
-    variantId = existingVariant.id;
-  } else {
-    variantId = newInternalId();
+  const variantId = variantPlan.id;
+  if (!variantPlan.exists && !registry.queuedVariants.has(variantKey)) {
     statements.push(
       db.prepare('INSERT INTO variants (id, product_id, variant_label) VALUES (?, ?, ?)').bind(variantId, productId, variantLabel)
     );
@@ -282,6 +289,7 @@ async function preflightVariant(db, { productName, variantLabel, dimensions, att
         }
       }
     }
+    registry.queuedVariants.add(variantKey);
   }
 
   return { variantId, statements };
@@ -300,7 +308,6 @@ async function nextBatchNumbers(db, variantId, count, inFlightCount = 0) {
     .all();
   const usedNumbers = new Set(existing.map((r) => String(r.batch_number)));
 
-  const numbers = [];
   let candidate = 1;
   const totalNeeded = count + inFlightCount;
   const allReserved = new Set(usedNumbers);
@@ -403,6 +410,12 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
   // Track in-flight batch counts per variantId to avoid batch number collisions
   // within the same transaction (Fix 3).
   const inFlightBatchCounts = new Map(); // variantId -> count already reserved
+  const preflightRegistry = {
+    products: new Map(),
+    dimensions: new Map(),
+    variants: new Map(),
+    queuedVariants: new Set(),
+  };
 
   for (const item of items) {
     const quantity = Number(item.quantity);
@@ -416,7 +429,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
         variantLabel: item.variantLabel,
         dimensions: item.dimensions,
         attributes: item.attributes,
-      });
+      }, preflightRegistry);
       variantId = variantPreflight.variantId;
       allStatements.push(...variantPreflight.statements);
     }
@@ -539,24 +552,25 @@ export async function addBatchToOrderLine(db, lineId, { quantity, batchNumber, a
 
   const { createdUnits, statements: unitStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, names, actor);
 
-  // Run the guarded insert first to check changes, then commit units
-  const guardResult = await db.batch([guardedInsert]);
-  const changes = guardResult[0]?.meta?.changes ?? guardResult[0]?.changes ?? 1;
-  if (changes === 0) {
+  // Keep the batch and all of its units/events in one transaction. If the
+  // guard inserts no batch, the dependent unit inserts fail their FK and D1
+  // rolls the whole batch back; we then translate that expected race/overflow
+  // into the same useful validation message.
+  try {
+    await db.batch([guardedInsert, ...unitStmts]);
+  } catch (error) {
     const sumRow = await db
       .prepare('SELECT COALESCE(SUM(planned_quantity), 0) AS totalPlanned FROM production_batches WHERE order_line_id = ?')
       .bind(lineId)
       .first();
     const existing = Number(sumRow.totalPlanned);
     const unallocated = line.quantity_ordered - existing;
-    throw new ValidationError(
-      `Batch quantity (${bQty}) exceeds unallocated order line balance (${unallocated}).`
-    );
-  }
-
-  // Batch insert was accepted; now atomically add unit statements
-  if (unitStmts.length > 0) {
-    await db.batch(unitStmts);
+    if (bQty > unallocated) {
+      throw new ValidationError(
+        `Batch quantity (${bQty}) exceeds unallocated order line balance (${unallocated}).`
+      );
+    }
+    throw error;
   }
 
   return { batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length };
