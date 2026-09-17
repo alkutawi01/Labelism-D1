@@ -296,7 +296,6 @@
         const cell = document.createElement('div');
         cell.id = `label-cell-${u.id}`;
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
-        const verified = !!u.label_scan_verified;
         cell.innerHTML = `
           ${batch && (batch.customer_name || batch.order_reference) ? `<div class="context" style="font-weight:600;color:var(--navy);">${batch.customer_name || ''}${batch.order_reference ? ' · ' + batch.order_reference : ''}</div>` : ''}
           ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
@@ -304,12 +303,12 @@
           ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${u.recipient_name}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${u.human_code}</div>
-          <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : verified ? 'Scan Betul — Sedia Disahkan' : 'Belum Disahkan Ditampal'}</div>
+          <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : 'Belum Ditampal'}</div>
           ${u.label_confirmed_at ? `
             <button class="no-print" disabled>Disahkan</button>
-          ` : verified ? `
+          ` : `
             <button class="no-print" data-id="${u.id}" data-action="confirm">Sahkan Sudah Ditampal</button>
-          ` : '<div class="no-print muted" style="font-size:11px;margin-top:7px">Gunakan ruang scan utama di atas.</div>'}
+          `}
           ${!u.label_confirmed_at ? `
             <details class="no-print" style="margin-top:7px;text-align:left"><summary style="cursor:pointer;font-size:11px">Tindakan Lanjutan</summary>
             <button class="secondary" data-id="${u.id}" data-action="reissue">Cetak Semula / Ganti Label Rosak</button>

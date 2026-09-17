@@ -10,7 +10,8 @@
     .mode-tab { padding: 14px 24px; border: 2px solid var(--border); background: #f8fafc; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 15px; color: #334155; transition: all 0.2s; }
     .mode-tab:hover { background: #e2e8f0; border-color: #94a3b8; }
     .mode-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
-    .item-row { display: grid; grid-template-columns: 2fr 1.5fr 1fr 2fr 1fr auto; gap: 12px; align-items: start; margin-bottom: 12px; padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
+    .item-row { display: grid; grid-template-columns: 1.8fr 1.1fr 0.85fr 0.95fr 0.75fr 1.6fr auto; gap: 12px; align-items: start; margin-bottom: 12px; padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
+    .item-row .baki-display { font-size:14px; padding:10px 0; font-weight:700; color: var(--navy); }
     .status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
     .badge-ok { background: #dcfce7; color: #166534; }
     .badge-partial { background: #fef3c7; color: #92400e; }
@@ -92,24 +93,7 @@
         <!-- Item row template injected here -->
       </div>
       <button type="button" class="btn-secondary" onclick="addItemRow()" style="margin-top:12px; font-size:14px; padding:12px 20px;">+ Tambah Item</button>
-      
-      <div style="margin-top:20px; padding:16px; background:#fff; border:1px solid var(--border); border-radius:8px;">
-        <label style="font-size:15px; margin-bottom:12px; display:block;">Pilihan Batch Label:</label>
-        <div class="batch-option">
-          <input type="radio" name="batchMode" id="batch-all" value="all" checked onchange="toggleBatchInput()">
-          <label for="batch-all" style="margin:0;">Jana semua label sekarang</label>
-        </div>
-        <div class="batch-option">
-          <input type="radio" name="batchMode" id="batch-partial" value="partial" onchange="toggleBatchInput()">
-          <label for="batch-partial" style="margin:0;">Jana sebahagian dahulu</label>
-        </div>
-        <div id="partial-batch-input" hidden style="margin-top:12px;">
-          <label>Jumlah label untuk fasa ini:
-            <input type="number" id="partial-qty" min="1" placeholder="Masukkan kuantiti" style="font-size:14px; padding:12px; max-width:200px;">
-          </label>
-          <p class="muted" id="batch-remaining" style="font-size:13px; margin-top:8px; color:#64748b;"></p>
-        </div>
-      </div>
+      <p class="muted" style="font-size:13px; margin-top:12px;">"Nak Dicetak Sekarang" default kepada kuantiti penuh (cetak semua sekali gus). Tukar nilai itu untuk cetak sebahagian dahulu -- baki boleh ditambah kemudian dari Senarai Tempahan.</p>
     </fieldset>
 
     <button type="submit" class="btn-primary" style="width:100%; margin-top:20px;">Sahkan Tempahan &amp; Jana Label</button>
@@ -242,6 +226,13 @@
         : '<option value="">Tiada pelanggan lagi -- cipta baru</option>';
     }
 
+    // Izzat's correction (2026-09-17): the old design had ONE global "print
+    // all now / print partial X now" choice applied uniformly to every item
+    // row, which breaks the moment an order has more than one variant --
+    // there was no way to say "print 2 of the 5 size M, and 3 of the 5 size
+    // L" in one submission. "Nak Dicetak Sekarang" is now per row, defaults
+    // to the full ordered quantity (so leaving every row untouched = print
+    // everything at once, same as before), and Baki updates live.
     function addItemRow() {
       const container = document.getElementById('items-container');
       const rowId = 'row-' + Date.now() + '-' + Math.random().toString(36).substr(2,4);
@@ -250,19 +241,28 @@
       div.id = rowId;
       div.innerHTML = `
         <div>
-          <label style="font-size:14px;">Nama Produk
+          <label style="font-size:14px;">Produk
             <input type="text" data-field="productName" placeholder="cth: Jersi Home 2026" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:14px;">Varian / Saiz
+          <label style="font-size:14px;">Variasi
             <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
-          <label style="font-size:14px;">Kuantiti Order (Total)
+          <label style="font-size:14px;">Kuantiti
             <input type="number" min="1" data-field="quantity" value="10" required style="font-size:14px; padding:10px;">
           </label>
+        </div>
+        <div>
+          <label style="font-size:14px;">Nak Dicetak Sekarang
+            <input type="number" min="1" data-field="printNow" value="10" required style="font-size:14px; padding:10px;">
+          </label>
+        </div>
+        <div>
+          <label style="font-size:14px;">Baki</label>
+          <div class="baki-display" data-field="bakiDisplay">0</div>
         </div>
         <div>
           <label style="font-size:14px;">Nama Penerima (Pilihan)
@@ -274,6 +274,29 @@
         </div>
       `;
       container.appendChild(div);
+
+      const qtyInput = div.querySelector('[data-field=quantity]');
+      const printNowInput = div.querySelector('[data-field=printNow]');
+      const bakiDisplay = div.querySelector('[data-field=bakiDisplay]');
+      function syncPrintNow() {
+        // Quantity changed -- keep "print now" from silently exceeding the
+        // new total (it defaults to matching quantity, i.e. "print all").
+        if (Number(printNowInput.value) > Number(qtyInput.value) || printNowInput.dataset.autofollow !== 'false') {
+          printNowInput.value = qtyInput.value;
+        }
+        updateBaki();
+      }
+      function updateBaki() {
+        const qty = Number(qtyInput.value) || 0;
+        const printNow = Number(printNowInput.value) || 0;
+        bakiDisplay.textContent = Math.max(0, qty - printNow);
+      }
+      qtyInput.addEventListener('input', syncPrintNow);
+      printNowInput.addEventListener('input', () => {
+        printNowInput.dataset.autofollow = 'false'; // staff took manual control -- stop following quantity
+        updateBaki();
+      });
+      updateBaki();
     }
 
     async function loadOrders() {
@@ -438,36 +461,29 @@
         const itemRows = document.querySelectorAll('.item-row');
         if (!itemRows.length) throw new Error('Sila tambah sekurang-kurangnya 1 item pakaian.');
 
-        // Batch phasing is chosen once for the whole order (the "Pilihan Batch
-        // Label" radio group above), not per item -- a per-item text field
-        // used to exist here but was never rendered by addItemRow(), so this
-        // always crashed on submit. Baki (remaining) quantity is added later
-        // via the "+ Tambah Batch" button in Senarai Tempahan once this first
-        // phase's labels are confirmed attached.
-        const isPartialBatch = document.getElementById('batch-partial').checked;
-        const partialQty = isPartialBatch ? Number(document.getElementById('partial-qty').value) : null;
-        if (isPartialBatch && (!partialQty || partialQty < 1)) {
-          throw new Error('Sila masukkan kuantiti label untuk fasa pertama.');
-        }
-
+        // "Nak Dicetak Sekarang" is per item row (see addItemRow()) -- an
+        // order with 5 size M + 5 size L can print 2 M + 3 L now and the
+        // rest later, which a single order-wide batch quantity could never
+        // express. printNow === quantity (the default) means "print all of
+        // this line now", same as not phasing at all.
         const items = [];
         itemRows.forEach((row) => {
           const productName = row.querySelector('[data-field=productName]').value.trim();
           const variantLabel = row.querySelector('[data-field=variantLabel]').value.trim();
           const quantity = Number(row.querySelector('[data-field=quantity]').value);
+          const printNow = Number(row.querySelector('[data-field=printNow]').value);
           const rawNames = row.querySelector('[data-field=unitNames]').value.trim();
           const unitNames = rawNames ? rawNames.split(',').map(s => s.trim()).filter(Boolean) : [];
 
           if (!productName || !variantLabel || !quantity) return;
-
-          let batches = null;
-          if (isPartialBatch) {
-            if (partialQty > quantity) {
-              throw new Error(`Kuantiti fasa pertama (${partialQty}) melebihi kuantiti order (${quantity}) untuk "${productName} ${variantLabel}".`);
-            }
-            batches = [{ quantity: partialQty }];
+          if (!printNow || printNow < 1) {
+            throw new Error(`"Nak Dicetak Sekarang" untuk "${productName} ${variantLabel}" mesti sekurang-kurangnya 1.`);
+          }
+          if (printNow > quantity) {
+            throw new Error(`"Nak Dicetak Sekarang" (${printNow}) melebihi kuantiti (${quantity}) untuk "${productName} ${variantLabel}".`);
           }
 
+          const batches = printNow < quantity ? [{ quantity: printNow }] : null;
           items.push({ productName, variantLabel, quantity, unitNames, batches });
         });
 
@@ -491,7 +507,22 @@
 
         if (res.error) throw new Error(res.error);
 
-        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan "${res.orderReference}" berjaya dicipta! Kuantiti label telah dijana secara atomik. <a href="/label.html">Ke Cetak Label →</a></div>`;
+        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan "${res.orderReference}" berjaya dicipta!</div>`;
+
+        // Summary cards used to only populate on the AI-import path --
+        // the manual form (the more commonly used one) silently skipped
+        // straight to the plain text message with no Ditempah/Dijana/Baki
+        // breakdown and no "Terus ke Cetak & Tampal" button, so there was
+        // no clear next step after creating an order manually.
+        const totalOrdered = res.lines.reduce((s, l) => s + l.quantity, 0);
+        const totalGenerated = res.lines.reduce((s, l) => s + l.batches.reduce((bs, b) => bs + b.createdUnits, 0), 0);
+        const totalBatches = res.lines.reduce((s, l) => s + l.batches.length, 0);
+        document.getElementById('sum-ordered').textContent = totalOrdered;
+        document.getElementById('sum-generated').textContent = totalGenerated;
+        document.getElementById('sum-remaining').textContent = totalOrdered - totalGenerated;
+        document.getElementById('sum-batches').textContent = totalBatches + ' fasa';
+        document.getElementById('summary-section').hidden = false;
+
         document.getElementById('items-container').innerHTML = '';
         addItemRow();
         loadCustomers();
@@ -501,11 +532,6 @@
       }
     });
 
-    // Toggle batch input visibility
-    function toggleBatchInput() {
-      const isPartial = document.getElementById('batch-partial').checked;
-      document.getElementById('partial-batch-input').hidden = !isPartial;
-    }
 
     // Copy AI prompt to clipboard
     function copyAiPrompt() {

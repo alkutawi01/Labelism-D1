@@ -84,35 +84,9 @@ export async function verifyLabelScan(db, unitId, rawCode, actor) {
   return { verified: true };
 }
 
-// Field Simulation P2 (Wrong Label Attachment) fix, Director-approved
-// 2026-09-13: a button click is not proof a physical label was actually
-// scanned onto the right object -- two units of the same variant print
-// near-identical cards, and an operator can click whichever card matches
-// their INTENT rather than what they actually attached. Confirm is now
-// gated on a prior verifyLabelScan() success, which is a hard server-side
-// check (not just a client-side disabled button) so this can't be bypassed.
 export async function confirmLabel(db, unitId, actor) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
-
-  // Scoped to seq > the unit's most recent LABEL_REISSUED (if any): after a
-  // post-attachment reissue (see reissueLabelAfterAttachment), the OLD
-  // LABEL_SCANNED_FOR_ATTACHMENT event is still sitting in this unit's
-  // history, but it proves the OLD (now-dead) QR was scanned, not the new
-  // one. Without this bound, confirming would silently skip re-verification
-  // against the physical object entirely.
-  const scanned = await db
-    .prepare(
-      `SELECT 1 FROM unit_events
-       WHERE unit_id = ? AND event_type = 'LABEL_SCANNED_FOR_ATTACHMENT'
-         AND seq > COALESCE((SELECT MAX(seq) FROM unit_events WHERE unit_id = ? AND event_type = 'LABEL_REISSUED'), 0)
-       LIMIT 1`
-    )
-    .bind(unitId, unitId)
-    .first();
-  if (!scanned) {
-    throw new ValidationError('Scan the label actually attached to this unit before confirming -- a click alone is not proof of physical attachment.');
-  }
 
   const now = new Date().toISOString();
   const eventId = newInternalId();
@@ -166,6 +140,19 @@ export async function reissueLabel(db, unitId, actor) {
   return { unitId, internalToken: newInternal, publicToken: newPublic };
 }
 
+// Izzat's correction (2026-09-17): the mandatory verifyLabelScan-before-
+// confirmLabel gate below (removed) never actually caught the mismatch it
+// was built for. Scanning a QR only re-reads what the label itself already
+// says ("this is Ahmad's label") -- it proves nothing about which physical
+// garment it ended up stuck to. If Ahmad's label gets attached to Ali's
+// garment, a scan of that label still says "Ahmad" and the old gate would
+// have happily confirmed it. The actual safety net is the 1:1 label/unit
+// obligation itself: the mistake surfaces naturally when staff go looking
+// for Ali's garment and find it has no label, because Ahmad's label used
+// it up. Scanning stays useful elsewhere (verifyLabelScan, packing scans)
+// for genuinely verifiable things -- "is this QR real" and "does it belong
+// to this batch/order" -- just not as a forced prerequisite here.
+//
 // Priority 5B (Core Production Simulation), Director-approved 2026-09-14:
 // a label that tears/fails AFTER attachment is confirmed is a different
 // risk than reissueLabel()'s pre-attachment case -- the old physical label
