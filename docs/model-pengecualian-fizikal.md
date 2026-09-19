@@ -2,7 +2,17 @@
 
 Status: **DRAF UNTUK SEMAKAN. Tiada kod, tiada skema, tiada migrasi.** Lakaran jadual di bawah hanya untuk menerangkan model dan belum muktamad.
 
-**Keputusan Izzat 19/9 (Soalan 1): nama penerima ada pada baju itu sendiri** (bukan hanya pada label). Nama ialah sebahagian spesifikasi pengeluaran, jadi mengubah nama selepas baju wujud = baju itu salah. Jadual 4.1 dikemas kini.
+**Keputusan dikunci 19/9 (versi akhir; menggantikan jawapan awal jika bercanggah):**
+
+1. `recipient_name` ialah **maklumat label/penerima**, bukan identiti fizikal baju. Nama yang dicetak atau dijahit pada baju ialah ciri produk (customisation), di luar model ini (lihat Risiko R1).
+2. Salah saiz **tidak menulis `DAMAGE_OBSERVED`**. Mekanisme reissue diubah supaya membawa sebab yang tepat (bahagian 7.1). Tiada perbendaharaan event baru.
+3. **Tiada hierarki peranan** (staf/admin) sebagai keperluan seni bina. Sistem hanya merekod siapa melakukan pindaan dan memberi pengesahan yang jelas apabila ada akibat fizikal.
+4. `quantity_ordered` **tidak pernah ditulis semula** (invarian I8).
+5. `exception_units` v1 dikurangkan kepada apa yang benar-benar digunakan (bahagian 5 dan 6).
+6. Dua konsep (Pindaan Obligasi + Unit Pengecualian), sempadan tiga lintasan, VOID + pengganti untuk saiz: **dikekalkan**.
+7. **Fasa 0 (peraturan shipment) diluluskan untuk dibina dahulu.** Fasa 1 hingga 4 belum, dan tidak boleh dibina serentak.
+
+Model dalam satu ayat: *order menentukan berapa baju wajib dibuat; setiap obligasi ada label; jika order berubah rekod lama tidak dipadam; jika realiti kilang tak sepadan dengan order, objek fizikal itu direkod sebagai pengecualian; hanya tindakan manusia boleh menyambungkan pengecualian kepada obligasi.*
 
 Sumber: sesi simulasi 1 hingga 10 (`tests/stress-sessions.js`) dan arahan Izzat 19/9. Empat temuan yang model ini mesti jawab: pindaan order tiada (S2, S3), baju terlebih tiada tempat (S6), salah saiz tak boleh dinyatakan (S10), dan shipment planned 103 untuk order 100 (S6).
 
@@ -49,16 +59,16 @@ Tiga jenis perubahan: **Nama** penerima, **Variasi/saiz** (termasuk produk), **K
 
 ### 4.1 Nama penerima
 
-Nama ada pada baju. Maka nama ialah sebahagian identiti pengeluaran, sama seperti saiz, sebaik sahaja baju dihasilkan.
+`recipient_name` ialah maklumat pada label. Menukarnya tidak menukar apa yang kilang wajib hasilkan, jadi ia **tidak** VOID obligasi selagi label masih boleh diganti.
 
 | | Mekanisme | Obligasi baru? | Akibat fizikal | Jejak |
 |---|---|---|---|---|
-| **S1** | Pembetulan di tempat. Label dan baju belum wujud. | Tidak | Tiada | Event `NAME_CORRECTED {lama, baru}` + pindaan |
-| **S2** | Operator wajib mengesahkan: "baju ini **belum** dihasilkan dengan nama lama". Jika ya: pembetulan + label lama dimatikan (token diputar) + cetak semula. Jika baju sudah dihasilkan (label belum ditampal sahaja): ikut laluan **S3**. | Tidak jika belum dihasilkan; Ya jika sudah | Label kertas lama dibuang. Jika baju sudah ada, ia jadi UP. | `NAME_CORRECTED` + `LABEL_REISSUED`, atau pindaan VOID |
-| **S3** | **VOID + obligasi pengganti.** Baju bernama lama tak boleh dipakai untuk penerima baru, jadi ia jadi UP `VOID_RELEASED`. Tiada "tukar label sahaja". | Ya | Baju lama jadi UP; operator pilih reject / spare / convert (convert hanya jika baju itu memang sesuai untuk obligasi baru; sebab nama berbeza, biasanya reject atau spare) | Pindaan + UP + `replaces` |
-| **S4** | Tidak boleh diubah. Jika pelanggan mahu baju bernama baru: **SUPERSEDE**. | Ya (pengganti) | Baju lama dipulang melalui Return Intake, atau pelanggan simpan | `replaces` + pindaan |
+| **S1** | Pembetulan di tempat (belum ada label) | Tidak | Tiada | `NAME_CORRECTED {lama, baru}` + pindaan |
+| **S2** | Pembetulan + label kertas lama dimatikan (token diputar) + cetak semula | Tidak | Label kertas lama dibuang | `NAME_CORRECTED` + `LABEL_REISSUED` sebab `NAME_CORRECTION` |
+| **S3** | Sama seperti S2 tetapi label sudah pada baju: token lama dimatikan, status tampal dikosongkan, label baru dikeluarkan dan ditampal semula. Pengesahan jelas: "label pada baju perlu ditukar". | Tidak | Label lama dibuang daripada baju, label baru ditampal | `NAME_CORRECTED` + `LABEL_REISSUED` sebab `NAME_CORRECTION`. **Tiada `DAMAGE_OBSERVED`.** |
+| **S4** | Unit tidak diubah. Reissue ditolak selepas dihantar (sudah dikuatkuasakan). Jika pelanggan perlukan baju/label baru: **SUPERSEDE**. | Ya (pengganti) | Baju lama dipulang melalui Return Intake, atau pelanggan simpan | `replaces` + pindaan |
 
-Kesan keputusan ini: mekanisme "reissue selepas tampal" sedia ada (yang hanya menukar QR) **bukan** cara membetulkan nama. Ia kekal untuk label rosak sahaja.
+Risiko R1 (di luar model): jika sesuatu produk memang mempunyai nama yang dicetak/dijahit pada baju, mengubah nama selepas baju dihasilkan menghasilkan baju salah yang label baru tak dapat betulkan. Itu ciri produk (customisation) dan patut dimodelkan sebagai atribut variasi/spesifikasi produk jika suatu hari ia sebenar-benarnya berlaku, bukan sebagai `recipient_name`. **Belum dibina dan belum diputuskan.**
 
 ### 4.2 Variasi / saiz
 
@@ -82,7 +92,8 @@ Sentiasa menyentuh identiti (unit milik satu variasi). Tiada suntingan variasi p
 
 ### 4.4 Peraturan merentas keadaan
 
-- **Unit yang sudah dipek (S3b)**: pindaan yang menyentuhnya **ditolak** sehingga unit dikeluarkan daripada packing melalui tindakan berjejak `SHIPMENT_UNIT_REMOVED` (belum wujud, keperluan prasyarat; Soalan 4).
+- **Unit yang sudah dipek tetapi belum dihantar**: pindaan yang menyentuhnya **ditolak** sehingga unit dikeluarkan daripada packing. Prasyarat yang wajib dibina: satu tindakan **"Keluarkan dari packing"** dengan **sebab wajib dan pelaku wajib**, satu event `SHIPMENT_UNIT_REMOVED`, buang keahlian `shipment_units`, dan kira semula shipment (dipek/planned). Bukan subsistem baru.
+- **Pengesahan, bukan peranan**: pindaan dengan akibat fizikal (label pada baju ditukar, baju jadi Unit Pengecualian) menunjukkan dialog yang menyatakan akibat itu secara jelas sebelum disahkan. Pelaku direkod. Tiada sekatan mengikut peranan dalam v1.
 - **Pindaan bukan draf**: sistem menunjukkan **pelan** (unit mana di-VOID, unit mana dicipta, baju mana jadi UP), pengguna sahkan, kemudian ia diterap dalam satu transaksi. Pelan menyimpan keadaan setiap unit semasa dijana; jika berubah sebelum sahkan (contoh operator lain baru cetak), pindaan ditolak dengan "keadaan berubah, jana pelan semula".
 - **VOID tidak boleh dibatalkan**. Kesilapan pindaan dibetulkan dengan pindaan baru.
 - **Medan pengepala order** (tarikh order, tarikh siap, nota, no. rujukan) ialah suntingan biasa dengan log perubahan. Ia tidak menyentuh obligasi.
@@ -93,22 +104,24 @@ Kekal: `units` ialah obligasi. Tiada jadual inventori.
 
 ```
 units            + voided_at, void_reason, amendment_id, replaces_unit_id, superseded_at
-order_lines      + target_quantity   (asal = quantity_ordered; naik/turun mengikut pindaan)
-order_amendments   id, order_id, number, actor, reason (wajib), created_at   (tak boleh diubah)
+order_lines      quantity_ordered  (ASAL. TIDAK PERNAH DITULIS SEMULA)
+order_amendments   id, order_id, number, actor, reason (wajib), quantity_delta per baris, created_at   (tak boleh diubah)
 amendment_items    amendment_id, unit_id, action (VOID | CREATE | NAME_CORRECTED | SUPERSEDE), payload
-exception_units    id, code (EXC-nnnnnn, jujukan global), token, variant_observed,
+exception_units    id, code (EXC-..., unik), order_id (konteks), variant_observed,
                    origin (OVERPRODUCTION | WRONG_SIZE | VOID_RELEASED | FOUND),
-                   order_id (konteks), related_unit_id, disposition, decided_by, decided_at,
-                   converted_to_unit_id, location, reason
+                   disposition (PENDING | REJECTED | SPARE | CONVERTED),
+                   related_unit_id (jika ada), converted_to_unit_id, reason, actor, created_at, decided_at
 ```
+
+Sengaja **tiada** dalam v1: jejak lokasi, jujukan global yang rumit, carian atau indeks stok, token label dengan mesin khas. `code` cuma perlu unik dan jelas.
 
 Kiraan baris order selepas model ini:
 
 | Angka | Takrif |
 |---|---|
-| Ditempah asal | `quantity_ordered` (tak berubah) |
-| Pindaan (+/-) | jumlah pindaan kuantiti |
-| Sasaran semasa | `target_quantity` |
+| Ditempah asal | `quantity_ordered` (tak pernah berubah) |
+| Pindaan bersih (+/-) | jumlah `quantity_delta` semua pindaan baris itu |
+| Sasaran semasa | `quantity_ordered` + pindaan bersih (diterbitkan; tidak menggantikan `quantity_ordered`) |
 | Obligasi aktif | unit tidak VOID dan tidak SUPERSEDED |
 | Dibatalkan | unit VOID |
 | Dihantar (digantikan) | unit SUPERSEDED yang sudah dihantar |
@@ -122,6 +135,7 @@ Invarian (ujian penerimaan mesti menjaga):
 - **I4** Tiada pindaan mengubah medan unit di S3 atau S4 di tempat.
 - **I5** Setiap pindaan ada pelaku, sebab, masa dan rujukan unit lama/baru.
 - **I6** UP tidak masuk kiraan ditempah, dijana, dipek atau dihantar. UP tidak boleh dimasukkan ke shipment.
+- **I8** `quantity_ordered` tidak pernah ditulis semula. Sasaran semasa sentiasa = `quantity_ordered` + jumlah `quantity_delta`, jadi audit boleh menghasilkan semula kedua-duanya pada bila-bila masa. Ini dikunci kerana audit kemudian bergantung kepadanya.
 - **I7** Shipment: `planned` tidak boleh melebihi obligasi tertunggak baris itu (bahagian 9).
 
 ## 6. Unit Pengecualian
@@ -137,7 +151,7 @@ Invarian (ujian penerimaan mesti menjaga):
 
 ### 6.2 Pendaftaran
 
-Operator mendaftar baju: pilih order konteks (wajib), variasi yang **diperhatikan**, sebab. Setiap UP menerima kod `EXC-nnnnnn` dan **label yang jelas berbeza** (contoh sepanduk "LEBIHAN"), supaya tak boleh dikelirukan dengan label obligasi. Jika UP tak dilabel, objek fizikal itu kekal tanpa jejak, iaitu masalah asal.
+Operator mendaftar baju: pilih order konteks (wajib), variasi yang **diperhatikan**, sebab. Setiap UP menerima kod `EXC-...` yang unik dan **label yang jelas berbeza**: teks besar **"PENGECUALIAN"** (bukan "LEBIHAN", kerana asal UP juga boleh salah saiz, baju yang dilepaskan atau ditemui), pada pencetak dan kertas yang sama. Ia tidak boleh dikelirukan dengan label obligasi. Jika UP tak dilabel, objek fizikal itu kekal tanpa jejak, iaitu masalah asal.
 
 Scan label UP di packing atau return mesti menolak dengan mesej khusus: "Ini Unit Pengecualian EXC-000123, bukan unit order. Belum boleh dipek."
 
@@ -147,10 +161,10 @@ Scan label UP di packing atau return mesti menolak dengan mesej khusus: "Ini Uni
 |---|---|---|
 | `PENDING` | Baru didaftar, belum diputuskan | Tidak |
 | `REJECTED` | Dibuang atau dilupuskan. Sebab wajib. | Ya |
-| `SPARE` | Disimpan. Rekod dengan lokasi. **Tiada kuantiti stok, tiada padanan, tiada tempahan.** | Tidak |
+| `SPARE` | "Baju ini masih ada, jangan buang rekodnya." **Bukan stok**: tiada kuantiti, tiada lokasi, tiada carian, tiada padanan dengan order lain. | Tidak |
 | `CONVERTED` | Diikat kepada obligasi baru (6.4) | Ya |
 
-`PENDING` tidak menyekat kerja lantai (packing dan dispatch diteruskan). Ia dipaparkan **merah** pada Butiran order dan pada satu senarai "Pengecualian belum diputuskan". Lihat Soalan 3.
+`PENDING` tidak menyekat order atau penghantaran lain. UP itu sendiri tidak boleh masuk packing atau pemenuhan. Ia dipaparkan **merah** pada Butiran order dan pada satu senarai "Pengecualian belum diputuskan". Lihat Soalan 3.
 
 ### 6.4 Tukar kepada obligasi (CONVERT)
 
@@ -166,13 +180,25 @@ Hasil: label O' dianggap ditampal pada baju UP (event `BOUND`), UP jadi `CONVERT
 
 Kes: order minta M, baju fizikal ialah L.
 
-1. Operator menyatakan "salah saiz" pada unit O (variasi M, ditampal), memilih variasi sebenar (L).
-2. Sistem merekod `MISMATCH_DETECTED {dijangka: M, diperhatikan: L}` pada O. **O tidak diubah dan tidak dipenuhi.**
-3. Label O dimatikan dengan mekanisme reissue selepas tampal (sedia ada): token diputar, status tampal dikosongkan. O kembali tertunggak dan perlu baju M.
-4. Sistem mencipta UP `WRONG_SIZE` (variasi L, `related_unit_id` = O), disposisi `PENDING`.
-5. Operator memutuskan UP: `REJECTED` / `SPARE` / atau **jika pelanggan terima L**: pindaan saiz M ke L pada O (keadaan sekarang S2, bersih), yang VOID O dan mencipta O' (L); UP L ditukar kepada O' (6.4).
+1. Operator menyatakan "salah saiz" pada unit O (variasi M, ditampal) dan memilih variasi sebenar (L).
+2. `MISMATCH_DETECTED {dijangka: M, diperhatikan: L}` direkod pada O. **O tidak diubah dan tidak dipenuhi.**
+3. Token lama dimatikan dan status tampal dikosongkan, direkod sebagai `LABEL_REISSUED` dengan sebab `WRONG_SIZE`. **Tiada `DAMAGE_OBSERVED`**, kerana label tidak rosak. O kembali tertunggak dan perlu baju M.
+4. Unit Pengecualian `WRONG_SIZE` (variasi L, `related_unit_id` = O) dicipta, `PENDING`.
+5. Operator memutuskan UP: `REJECTED` / `SPARE` / atau jika pelanggan terima L: pindaan saiz M ke L pada O (O kini bersih pada S2, jadi VOID + pengganti O' variasi L), kemudian UP ditukar kepada O' (6.4).
 
-Bukti kekal: O ada `MISMATCH_DETECTED`, UP menunjuk asalnya kepada O, O' `replaces` O. Variasi tiada unit yang pernah diubah.
+Bukti kekal: O ada `MISMATCH_DETECTED`, UP menunjuk asalnya kepada O, O' `replaces` O. Tiada unit yang variasinya pernah diubah.
+
+### 7.1 Perubahan mekanisme reissue (prasyarat fasa yang menggunakannya)
+
+Reissue selepas tampal hari ini **sentiasa** menulis `DAMAGE_OBSERVED` dan sebab "label rosak/hilang". Ia dibetulkan supaya menerima **sebab yang tepat**, bukan dengan menambah perbendaharaan event baru:
+
+| Sebab | `DAMAGE_OBSERVED`? | Digunakan oleh |
+|---|---|---|
+| `LABEL_DAMAGED` (lalai, tingkah laku semasa) | Ya | Label rosak atau hilang |
+| `NAME_CORRECTION` | Tidak | Pembetulan nama (4.1) |
+| `WRONG_SIZE` | Tidak | Aliran salah saiz (bahagian 7) |
+
+Event yang sentiasa ditulis: `LABEL_REISSUED` dengan `payload.reason` yang benar. Panggilan sedia ada tidak berubah tingkah laku (lalai `LABEL_DAMAGED`).
 
 ## 8. Apa yang TIDAK dibina
 
@@ -198,7 +224,13 @@ tertunggak(baris) = sasaran semasa
                   - planned shipment lain yang belum dihantar dan belum dibatalkan
 ```
 
-Planned 103 untuk order 100 gagal. Kenaikan hanya jika pindaan menaikkan sasaran dahulu. Sebelum pindaan dibina, `sasaran semasa` = `quantity_ordered`, jadi peraturan ini boleh dilaksanakan bersendirian tanpa menunggu model ini. Berlaku pada `createShipment` dan pada permulaan packing cetakan.
+Planned 103 untuk order 100 gagal. Kenaikan hanya jika pindaan menaikkan sasaran dahulu.
+
+Butiran yang dikunci untuk Fasa 0:
+- "Shipment lain" dikira mengikut keadaan: **OPEN** = `planned_quantity`; **CLOSED** dan **DISPATCHED** = bilangan unit sebenar dalam shipment (shipment ditutup dengan kekurangan tidak menahan baki yang tak pernah dipek). Dibatalkan diabaikan.
+- Semakan mesti **atomik** dalam SQL (sisipan bersyarat, seperti tambah-batch sedia ada) supaya dua shipment yang dicipta serentak tidak masing-masing merancang baki yang sama.
+- Berlaku pada `createShipment` (API langsung) dan disemak pada permulaan packing cetakan.
+- Mesej ralat menyebut baki tertunggak sebenar. Sebelum pindaan dibina, `sasaran semasa` = `quantity_ordered`, jadi peraturan ini boleh dilaksanakan bersendirian tanpa menunggu model ini. Berlaku pada `createShipment` dan pada permulaan packing cetakan.
 
 ## 10. Satu konsep atau dua domain?
 
@@ -208,7 +240,7 @@ Planned 103 untuk order 100 gagal. Kenaikan hanya jika pindaan menaikkan sasaran
 |---|---|---|
 | Domain | Janji pengeluaran | Realiti fizikal |
 | Pencetus | Kertas / pelanggan | Lantai / operator |
-| Pelaku | Admin atau staf pejabat | Operator lantai |
+| Pelaku | Staf pejabat (pelaku direkod, tiada sekatan peranan) | Operator lantai |
 | Invarian | Jumlah obligasi = sasaran | Objek fizikal tak boleh tanpa jejak |
 | Ubah kiraan order? | Ya | **Tidak pernah** |
 
@@ -232,28 +264,30 @@ Sebab dipisahkan: pencetus, pelaku dan invarian berbeza. Jika digabung, satu `un
 | Perubahan order selepas cetak | pindaan berjejak |
 | Baju fizikal sebenar di lantai | unit ditampal tidak dihantar + UP bukan REJECTED |
 
-## 12. Soalan untuk Izzat (dengan lalai yang dicadangkan)
+## 12. Keputusan (dikunci 19/9)
 
-1. ~~Nama penerima: pada baju atau hanya pada label?~~ **DIJAWAB (Izzat 19/9): pada baju.** S3 nama = VOID + pengganti + UP.
-11. **Bilakah nama dikenakan pada baju berbanding cetak label?** Menentukan sama ada S2 selamat untuk pembetulan di tempat. Jika baju biasanya dihasilkan (nama dicetak/dijahit) selepas label dicetak tetapi sebelum ditampal, S2 nama sering sebenarnya S3. Lalai: operator mengesahkan "baju belum dihasilkan" pada S2; jika ragu, ikut S3.
-2. **Siapa boleh terapkan pindaan?** Lalai: staf boleh S1 dan S2; S3 dan S4 (ada akibat fizikal) admin sahaja.
-3. **UP `PENDING` menyekat apa-apa?** Lalai: tidak menyekat, tetapi merah pada Butiran.
-4. **Keluarkan unit daripada packing** (`SHIPMENT_UNIT_REMOVED`) perlu dibina sebagai prasyarat S3b. Lalai: ya, tindakan admin berjejak.
-5. **Unit dipulang tidak boleh dihantar semula** hari ini. Bukan skop, tetapi mempengaruhi S4. Lalai: tangguh.
-6. **Label UP di lantai packing:** boleh dicetak pada pencetak sama? Lalai: ya, kertas sama, sepanduk "LEBIHAN".
-7. **CONVERT merentas order:** lalai tidak (bahagian 8).
-8. **Penomboran pindaan:** A1, A2 per order. Lalai: ya.
-9. **Kuantiti kurang selepas hantar:** Labelism hanya merekod pemulangan, nilai wang di luar. Lalai: ya.
-10. **Pengepala order boleh diedit dengan log?** Lalai: ya.
-
-## 13. Urutan pembinaan yang dicadangkan (selepas model diluluskan)
-
-| Fasa | Kandungan | Ujian penerimaan utama |
+| # | Soalan | Keputusan |
 |---|---|---|
-| 0 | Peraturan shipment (bahagian 9) | Planned 103 untuk 100 gagal; 100 berjaya |
-| 1 | Pindaan S1 dan S2 (VOID, pengganti, nama, kuantiti) | I1 hingga I5; scan label mati memberi mesej jelas; pelan basi ditolak |
-| 2 | Unit Pengecualian: overproduction, disposisi | I6; UP tidak masuk kiraan; scan UP di packing ditolak |
-| 3 | Salah saiz (MISMATCH) + CONVERT | Bukti O dan UP kekal; variasi tiada unit berubah |
-| 4 | Pindaan S3 dan S4 (VOID_RELEASED, SUPERSEDE, keluarkan dari packing) | Setiap baju ditampal yang di-VOID menghasilkan UP; audit Sesi 10 dijawab tanpa "agak-agak" |
+| 1 | Nama pada baju atau label? | **`recipient_name` ialah maklumat label.** Nama dicetak/dijahit pada baju = ciri produk, di luar model (R1). |
+| 2 | Siapa boleh terapkan pindaan? | **Tiada hierarki peranan.** Rekod pelaku; pengesahan lebih jelas untuk akibat fizikal. Sekatan peranan hanya jika operasi sebenar memerlukannya. |
+| 3 | UP `PENDING` menyekat apa? | Tidak menyekat order atau penghantaran lain. UP tidak boleh masuk packing/pemenuhan. Amaran merah sehingga diputuskan. |
+| 4 | Keluarkan unit dari packing | **Ya, wajib bina.** Satu tindakan, sebab dan pelaku wajib, satu event, buang keahlian, kira semula shipment. |
+| 5 | Hantar semula unit dipulang | **Tangguh.** Di luar model ini. |
+| 6 | Label UP | Pencetak/kertas sama; teks besar **"PENGECUALIAN"** + kod `EXC-...`. |
+| 7 | CONVERT merentas order | **Tidak.** Order asal sahaja. |
+| 8 | Nombor pindaan | `A1`, `A2`... per order, tak boleh diubah selepas diterap. |
+| 9 | Kuantiti kurang selepas hantar | Labelism merekod pemulangan; kuantiti diturunkan hanya selepas keadaan fizikal unit jelas. Refund/kredit/invois di luar skop. |
+| 10 | Pengepala order | Boleh diedit dengan log perubahan, tanpa VOID. No. rujukan lama kekal dalam log. |
+| 11 | Bila nama dikenakan pada baju | **Gugur** (nama ialah metadata label, lihat 1). |
 
-Setiap fasa: ujian penerimaan ditulis dahulu, `stress-sessions.js` yang berkaitan bertukar daripada temuan kepada lulus, tiada deploy tanpa semakan Izzat.
+## 13. Urutan pembinaan
+
+| Fasa | Kandungan | Status | Ujian penerimaan utama |
+|---|---|---|---|
+| **0** | Peraturan shipment (bahagian 9) | **DILULUSKAN, dibina dahulu** | Planned 103 untuk 100 gagal; 100 berjaya; dua shipment serentak tak boleh merancang baki sama |
+| 1 | Pindaan S1 dan S2 (VOID, pengganti, nama, kuantiti) + I8 | Belum | I1 hingga I5, I8; scan label mati memberi mesej jelas; pelan basi ditolak |
+| 2 | Unit Pengecualian: overproduction, disposisi, label "PENGECUALIAN" | Belum | I6; UP tidak masuk kiraan; scan UP di packing ditolak |
+| 3 | Reissue dengan sebab (7.1), salah saiz (MISMATCH) + CONVERT | Belum | Tiada `DAMAGE_OBSERVED` pada salah saiz; O dan UP kekal; tiada unit variasi diubah |
+| 4 | "Keluarkan dari packing", pindaan S3 dan S4 (VOID_RELEASED, SUPERSEDE) | Belum | Setiap baju ditampal yang di-VOID menghasilkan UP; audit Sesi 10 dijawab tanpa "agak-agak" |
+
+Setiap fasa: ujian penerimaan ditulis dahulu; `stress-sessions.js` yang berkaitan bertukar daripada temuan kepada lulus; fasa 1 hingga 4 dibina **satu demi satu**, masing-masing dengan kelulusan; tiada deploy tanpa semakan Izzat.
