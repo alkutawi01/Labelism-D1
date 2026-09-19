@@ -219,6 +219,11 @@ export async function routeApi(request, env, session) {
       if (!result) return notFound('Print run not found.');
       return ok(result);
     }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/cancel$/)) && method === 'POST') {
+      const result = await printRuns.cancelPrintRun(env.DB, m[1]);
+      if (result.notFound) return notFound('Print run not found.');
+      return ok(result);
+    }
     if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/packing$/)) && method === 'GET') {
       const result = await printRuns.getRunPacking(env.DB, m[1]);
       if (!result) return notFound('Print run not found.');

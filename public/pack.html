@@ -25,17 +25,17 @@
   <div class="page">
   <header class="page-header">
     <h1>Scan Masa Packing</h1>
-    <p class="muted">Pilih batch yang sedang dibungkus, kemudian scan setiap label. Sistem cuma menjangka label yang dicetak dalam batch itu, dan terus menunjukkan berapa yang sudah discan dan berapa yang masih kurang.</p>
+    <p class="muted">Pilih cetakan yang sedang dibungkus, kemudian scan setiap label. Sistem cuma menjangka label yang dicetak dalam cetakan itu, dan terus menunjukkan berapa yang sudah discan dan berapa yang masih kurang.</p>
   </header>
 
   <div class="section">
-    <h2 class="section-title">1. Pilih batch untuk packing</h2>
+    <h2 class="section-title">1. Pilih cetakan untuk packing</h2>
     <div class="select-grid" style="margin-top:10px;">
       <div class="field"><label for="customer-select">Customer</label>
         <select id="customer-select"><option value="">Memuatkan…</option></select></div>
       <div class="field"><label for="invoice-select">No. tempahan / invois</label>
         <select id="invoice-select"><option value="">Pilih customer dahulu</option></select></div>
-      <div class="field"><label for="batch-select">Batch</label>
+      <div class="field"><label for="batch-select">Cetakan</label>
         <select id="batch-select"><option value="">Pilih tempahan dahulu</option></select></div>
     </div>
     <div id="run-summary" class="muted" style="margin-top:10px;"></div>
@@ -44,7 +44,7 @@
       <tbody id="run-table-body"></tbody>
     </table>
     <div class="start-card">
-      <div id="selected-batch-summary" class="muted">Pilih tempahan dan batch dahulu.</div>
+      <div id="selected-batch-summary" class="muted">Pilih tempahan dan cetakan dahulu.</div>
       <button type="button" id="start-packing-btn" class="btn-primary btn-lg" disabled>Mula scan packing</button>
     </div>
   </div>
@@ -90,7 +90,7 @@
       const select = document.getElementById('customer-select');
       select.innerHTML = customers.size
         ? '<option value="">Pilih customer…</option>' + [...customers].map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('')
-        : '<option value="">Belum ada batch yang dicetak</option>';
+        : '<option value="">Belum ada cetakan yang dicetak</option>';
 
       // Deep link from Cetak & Tampal: ?runId=
       const runId = new URLSearchParams(location.search).get('runId');
@@ -112,7 +112,7 @@
       document.getElementById('run-summary').textContent = '';
       document.getElementById('start-packing-btn').disabled = true;
       document.getElementById('scan-section').hidden = true;
-      document.getElementById('selected-batch-summary').textContent = 'Pilih tempahan dan batch dahulu.';
+      document.getElementById('selected-batch-summary').textContent = 'Pilih tempahan dan cetakan dahulu.';
     }
 
     function updateInvoiceOptions(preferOrderId) {
@@ -133,9 +133,9 @@
       resetRun();
       if (!orderId) { select.innerHTML = '<option value="">Pilih tempahan dahulu</option>'; return; }
       overview = await fetch(`/api/orders/${orderId}/print-overview`).then((r) => r.json());
-      select.innerHTML = '<option value="">Pilih batch…</option>' + overview.runs.map((r) => {
+      select.innerHTML = '<option value="">Pilih cetakan…</option>' + overview.runs.map((r) => {
         const state = r.packed_count >= r.label_count ? 'siap discan' : `${r.packed_count}/${r.label_count} discan`;
-        return `<option value="${r.id}">Batch ${r.run_number} · ${r.label_count} label · ${state}</option>`;
+        return `<option value="${r.id}">Cetakan ${r.run_number} · ${r.label_count} label · ${state}</option>`;
       }).join('');
       if (preferRunId && overview.runs.some((r) => r.id === preferRunId)) {
         select.value = preferRunId;
@@ -174,7 +174,7 @@
       currentStatus = status;
       renderTable(status);
       const btn = document.getElementById('start-packing-btn');
-      const label = `${status.run.customer_name} · ${status.run.order_reference} · Batch ${status.run.run_number}`;
+      const label = `${status.run.customer_name} · ${status.run.order_reference} · Cetakan ${status.run.run_number}`;
       document.getElementById('selected-batch-summary').textContent = status.missing === 0
         ? `${label} · Semua ${status.planned} label sudah discan.`
         : `${label} · Belum discan: ${status.missing} daripada ${status.planned}`;

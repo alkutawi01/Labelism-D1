@@ -181,12 +181,18 @@ Peraturan penting:
     <div class="section" style="margin-top:28px;">
       <div class="orders-toolbar">
         <h2 class="section-title" style="margin:0;">Senarai tempahan</h2>
-        <button type="button" class="btn-secondary btn-sm" id="btn-toggle-orders" hidden>Papar semua</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="orders-sort" aria-label="Susun senarai" style="width:auto;font-size:13px;padding:6px 10px;">
+            <option value="new">Terbaru dahulu</option>
+            <option value="due">Tarikh siap terdekat</option>
+          </select>
+          <button type="button" class="btn-secondary btn-sm" id="btn-toggle-orders" hidden>Papar semua</button>
+        </div>
       </div>
       <p class="muted" id="orders-empty">Belum ada tempahan.</p>
       <table class="data-table" id="orders-table" hidden>
         <thead>
-          <tr><th>Pelanggan</th><th>Rujukan</th><th>Item</th><th>Status label</th><th></th></tr>
+          <tr><th>Pelanggan</th><th>Rujukan</th><th>Tarikh siap</th><th>Item</th><th>Status label</th><th></th></tr>
         </thead>
         <tbody id="orders-body"></tbody>
       </table>
@@ -199,6 +205,18 @@ Peraturan penting:
     let allOrders = [];
     let showAllOrders = false;
     const ORDERS_PREVIEW = 8;
+
+    // "2026-10-10" -> "10/10/2026", with how far away it is; overdue in red.
+    function dueCell(iso) {
+      if (!iso) return '<span class="muted">—</span>';
+      const [y, m, d] = iso.slice(0, 10).split('-');
+      const days = Math.round((new Date(iso.slice(0, 10)) - new Date(new Date().toISOString().slice(0, 10))) / 86400000);
+      const note = days < 0 ? `<span class="pill bad">lewat ${-days} hari</span>`
+        : days === 0 ? '<span class="pill warn">hari ini</span>'
+        : days <= 7 ? `<span class="pill warn">${days} hari lagi</span>`
+        : `<span class="muted" style="font-size:12px;">${days} hari lagi</span>`;
+      return `<div>${d}/${m}/${y}</div><div style="margin-top:4px;">${note}</div>`;
+    }
 
     function setCustomerMode(isNew) {
       isNewCustomer = isNew;
@@ -530,7 +548,10 @@ Peraturan penting:
       table.hidden = allOrders.length === 0;
       if (!allOrders.length) { toggle.hidden = true; return; }
 
-      const shown = showAllOrders ? allOrders : allOrders.slice(0, ORDERS_PREVIEW);
+      const sorted = document.getElementById('orders-sort').value === 'due'
+        ? [...allOrders].sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
+        : allOrders;
+      const shown = showAllOrders ? sorted : sorted.slice(0, ORDERS_PREVIEW);
       toggle.hidden = allOrders.length <= ORDERS_PREVIEW;
       toggle.textContent = showAllOrders ? 'Papar ringkas' : `Papar semua (${allOrders.length})`;
 
@@ -544,6 +565,7 @@ Peraturan penting:
         <tr>
           <td><strong>${esc(o.customer_name)}</strong></td>
           <td>${esc(o.order_reference)}</td>
+          <td>${dueCell(o.due_date)}</td>
           <td class="order-lines"><div><strong>${units} unit</strong> &middot; ${o.lines.length} baris</div>${lines}${more}</td>
           <td>${statusCell(o.print)}</td>
           <td>
@@ -553,7 +575,7 @@ Peraturan penting:
             </div>
           </td>
         </tr>
-        <tr id="reconcile-row-${o.id}" hidden><td colspan="5" class="reconcile-cell"><div class="inner" id="reconcile-${o.id}"></div></td></tr>`;
+        <tr id="reconcile-row-${o.id}" hidden><td colspan="6" class="reconcile-cell"><div class="inner" id="reconcile-${o.id}"></div></td></tr>`;
       }).join('');
 
       body.querySelectorAll('button[data-reconcile]').forEach((btn) => {
@@ -567,6 +589,7 @@ Peraturan penting:
       });
     }
 
+    document.getElementById('orders-sort').addEventListener('change', renderOrderList);
     document.getElementById('btn-toggle-orders').addEventListener('click', () => {
       showAllOrders = !showAllOrders;
       renderOrderList();

@@ -109,7 +109,7 @@
   <div class="page">
   <header class="page-header no-print">
     <h1>Cetak &amp; Tampal</h1>
-    <p class="muted">Pilih order, tick variasi yang nak dicetak dan isi kuantiti. Yang tak dipilih kekal belum dicetak dan boleh dicetak dalam batch seterusnya. Selepas cetak, tampal satu label pada setiap unit dan sahkan.</p>
+    <p class="muted">Pilih order, tick variasi yang nak dicetak dan isi kuantiti. Yang tak dipilih kekal belum dicetak dan boleh dicetak dalam cetakan seterusnya. Selepas cetak, tampal satu label pada setiap unit dan sahkan.</p>
   </header>
 
   <div class="section no-print">
@@ -144,22 +144,23 @@
   </section>
 
   <section id="runs-section" class="section no-print" hidden>
-    <h2 class="section-title">Batch yang sudah dicetak</h2>
+    <h2 class="section-title">Cetakan yang sudah dicetak</h2>
     <div class="run-picker" id="run-picker"></div>
   </section>
 
   <section id="batch-summary" class="section no-print" hidden>
-    <h2 class="section-title" style="margin-bottom:12px;">Batch dipilih</h2>
+    <h2 class="section-title" style="margin-bottom:12px;">Cetakan dipilih</h2>
     <div class="summary-grid">
       <div class="stat wide"><div class="lbl">Tempahan · Customer</div><div class="value" id="summary-order">—</div></div>
-      <div class="stat wide"><div class="lbl">Kandungan batch</div><div class="value" id="summary-product">—</div></div>
+      <div class="stat wide"><div class="lbl">Kandungan cetakan</div><div class="value" id="summary-product">—</div></div>
       <div class="stat"><div class="lbl">Label dicetak</div><div class="value" id="summary-generated">0</div></div>
       <div class="stat"><div class="lbl">Sudah ditampal</div><div class="value" id="summary-attached">0</div></div>
       <div class="stat"><div class="lbl">Belum ditampal</div><div class="value" id="summary-pending">0</div></div>
     </div>
 
     <div class="print-row">
-      <button id="print-btn" class="btn-secondary">Cetak semula batch ini</button>
+      <button id="print-btn" class="btn-secondary">Cetak semula cetakan ini</button>
+      <button id="cancel-run-btn" class="btn-danger btn-sm" type="button" title="Guna jika label tidak keluar dari printer">Batalkan cetakan ini</button>
       <strong id="print-count"></strong>
     </div>
 
@@ -415,7 +416,7 @@
       const btn = document.getElementById('run-print-btn');
       const left = overview.rows.reduce((sum, r) => sum + r.unprinted, 0);
       btn.disabled = n < 1;
-      btn.textContent = n > 0 ? `Cetak ${n} label (Batch ${nextRunNumber()})` : 'Cetak';
+      btn.textContent = n > 0 ? `Cetak ${n} label (Cetakan ${nextRunNumber()})` : 'Cetak';
       document.getElementById('print-selected-info').textContent = left === 0
         ? 'Semua label order ini sudah dicetak.'
         : `${n} daripada ${left} label belum dicetak dipilih.`;
@@ -466,7 +467,7 @@
       if (!overview.runs.length) { section.hidden = true; return; }
       section.hidden = false;
       document.getElementById('run-picker').innerHTML = overview.runs.map((r) =>
-        `<button type="button" class="secondary" data-run="${r.id}">Batch ${r.run_number} · ${r.label_count} label · ${r.attached_count}/${r.label_count} ditampal</button>`
+        `<button type="button" class="secondary" data-run="${r.id}">Cetakan ${r.run_number} · ${r.label_count} label · ${r.attached_count}/${r.label_count} ditampal</button>`
       ).join('');
       document.querySelectorAll('[data-run]').forEach((b) => b.addEventListener('click', () => openRun(b.dataset.run)));
     }
@@ -513,25 +514,30 @@
       });
 
       document.getElementById('batch-summary').hidden = false;
-      document.getElementById('summary-order').textContent = `${currentRun.order_reference} · ${currentRun.customer_name} · Batch ${currentRun.run_number}`;
+      document.getElementById('summary-order').textContent = `${currentRun.order_reference} · ${currentRun.customer_name} · Cetakan ${currentRun.run_number}`;
       document.getElementById('summary-product').textContent = [...parts].map(([k, n]) => `${k} ×${n}`).join(' · ');
       document.getElementById('summary-generated').textContent = units.length;
       document.getElementById('summary-attached').textContent = confirmedCount;
       document.getElementById('summary-pending').textContent = pendingCount;
       const reprintBtn = document.getElementById('print-btn');
-      reprintBtn.textContent = `Cetak Semula Batch ${currentRun.run_number}`;
+      reprintBtn.textContent = `Cetak Semula Cetakan ${currentRun.run_number}`;
       reprintBtn.disabled = pendingCount === 0;
+      const cancelBtn = document.getElementById('cancel-run-btn');
+      cancelBtn.disabled = confirmedCount > 0;
+      cancelBtn.title = confirmedCount > 0
+        ? 'Tidak boleh dibatalkan kerana sudah ada label yang ditampal.'
+        : 'Guna jika label tidak keluar dari printer. Label akan kembali ke "belum dicetak".';
       document.getElementById('print-count').textContent = pendingCount === 0
-        ? 'Semua label dalam batch ini sudah ditampal, tiada apa nak dicetak semula.'
+        ? 'Semua label dalam cetakan ini sudah ditampal, tiada apa nak dicetak semula.'
         : confirmedCount > 0
         ? `Anda akan mencetak ${pendingCount} label yang belum ditampal (${confirmedCount} yang sudah ditampal tidak dicetak semula).`
         : `Anda akan mencetak ${pendingCount} label.`;
       document.getElementById('unit-count-summary').textContent = units.length
         ? `${pendingCount} daripada ${units.length} label masih perlu ditampal dan disahkan.`
-        : 'Batch ini belum mempunyai label.';
+        : 'Cetakan ini belum mempunyai label.';
       const completion = document.getElementById('completion');
       completion.hidden = !units.length || pendingCount !== 0;
-      document.getElementById('completion-text').textContent = `Semua ${units.length} label dalam Batch ${currentRun.run_number} telah ditampal dan disahkan.`;
+      document.getElementById('completion-text').textContent = `Semua ${units.length} label dalam Cetakan ${currentRun.run_number} telah ditampal dan disahkan.`;
       document.getElementById('completion-link').href = `/pack.html?runId=${currentRun.id}`;
 
       // Name the codes still waiting to be attached, with a jump-to-card
@@ -553,7 +559,7 @@
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
           <div class="context" style="font-weight:600;color:var(--navy);">${esc(currentRun.customer_name)} · ${esc(currentRun.order_reference)}</div>
-          <div class="context" style="font-weight:600;">Batch ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
+          <div class="context" style="font-weight:600;">Cetakan ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
           <div class="product">${esc(u.product_name)}</div><div class="variant">${esc(u.variant_label)}</div>
           ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${esc(u.recipient_name)}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
@@ -661,12 +667,12 @@
       const code = scannedCode(raw);
       const matches = currentUnits.filter((u) => u.internal_token === code || u.human_code === code);
       if (!matches.length) {
-        showScanFeedback('error', 'Label ini bukan daripada batch yang sedang dipilih. Kiraan tidak diubah.');
+        showScanFeedback('error', 'Label ini bukan daripada cetakan yang sedang dipilih. Kiraan tidak diubah.');
         input.select();
         return;
       }
       if (matches.length > 1) {
-        showScanFeedback('error', 'Kod ini sama untuk beberapa variasi dalam batch ini. Sila scan QR penuh.');
+        showScanFeedback('error', 'Kod ini sama untuk beberapa variasi dalam cetakan ini. Sila scan QR penuh.');
         input.select();
         return;
       }
@@ -740,6 +746,14 @@
     window.addEventListener('afterprint', () => { applyPagination(); });
 
     document.getElementById('print-btn').addEventListener('click', () => window.print());
+    document.getElementById('cancel-run-btn').addEventListener('click', async () => {
+      if (!currentRun) return;
+      const ok = confirm(`Batalkan Cetakan ${currentRun.run_number}? Semua labelnya kembali ke "belum dicetak" dan boleh dicetak dalam cetakan baru. Guna ini hanya jika label tidak keluar dari printer atau belum ditampal.`);
+      if (!ok) return;
+      const res = await fetch(`/api/print-runs/${currentRun.id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json());
+      if (res.error) { alert(res.error); return; }
+      await loadOrder(orderSelect.value);
+    });
     applyPageSize();
     init();
   </script>

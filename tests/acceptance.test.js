@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 16 acceptance tests against a live local wrangler dev server.
+ * Runs 17 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -755,7 +755,7 @@ await run('Test 16 – Packing works against one batch and only expects the labe
 
   // A label from Batch 2 is rejected inside Batch 1 and changes nothing.
   const wrongBatch = await scan(run1.id, run2Attached[0]);
-  assert(wrongBatch.status >= 400 && /Batch 2/.test(wrongBatch.body.error), `Wrong-batch scan: ${JSON.stringify(wrongBatch.body)}`);
+  assert(wrongBatch.status >= 400 && /Cetakan 2/.test(wrongBatch.body.error), `Wrong-batch scan: ${JSON.stringify(wrongBatch.body)}`);
 
   // A label from a different order is rejected and names that order.
   const foreign = await makeOrder('T16X', [{ productName: product, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
@@ -790,6 +790,28 @@ await run('Test 16 – Packing works against one batch and only expects the labe
   assert(close2.body.planned === 2 && close2.body.packed === 1 && close2.body.missing === 1, `Batch 2 close: ${JSON.stringify(close2.body)}`);
   assert(close2.body.missingUnits.length === 1 && close2.body.missingUnits[0].variant_label === 'Saiz L'
     && close2.body.missingUnits[0].attached === false, `Missing unit detail: ${JSON.stringify(close2.body.missingUnits)}`);
+});
+
+await run('Test 17 – A print run whose labels never came out can be cancelled, unless labels are already attached', async () => {
+  const { orderId, rows } = await makeOrder('T17', [
+    { productName: `T17-Product-${Date.now()}`, variantLabel: 'Saiz M', quantity: 3, batches: null },
+  ]);
+  const sel = (q) => ({ selections: [{ batchId: rows[0].batch_id, quantity: q }] });
+  const r1 = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: sel(2) });
+  assert(r1.status === 201, 'run 1');
+
+  const c1 = await api(`/api/print-runs/${r1.body.id}/cancel`, { method: 'POST', body: {} });
+  assert(c1.status === 200 && c1.body.releasedLabels === 2, `Cancel failed: ${JSON.stringify(c1.body)}`);
+  const ov = await api(`/api/orders/${orderId}/print-overview`);
+  assert(ov.body.runs.length === 0 && ov.body.rows[0].unprinted === 3, 'Labels should be back to unprinted');
+
+  // Can be printed again, and takes the same labels (lowest serial first).
+  const r2 = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: sel(3) });
+  assert(r2.status === 201 && r2.body.runNumber === 1, `Re-run: ${JSON.stringify(r2.body)}`);
+  const labels = (await api(`/api/print-runs/${r2.body.id}`)).body;
+  await attachUnit(labels.units[0]);
+  const c2 = await api(`/api/print-runs/${r2.body.id}/cancel`, { method: 'POST', body: {} });
+  assert(c2.status >= 400 && /ditampal/.test(c2.body.error), `Cancel with attached label must be refused: ${JSON.stringify(c2.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

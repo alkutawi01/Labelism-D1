@@ -2,7 +2,7 @@
 //
 // Izzat's workflow: an order creates every label up front (1 unit ordered =
 // 1 label generated). At the print step staff tick which variations to print
-// and how many of each; that selection is recorded as "Batch N" of the order.
+// and how many of each; that selection is recorded as "Cetakan N" of the order.
 // Whatever is not selected stays unprinted for a later batch. Packing then
 // works against ONE batch and only expects the labels printed in it, so
 // printing part of an order no longer makes packing think the rest is missing.
@@ -260,10 +260,10 @@ export async function startRunPacking(db, runId) {
     .bind(runId)
     .all();
   if (!lines.length) {
-    throw new ValidationError('Semua label dalam batch ini sudah discan untuk packing.');
+    throw new ValidationError('Semua label dalam cetakan ini sudah discan untuk packing.');
   }
 
-  const reference = `Packing ${status.run.order_reference} · Batch ${status.run.run_number}`;
+  const reference = `Packing ${status.run.order_reference} · Cetakan ${status.run.run_number}`;
   const statements = [];
   for (const line of lines) {
     const existing = await db
@@ -323,7 +323,7 @@ export async function scanRunPacking(db, runId, { code, actor }) {
 
   if (unit.print_run_id !== runId) {
     if (!unit.print_run_id) {
-      throw new ValidationError(`Unit ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) belum dicetak dalam mana-mana batch.`);
+      throw new ValidationError(`Unit ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) belum dicetak dalam mana-mana cetakan.`);
     }
     const other = await db
       .prepare(
@@ -336,7 +336,7 @@ export async function scanRunPacking(db, runId, { code, actor }) {
     if (other && other.order_id !== status.run.order_id) {
       throw new ValidationError(`Label ini milik tempahan "${other.order_reference}" (${other.customer_name}), bukan tempahan ini.`);
     }
-    throw new ValidationError(`Label ini dalam Batch ${other ? other.run_number : '?'}, bukan Batch ${status.run.run_number}.`);
+    throw new ValidationError(`Label ini dalam Cetakan ${other ? other.run_number : '?'}, bukan Cetakan ${status.run.run_number}.`);
   }
 
   const shipment = await db
@@ -372,7 +372,7 @@ export async function scanRunPacking(db, runId, { code, actor }) {
 export async function closeRunPacking(db, runId) {
   const before = await getRunPacking(db, runId);
   if (!before) return { notFound: true };
-  if (!before.openShipments) throw new ValidationError('Tiada sesi packing yang terbuka untuk batch ini.');
+  if (!before.openShipments) throw new ValidationError('Tiada sesi packing yang terbuka untuk cetakan ini.');
 
   await db
     .prepare("UPDATE shipments SET status = 'CLOSED', closed_at = datetime('now') WHERE print_run_id = ? AND status = 'OPEN'")
@@ -402,4 +402,34 @@ export async function closeRunPacking(db, runId) {
     missing: after.missing,
     missingUnits: missingUnits.map((m) => ({ ...m, attached: Boolean(m.attached) })),
   };
+}
+
+// Undo a print run whose labels never came out of the printer (cancelled
+// dialog, paper jam, wrong size). Its labels go back to "unprinted" so they
+// can be printed again in a new run. Refused once any label of the run has
+// been attached or packing has started, because physical labels exist then.
+export async function cancelPrintRun(db, runId) {
+  const run = await db.prepare('SELECT id, run_number FROM print_runs WHERE id = ?').bind(runId).first();
+  if (!run) return { notFound: true };
+
+  const attached = await db
+    .prepare('SELECT COUNT(*) AS n FROM units WHERE print_run_id = ? AND label_confirmed_at IS NOT NULL')
+    .bind(runId)
+    .first();
+  if (attached.n > 0) {
+    throw new ValidationError(
+      `Cetakan ${run.run_number} tidak boleh dibatalkan kerana ${attached.n} label sudah ditampal. Guna "Cetak semula" untuk yang belum ditampal.`
+    );
+  }
+  const packing = await db.prepare('SELECT COUNT(*) AS n FROM shipments WHERE print_run_id = ?').bind(runId).first();
+  if (packing.n > 0) {
+    throw new ValidationError(`Cetakan ${run.run_number} tidak boleh dibatalkan kerana sesi packing sudah bermula.`);
+  }
+
+  const { n } = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE print_run_id = ?').bind(runId).first();
+  await db.batch([
+    db.prepare('UPDATE units SET print_run_id = NULL WHERE print_run_id = ?').bind(runId),
+    db.prepare('DELETE FROM print_runs WHERE id = ?').bind(runId),
+  ]);
+  return { cancelled: true, runNumber: run.run_number, releasedLabels: n };
 }
