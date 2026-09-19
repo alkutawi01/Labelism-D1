@@ -49,10 +49,15 @@
     <summary>✨ Ada dokumen order (invois / Job Order)? Guna AI untuk isi borang di bawah</summary>
     <p class="muted" style="font-size:14px; margin:12px 0;">AI hanya membantu mengisi borang. Semak dan betulkan di borang tempahan sebelum sahkan.</p>
     <p style="margin:0 0 8px;"><strong>1.</strong> Salin prompt ini dan berikan kepada AI bersama dokumen order.</p>
-    <textarea id="ai-prompt" rows="8" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9;">Sila hasilkan JSON tempahan dengan format berikut:
+    <textarea id="ai-prompt" rows="14" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9;">Sila hasilkan JSON tempahan dengan format berikut:
 {
+  "documentType": "Jenis dokumen (cth: Job Order, Invois, Sebut Harga)",
   "customerName": "Nama Pelanggan",
-  "orderReference": "No. Rujukan/Invoice",
+  "orderReference": "No. Rujukan/Invoice/JO",
+  "orderDate": "YYYY-MM-DD",
+  "dueDate": "YYYY-MM-DD",
+  "totalOrder": 23,
+  "notes": "Maklumat penting lain dalam dokumen",
   "products": [
     {
       "name": "Nama Produk",
@@ -72,8 +77,14 @@ Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk ban
 Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.
 
 Peraturan penting:
+- Salin maklumat yang ada dalam dokumen: jenis dokumen ("documentType"), tarikh order ("orderDate"), tarikh siap/hantar ("dueDate") dan jumlah keseluruhan yang tertulis ("totalOrder"). Jika tiada dalam dokumen, biarkan "" (atau null untuk totalOrder). Jangan reka.
+- Semua tarikh dalam format YYYY-MM-DD. Dokumen Malaysia guna hari/bulan/tahun, jadi 5/9/2026 ialah 2026-09-05.
+- "notes": ringkaskan maklumat penting lain dalam dokumen (cth: salesperson, cawangan, jenis kerja, bahan, warna, nota khas).
+- "totalOrder" ialah jumlah unit yang tertulis dalam dokumen. Jika satu fail ada beberapa Job Order/halaman, tambah "Total Order" setiap satu.
+- SEMAK JUMLAH SEBELUM MENJAWAB: tambah semua "quantity" dalam semua variants. Jumlahnya mesti sama dengan "totalOrder". Jika tidak sama, semak semula dokumen dan betulkan dahulu.
+- Bilangan nama dalam "unitNames" tidak boleh melebihi "quantity". Jika nama kurang daripada quantity, biarkan begitu. Jangan reka nama.
 - Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
-- Salin nama penerima tepat seperti dalam dokumen. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti, kekalkan seperti tertulis.</textarea>
+- Salin nama penerima tepat seperti dalam dokumen. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
     <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin:8px 0 16px;">📋 Salin Prompt</button>
     <p style="margin:0 0 8px;"><strong>2.</strong> Tampal jawapan (JSON) daripada AI di sini.</p>
     <textarea id="ai-text-input" rows="6" placeholder='{ "customerName": "...", "orderReference": "...", "products": [ ... ] }' style="font-family:monospace; font-size:13px; padding:12px;"></textarea>
@@ -186,6 +197,14 @@ Peraturan penting:
       document.getElementById('btn-toggle-cust').textContent = isNewCustomer ? 'Pilih Pelanggan Sedia Ada' : '+ Pelanggan Baru';
     }
     document.getElementById('btn-toggle-cust').addEventListener('click', () => setCustomerMode(!isNewCustomer));
+
+    // Accepts YYYY-MM-DD, or D/M/YYYY (the Malaysian order on most documents).
+    function parseAiDate(value) {
+      const s = value ? String(value).trim() : '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+      return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+    }
 
     function parseNames(text) {
       return (text || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
@@ -392,11 +411,45 @@ Peraturan penting:
         }
         document.querySelector('[name=orderReference]').value = manifest.orderReference ? String(manifest.orderReference).trim() : '';
 
+        const orderDate = parseAiDate(manifest.orderDate);
+        const dueDate = parseAiDate(manifest.dueDate);
+        document.querySelector('[name=orderDate]').value = orderDate;
+        document.querySelector('[name=dueDate]').value = dueDate;
+        const noteText = [manifest.documentType, manifest.notes]
+          .map((s) => (s ? String(s).trim() : ''))
+          .filter(Boolean)
+          .join('. ');
+        document.querySelector('[name=orderNotes]').value = noteText;
+
         document.getElementById('items-container').innerHTML = '';
         rows.forEach((r) => addItemRow(r));
 
         const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
-        out.innerHTML = `<div class="msg ok">✅ Borang telah diisi: ${rows.length} baris, ${totalQty} unit.${customerNote} Semak nama dan kuantiti di bawah, betulkan jika perlu, kemudian tekan "Sahkan Tempahan &amp; Jana Label".</div>`;
+
+        // Cross-check against the total the document itself states -- the AI is
+        // asked to add up its own rows and compare before answering, and this
+        // catches it when it did not.
+        const stated = manifest.totalOrder === null || manifest.totalOrder === undefined || manifest.totalOrder === ''
+          ? NaN : Number(manifest.totalOrder);
+        let totalHtml;
+        if (!Number.isFinite(stated)) {
+          totalHtml = `<div class="msg">AI tidak menyatakan jumlah dalam dokumen, jadi jumlah ${totalQty} unit tidak dapat disemak.</div>`;
+        } else if (stated === totalQty) {
+          totalHtml = `<div class="msg ok">✅ Jumlah sepadan dengan dokumen: ${stated} unit.</div>`;
+        } else {
+          totalHtml = `<div class="msg error">⚠️ Jumlah dalam dokumen ${stated} unit, tetapi jumlah baris ${totalQty} unit. Semak semula kuantiti sebelum sahkan.</div>`;
+        }
+
+        // Rows where only some units have a name (e.g. 12 names for 16 units):
+        // usually an extraction slip, so call them out instead of leaving them
+        // to be noticed in the row counters.
+        const partial = rows.filter((r) => r.unitNames.length && r.unitNames.length < r.quantity)
+          .map((r) => `${r.variantLabel} (${r.unitNames.length} nama / ${r.quantity} unit)`);
+        const partialHtml = partial.length
+          ? `<div class="msg error">⚠️ Nama kurang daripada kuantiti: ${partial.join(', ')}. Semak dengan dokumen.</div>`
+          : '';
+
+        out.innerHTML = `<div class="msg ok">✅ Borang telah diisi: ${rows.length} baris, ${totalQty} unit.${customerNote} Semak dan betulkan di bawah, kemudian tekan "Sahkan Tempahan &amp; Jana Label".</div>${totalHtml}${partialHtml}`;
         document.getElementById('order-with-labels-form').scrollIntoView({ behavior: 'smooth' });
       } catch (err) {
         out.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
