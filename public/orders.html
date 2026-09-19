@@ -92,7 +92,7 @@
   ]
 }
 
-Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchLabel" sebagai nama kumpulan:
+Jika tempahan perlu dipecahkan ikut kumpulan (contoh: satu pelanggan untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchLabel" sebagai nama kumpulan:
         { "label": "Saiz M", "quantity": 100, "batches": [
             { "quantity": 10, "batchLabel": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
             { "quantity": 10, "batchLabel": "SK Sekolah B", "unitNames": ["Chong", ...] }
@@ -108,7 +108,7 @@ Peraturan penting:
 - SEMAK JUMLAH SEBELUM MENJAWAB: tambah semua "quantity" dalam semua variants. Jumlahnya mesti sama dengan "totalOrder". Jika tidak sama, semak semula dokumen dan betulkan dahulu.
 - Bilangan nama dalam "unitNames" tidak boleh melebihi "quantity". Jika nama kurang daripada quantity, biarkan begitu. Jangan reka nama.
 - Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
-- Salin nama penerima tepat seperti dalam dokumen. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
+- "unitNames" ialah NAMA DI BAJU (contoh nama pelajar: Amin, Ahmad, Ali), bukan nama pelanggan. Salin tepat seperti dalam dokumen. Jika dokumen tidak menulis nama untuk baju itu, biarkan kosong. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
       <div style="margin:8px 0 4px;"><button type="button" class="btn-secondary btn-sm" onclick="copyAiPrompt()">Salin prompt</button></div>
       <div class="ai-step">2. Tampal jawapan (JSON) daripada AI di sini.</div>
       <textarea id="ai-text-input" rows="6" placeholder='{ "customerName": "...", "orderReference": "...", "products": [ ... ] }'></textarea>
@@ -153,7 +153,7 @@ Peraturan penting:
         <div class="section-head">
           <div>
             <h2 class="section-title">Item tempahan</h2>
-            <p class="section-sub">Taip nama produk sekali, kemudian tambah setiap saiz dengan kuantitinya. Nama penerima (jika ada) di bawah setiap saiz.</p>
+            <p class="section-sub">Taip nama produk sekali, kemudian tambah setiap saiz dengan kuantitinya. Nama di baju (jika ada) di bawah setiap saiz.</p>
           </div>
         </div>
         <div id="items-container"></div>
@@ -328,10 +328,10 @@ Peraturan penting:
         </div>
         <div class="names-cell">
           <div class="names-head">
-            <span>Nama penerima (pilihan) · asingkan dengan koma atau baris baru</span>
+            <span>Nama di baju (jika ada) · asingkan dengan koma atau baris baru</span>
             <span class="names-count" data-field="namesCount"></span>
           </div>
-          <textarea data-field="unitNames" rows="2" placeholder="cth: Ahmad, Ali, Abu" aria-label="Nama penerima"></textarea>
+          <textarea data-field="unitNames" rows="2" placeholder="cth: Amin, Ahmad, Ali" aria-label="Nama di baju"></textarea>
         </div>
         <div class="batch-subrows" hidden>
           <div class="group-note" data-field="groupNote"></div>
@@ -378,7 +378,7 @@ Peraturan penting:
           <div><input type="text" data-sub="name" placeholder="Nama kumpulan (cth: SK Sekolah A)" aria-label="Nama kumpulan"></div>
           <div><input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" aria-label="Kuantiti kumpulan"></div>
           <div>
-            <textarea data-sub="names" rows="2" placeholder="Nama penerima kumpulan ini" aria-label="Nama penerima kumpulan"></textarea>
+            <textarea data-sub="names" rows="2" placeholder="Nama di baju untuk kumpulan ini" aria-label="Nama di baju untuk kumpulan"></textarea>
             <div class="names-count" data-sub="count"></div>
           </div>
           <button type="button" class="btn-danger btn-sm" aria-label="Buang kumpulan" style="height:40px;">✕</button>

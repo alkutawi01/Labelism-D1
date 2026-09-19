@@ -561,7 +561,7 @@
           <div class="context" style="font-weight:600;color:var(--navy);">${esc(currentRun.customer_name)} · ${esc(currentRun.order_reference)}</div>
           <div class="context" style="font-weight:600;">Cetakan ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
           <div class="product">${esc(u.product_name)}</div><div class="variant">${esc(u.variant_label)}</div>
-          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${esc(u.recipient_name)}</div>` : ''}
+          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Nama: ${esc(u.recipient_name)}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
           <div class="code">UNIT ${esc(u.human_code)}</div>
           <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : 'Belum Ditampal'}</div>
@@ -701,7 +701,7 @@
         return;
       }
 
-      const recipient = unit.recipient_name ? ` · Penerima: ${esc(unit.recipient_name)}` : '';
+      const recipient = unit.recipient_name ? ` · Nama di baju: ${esc(unit.recipient_name)}` : '';
       showScanFeedback(
         'ok',
         `Scan betul: <strong>Unit ${esc(unit.human_code)}</strong> · ${esc(unit.product_name)} · ${esc(unit.variant_label)}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`

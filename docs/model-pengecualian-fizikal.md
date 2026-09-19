@@ -4,7 +4,7 @@ Status: **DRAF UNTUK SEMAKAN. Tiada kod, tiada skema, tiada migrasi.** Lakaran j
 
 **Keputusan dikunci 19/9 (versi akhir; menggantikan jawapan awal jika bercanggah):**
 
-1. **Nama penerima (dijelaskan Izzat 19/9, menggantikan semua andaian sebelum ini):** sesetengah order mahu nama pada baju, sesetengah tidak. Jika dokumen order menulis "baju ini perlu nama X", nama itu **ada pada baju**; jika tidak ditulis, **tiada**. Nama juga dicetak pada label supaya **semasa packing baju tidak tertukar, terlebih atau terkurang**. Maka: unit yang mempunyai `recipient_name` ialah **baju diperibadikan** (nama pada baju); unit tanpa nama ialah baju generik. Ini diterbitkan daripada data order, bukan soalan kepada operator. Nama pada baju ialah sebahagian spesifikasi pengeluaran, sama seperti saiz.
+1. **Nama di baju (dijelaskan dan dibetulkan Izzat 19/9; ia BUKAN "nama penerima". Pelanggan ialah, contohnya, Sekolah Menengah Kota; nama di baju ialah nama pelajar: Amin, Ahmad, Ali):** sesetengah order mahu nama pada baju, sesetengah tidak. Jika dokumen order menulis "baju ini perlu nama X", nama itu **ada pada baju**; jika tidak ditulis, **tiada**. Nama itu **WAJIB ada pada label** supaya **semasa packing baju tidak tertukar, terlebih atau terkurang**. Maka: unit yang mempunyai nama di baju (lajur `recipient_name` dalam pangkalan data, nama teknikal lama) ialah **baju diperibadikan** (nama pada baju); unit tanpa nama ialah baju generik. Ini diterbitkan daripada data order, bukan soalan kepada operator. Nama pada baju ialah sebahagian spesifikasi pengeluaran, sama seperti saiz.
 2. Salah saiz **tidak menulis `DAMAGE_OBSERVED`**. Mekanisme reissue diubah supaya membawa sebab yang tepat (bahagian 7.1). Tiada perbendaharaan event baru.
 3. **Tiada hierarki peranan** (staf/admin) sebagai keperluan seni bina. Sistem hanya merekod siapa melakukan pindaan dan memberi pengesahan yang jelas apabila ada akibat fizikal.
 4. `quantity_ordered` **tidak pernah ditulis semula** (invarian I8).
@@ -31,7 +31,7 @@ Sumber: sesi simulasi 1 hingga 10 (`tests/stress-sessions.js`) dan arahan Izzat 
 
 ## 2. Perbendaharaan kata
 
-- **Obligasi** = satu baris `units` yang dijana semasa order dicipta. Ia janji: "satu baju ini mesti dikeluarkan untuk penerima ini, saiz ini".
+- **Obligasi** = satu baris `units` yang dijana semasa order dicipta. Ia janji: "satu baju ini mesti dikeluarkan untuk order ini, saiz ini, dengan nama ini jika ada".
 - **Objek fizikal** = baju sebenar. Untuk unit yang dirancang, obligasi dan objek bertemu pada saat **tampal disahkan** (`label_confirmed_at`).
 - **Unit Pengecualian (UP)** = objek fizikal yang wujud tanpa obligasi yang memenuhinya. Bukan unit order.
 - **Pindaan Order** = satu tindakan beratomik, bernombor (A1, A2...), berstatus tak boleh diubah selepas diterapkan, dengan sebab wajib.
@@ -55,11 +55,11 @@ Empat keadaan yang diminta untuk pindaan:
 
 ## 4. Jadual pindaan: keadaan × jenis perubahan
 
-Tiga jenis perubahan: **Nama** penerima, **Variasi/saiz** (termasuk produk), **Kuantiti** (kurang atau lebih).
+Tiga jenis perubahan: **Nama di baju**, **Variasi/saiz** (termasuk produk), **Kuantiti** (kurang atau lebih).
 
-### 4.1 Nama penerima
+### 4.1 Nama di baju
 
-**Takrif.** Unit berperibadi = unit yang ada `recipient_name` (daripada dokumen order). Nama itu ada pada baju dan pada label. Unit generik = tiada nama. Menambah nama pada unit generik, mengubah, atau membuang nama pada unit berperibadi ialah **perubahan spesifikasi baju**, jadi ia menyentuh identiti seperti perubahan saiz.
+**Takrif.** Unit berperibadi = unit yang ada nama di baju (daripada dokumen order). Nama itu ada pada baju dan pada label. Unit generik = tiada nama. Menambah nama pada unit generik, mengubah, atau membuang nama pada unit berperibadi ialah **perubahan spesifikasi baju**, jadi ia menyentuh identiti seperti perubahan saiz.
 
 Apa yang tidak diketahui Labelism ialah sama ada kilang **sudah menghasilkan** baju dengan nama lama, sebelum label ditampal (kilang bekerja daripada dokumen, bukan daripada Labelism). Maka satu pengisytiharan operator, hanya untuk perubahan nama:
 
@@ -72,7 +72,7 @@ Apa yang tidak diketahui Labelism ialah sama ada kilang **sudah menghasilkan** b
 | **S3** ditampal, belum dihantar | Tidak terpakai: baju sudah wujud dengan nama lama, **jawapan sentiasa "Ya"** | **VOID + pengganti + Unit Pengecualian `VOID_RELEASED`.** Tiada "tukar label sahaja". |
 | **S4** dihantar | Tidak boleh diubah. Jika pelanggan mahu baju bernama baru: **SUPERSEDE** (obligasi pengganti, baju lama dipulang melalui Return Intake atau pelanggan simpan) | sama |
 
-Baju bernama lama yang menjadi UP biasanya **REJECTED** atau **SPARE** (nama orang lain tidak sesuai untuk penerima baru). CONVERT hanya jika satu obligasi baru pada order yang sama memang sesuai dengannya (contoh: nama yang sama diperlukan semula).
+Baju bernama lama yang menjadi UP biasanya **REJECTED** atau **SPARE** (nama pelajar lain tidak sesuai untuk pelajar baru). CONVERT hanya jika satu obligasi baru pada order yang sama memang sesuai dengannya (contoh: nama yang sama diperlukan semula).
 
 Unit generik yang tiada nama dan tiada nama dimahukan: tiada apa untuk diubah; perubahan saiz dan kuantiti ikut 4.2 dan 4.3.
 
@@ -80,7 +80,7 @@ Reissue selepas tampal sedia ada (yang hanya menukar QR) **bukan** cara membetul
 
 ### 4.1.1 Nama pada label semasa packing
 
-Nama pada label ada tujuan operasi: pembungkus memadankan nama pada baju dengan nama pada label, supaya baju tidak tertukar. Hari ini, hasil scan packing **tidak memaparkan nama penerima** (hanya produk, variasi dan kod), jadi padanan itu bergantung sepenuhnya kepada mata pembungkus. Cadangan kecil, belum dibina dan belum diluluskan: hasil scan packing memaparkan nama penerima dengan jelas untuk unit berperibadi, sebagai bantuan pengesahan (bukan sekatan). Ini bukan sebahagian fasa 0 hingga 4.
+Nama pada label ada tujuan operasi: pembungkus memadankan nama pada baju dengan nama pada label. **Ini WAJIB.**, supaya baju tidak tertukar. Hari ini, hasil scan packing **tidak memaparkan nama di baju** (hanya produk, variasi dan kod), jadi padanan itu bergantung sepenuhnya kepada mata pembungkus. Cadangan kecil, belum dibina dan belum diluluskan: hasil scan packing memaparkan nama di baju dengan jelas untuk unit berperibadi, sebagai bantuan pengesahan (bukan sekatan). Ini bukan sebahagian fasa 0 hingga 4.
 
 ### 4.2 Variasi / saiz
 
@@ -148,6 +148,7 @@ Invarian (ujian penerimaan mesti menjaga):
 - **I5** Setiap pindaan ada pelaku, sebab, masa dan rujukan unit lama/baru.
 - **I6** UP tidak masuk kiraan ditempah, dijana, dipek atau dihantar. UP tidak boleh dimasukkan ke shipment.
 - **I8** `quantity_ordered` tidak pernah ditulis semula. Sasaran semasa sentiasa = `quantity_ordered` + jumlah `quantity_delta`, jadi audit boleh menghasilkan semula kedua-duanya pada bila-bila masa. Ini dikunci kerana audit kemudian bergantung kepadanya.
+- **I9** (WAJIB, Izzat 19/9) Setiap unit yang mempunyai nama di baju mesti memaparkan nama itu pada labelnya, dan nama itu mesti **muat dan boleh dibaca** pada semua saiz label yang disokong (tidak terpotong, tidak tercicir ke halaman lain). Label yang tak memuatkan nama = label yang gagal.
 - **I7** Shipment: `planned` tidak boleh melebihi obligasi tertunggak baris itu (bahagian 9).
 
 ## 6. Unit Pengecualian
