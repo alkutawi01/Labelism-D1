@@ -124,7 +124,11 @@ Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk ban
             { "quantity": 10, "batchNumber": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
             { "quantity": 10, "batchNumber": "SK Sekolah B", "unitNames": ["Chong", ...] }
         ] }
-Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.</textarea>
+Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.
+
+Peraturan penting:
+- Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
+- Salin nama penerima tepat seperti dalam dokumen. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti, kekalkan seperti tertulis.</textarea>
       <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin-top:12px; font-size:14px; padding:12px 20px;">📋 Salin Prompt</button>
     </div>
 
@@ -581,7 +585,7 @@ Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan
         // Display preview
         let html = '<table class="preview-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>';
         html += `<tr><td><strong>Pelanggan</strong></td><td>${manifest.customerName || '-'}</td></tr>`;
-        html += `<tr><td><strong>No. Rujukan</strong></td><td>${manifest.orderReference || '-'}</td></tr>`;
+        html += `<tr><td><strong>No. Rujukan</strong></td><td><input id="ai-order-ref" value="${(manifest.orderReference || '').replace(/"/g, '&quot;')}" placeholder="Kosong = dijana automatik (dokumen tiada nombor)" style="font-size:14px;padding:8px"></td></tr>`;
         
         let totalQty = 0;
         let itemsHtml = '';
@@ -635,6 +639,8 @@ Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan
       try {
         const manifest = window._pendingManifest;
         if (!manifest) throw new Error('Tiada data untuk diproses. Sila buat preview dahulu.');
+        const refInput = document.getElementById('ai-order-ref');
+        if (refInput) manifest.orderReference = refInput.value.trim();
         
         const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
 
@@ -647,10 +653,10 @@ Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan
         if (applyRes.error) throw new Error(applyRes.error);
 
         // Show summary cards
-        const totalOrdered = applyRes.summary?.ordered || 0;
-        const totalGenerated = applyRes.summary?.generated || 0;
+        const totalOrdered = applyRes.lines.reduce((s, l) => s + l.quantity, 0);
+        const totalGenerated = applyRes.lines.reduce((s, l) => s + l.batches.reduce((bs, b) => bs + b.createdUnits, 0), 0);
         const remaining = totalOrdered - totalGenerated;
-        const batches = applyRes.summary?.batches || 1;
+        const batches = applyRes.lines.reduce((s, l) => s + l.batches.length, 0);
 
         document.getElementById('sum-ordered').textContent = totalOrdered;
         document.getElementById('sum-generated').textContent = totalGenerated;

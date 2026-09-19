@@ -67,12 +67,13 @@ export function normalizeManifest(raw) {
   }
 
   // --- Order reference ---
+  // May legitimately be blank: a Job Order often has no JO/invoice number
+  // yet when it is first entered, and the AI correctly leaves it empty
+  // rather than inventing one. applyManifest() generates a placeholder in
+  // that case; staff can also type one in on the preview screen.
   const orderReference = raw.orderReference !== undefined && raw.orderReference !== null
     ? String(raw.orderReference).trim()
     : '';
-  if (!orderReference) {
-    throw new ValidationError('Import manifest requires "orderReference" (non-empty string).');
-  }
 
   // --- Products ---
   if (!Array.isArray(raw.products) || raw.products.length === 0) {
@@ -266,9 +267,19 @@ export async function applyManifest(db, manifest, actor) {
     }
   }
 
+  let orderReference = manifest.orderReference;
+  if (!orderReference) {
+    const prefix = `TIADA-RUJUKAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    const { n } = await db
+      .prepare('SELECT COUNT(*) AS n FROM orders WHERE order_reference LIKE ?')
+      .bind(`${prefix}-%`)
+      .first();
+    orderReference = `${prefix}-${Number(n) + 1}`;
+  }
+
   const result = await createOrderWithLabels(db, {
     customerName: manifest.customerName,
-    orderReference: manifest.orderReference,
+    orderReference,
     items,
     actor: actor ?? 'system',
   });
