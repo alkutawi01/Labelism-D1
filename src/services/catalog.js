@@ -198,7 +198,7 @@ export async function createProductionBatch(db, { variantId, batchNumber, planne
 export async function listProductionBatches(db) {
   const { results } = await db
     .prepare(
-      `SELECT pb.id, pb.batch_number, pb.planned_quantity, pb.notes, pb.order_line_id, p.name AS product_name, v.variant_label,
+      `SELECT pb.id, pb.batch_number, pb.batch_label, pb.planned_quantity, pb.notes, pb.order_line_id, p.name AS product_name, v.variant_label,
               o.id AS order_id, o.order_reference, c.id AS customer_id, c.name AS customer_name,
               (SELECT COUNT(*) FROM units u WHERE u.batch_id = pb.id) AS registered_count,
               (SELECT COUNT(*) FROM units u WHERE u.batch_id = pb.id AND u.label_confirmed_at IS NOT NULL) AS labeled_count

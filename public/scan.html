@@ -33,7 +33,7 @@
       result.innerHTML = `
         <div class="unit-card">
           <div class="code">${unit.humanCode}</div>
-          <p class="muted">${unit.product} · ${unit.variant} · Batch ${unit.batchNumber}</p>
+          <p class="muted">${unit.product} · ${unit.variant} · ${unit.batchLabel || 'Batch ' + unit.batchNumber}</p>
           ${unit.orderReference ? `<p class="muted">Order ${unit.orderReference}${unit.customerName ? ` · ${unit.customerName}` : ''}</p>` : ''}
           <span class="badge">${unit.disposition || '—'}</span>
           ${unit.condition ? `<span class="badge">${unit.condition}</span>` : ''}
@@ -188,7 +188,7 @@
         ${candidates.map(c => `
           <div class="unit-card">
             <div class="code">${c.humanCode}</div>
-            <p class="muted">${c.product} · ${c.variant} · Batch ${c.batchNumber}</p>
+            <p class="muted">${c.product} · ${c.variant} · ${c.batchLabel || 'Batch ' + c.batchNumber}</p>
             <button data-token="${c.internalToken}">Select this one</button>
           </div>
         `).join('')}

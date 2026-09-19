@@ -377,6 +377,9 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
           const bn = String(b.batchNumber).trim();
           if (!bn) throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchNumber must be a non-empty string if provided.`);
         }
+        if (b.batchLabel !== undefined && b.batchLabel !== null && !String(b.batchLabel).trim()) {
+          throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchLabel must be a non-empty string if provided.`);
+        }
         if (b.unitNames !== undefined) {
           if (!Array.isArray(b.unitNames)) {
             throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: unitNames must be an array of strings.`);
@@ -493,9 +496,9 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
 
       allStatements.push(
         db.prepare(
-          `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id)
-           VALUES (?, ?, ?, ?, ?)`
-        ).bind(batchId, variantId, bNum, bQty, lineId)
+          `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id, batch_label)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(batchId, variantId, bNum, bQty, lineId, bSpec.batchLabel ? String(bSpec.batchLabel).trim() : null)
       );
 
       // Per-batch unitNames (e.g. each batch is one school's named
@@ -513,7 +516,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       const { createdUnits, statements: uStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, batchUnitNames, actor);
       allStatements.push(...uStmts);
 
-      lineBatches.push({ batchId, batchNumber: bNum, plannedQuantity: bQty, createdUnits: createdUnits.length });
+      lineBatches.push({ batchId, batchNumber: bNum, batchLabel: bSpec.batchLabel ? String(bSpec.batchLabel).trim() : null, plannedQuantity: bQty, createdUnits: createdUnits.length });
     }
 
     // Update in-flight count for this variant

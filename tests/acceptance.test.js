@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 13 acceptance tests against a live local wrangler dev server.
+ * Runs 14 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -614,6 +614,47 @@ await run('Test 13 – One new product with multiple variants is planned once', 
   const products = await api('/api/products');
   assert(products.body.filter(p => p.name === productName).length === 1,
     `Expected exactly one product row for ${productName}`);
+});
+
+await run('Test 14 – Named batches (e.g. schools) can repeat across orders for the same product/size', async () => {
+  const ts = Date.now();
+  const productName = `T14-Product-${ts}`;
+  async function orderWithSchools(ref, batchKey) {
+    return api('/api/orders/create-with-labels', {
+      method: 'POST',
+      body: {
+        customerName: `T14-Customer-${ts}`,
+        orderReference: ref,
+        items: [{
+          productName, variantLabel: 'Size M', quantity: 4,
+          batches: [
+            { quantity: 2, [batchKey]: 'SK Sekolah A', unitNames: ['Ahmad', 'Ali'] },
+            { quantity: 2, [batchKey]: 'SK Sekolah B', unitNames: ['Chong', 'Wei'] },
+          ],
+        }],
+        actor: 'test',
+      },
+    });
+  }
+  const first = await orderWithSchools(`T14-REF-1-${ts}`, 'batchLabel');
+  assert(first.status === 201, `First order failed: ${first.status} ${JSON.stringify(first.body)}`);
+  // Same schools, same product and size, second order -- used to fail with a
+  // unique-constraint error because names were stored as the batch number.
+  const second = await orderWithSchools(`T14-REF-2-${ts}`, 'batchLabel');
+  assert(second.status === 201, `Second order with the same school names failed: ${second.status} ${JSON.stringify(second.body)}`);
+
+  const batches = second.body.lines[0].batches;
+  assert(batches.length === 2, 'Expected 2 batches');
+  assert(batches[0].batchLabel === 'SK Sekolah A' && batches[1].batchLabel === 'SK Sekolah B',
+    `Batch labels not preserved: ${JSON.stringify(batches)}`);
+  const firstNumbers = first.body.lines[0].batches.map(b => b.batchNumber);
+  const secondNumbers = batches.map(b => b.batchNumber);
+  assert(secondNumbers.every(n => !firstNumbers.includes(n)),
+    `Auto batch numbers collided: ${firstNumbers} vs ${secondNumbers}`);
+
+  const units = await api(`/api/production-batches/${batches[1].batchId}/units`);
+  assert(units.body.map(u => u.recipient_name).join(',') === 'Chong,Wei',
+    `Batch-level names not applied: ${JSON.stringify(units.body.map(u => u.recipient_name))}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

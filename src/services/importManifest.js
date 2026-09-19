@@ -12,7 +12,7 @@
 // {
 //   "schemaVersion": "1",        // optional, must be "1" if present
 //   "customerName": "...",       // required: name of customer to create/lookup
-//   "orderReference": "...",     // required: invoice/PO reference
+//   "orderReference": "...",     // may be "" if the document has none
 //   "products": [
 //     {
 //       "name": "...",
@@ -24,10 +24,12 @@
 //           "unitNames": ["Ahmad", ...],  // optional, 1-to-1 recipient names
 //           "batches": [                  // optional phased/grouped breakdown
 //             { "quantity": 300 },
-//             { "quantity": 200, "batchNumber": "SK Sekolah A" }  // batchNumber
-//               // is a free-text name, not just a sequence number -- use it
-//               // to label a batch by recipient group (e.g. one batch per
-//               // school in a bulk order), not only by print phase.
+//             { "quantity": 200, "batchLabel": "SK Sekolah A" }  // batchLabel
+//               // is a free-text NAME (may repeat across orders); the batch
+//               // number itself is still assigned automatically. "batchNumber"
+//               // is accepted as an alias for older AI prompts. Use it to
+//               // label a batch by recipient group (e.g. one batch per school
+//               // in a bulk order), not only by print phase.
 //           ]
 //         }
 //       ]
@@ -69,8 +71,8 @@ export function normalizeManifest(raw) {
   // --- Order reference ---
   // May legitimately be blank: a Job Order often has no JO/invoice number
   // yet when it is first entered, and the AI correctly leaves it empty
-  // rather than inventing one. applyManifest() generates a placeholder in
-  // that case; staff can also type one in on the preview screen.
+  // rather than inventing one. createOrderWithLabels() generates a
+  // placeholder in that case; staff can also type one in on the order form.
   const orderReference = raw.orderReference !== undefined && raw.orderReference !== null
     ? String(raw.orderReference).trim()
     : '';
@@ -142,15 +144,16 @@ export function normalizeManifest(raw) {
             throw new ValidationError(`${vwhere}.batches[${bIdx}].quantity must be a whole number >= 1.`);
           }
           batchSum += bqty;
-          // batchNumber doubles as a batch NAME (e.g. a school name for a
-          // KEMAS-style order split across 100 recipients), not just a
-          // sequence number -- orders.js's createOrderWithLabels already
-          // accepts arbitrary strings here, this was just being dropped on
-          // the way in from the AI-generated manifest.
-          let batchNumber;
-          if (b.batchNumber !== undefined && b.batchNumber !== null) {
-            batchNumber = String(b.batchNumber).trim();
-            if (!batchNumber) throw new ValidationError(`${vwhere}.batches[${bIdx}].batchNumber must be a non-empty string if provided.`);
+          // The batch NAME (e.g. a school in a KEMAS-style order split
+          // across 100 recipients). Stored as batch_label, separate from the
+          // auto-assigned batch_number, so the same name can be reused in a
+          // later order for the same product/size. Older AI prompts called
+          // this field batchNumber, so that is accepted as an alias.
+          let batchLabel;
+          const rawLabel = b.batchLabel ?? b.batchNumber;
+          if (rawLabel !== undefined && rawLabel !== null) {
+            batchLabel = String(rawLabel).trim();
+            if (!batchLabel) throw new ValidationError(`${vwhere}.batches[${bIdx}].batchLabel must be a non-empty string if provided.`);
           }
           let batchUnitNames;
           if (b.unitNames !== undefined) {
@@ -162,7 +165,7 @@ export function normalizeManifest(raw) {
           }
           return {
             quantity: bqty,
-            ...(batchNumber ? { batchNumber } : {}),
+            ...(batchLabel ? { batchLabel } : {}),
             ...(batchUnitNames ? { unitNames: batchUnitNames } : {}),
           };
         });

@@ -202,7 +202,7 @@
         return;
       }
       select.innerHTML = rows.map(r =>
-        `<option value="${r.id}">${r.customer_name || 'Tanpa customer'} · ${r.order_reference || 'Tanpa rujukan'} · ${r.product_name} · ${r.variant_label} · Batch ${r.batch_number} · ${r.registered_count} label</option>`
+        `<option value="${r.id}">${r.customer_name || 'Tanpa customer'} · ${r.order_reference || 'Tanpa rujukan'} · ${r.product_name} · ${r.variant_label} · ${r.batch_label || 'Batch ' + r.batch_number} · ${r.registered_count} label</option>`
       ).join('');
       const params = new URLSearchParams(location.search);
       if (params.get('batchId')) {
@@ -250,6 +250,11 @@
       const qrSize = SIZES[sizeSelect.value].qr;
       const batch = batchesCache.find(b => b.id === select.value);
       const batchContext = parseBatchContext(batch);
+      // Batch marked on the printed label: its name when it has one (e.g. a
+      // school), otherwise "Batch N" only when the order line is actually
+      // split into several batches (a single-batch order needs no tag).
+      const siblingBatches = batch && batch.order_line_id ? batchesCache.filter((b) => b.order_line_id === batch.order_line_id).length : 0;
+      const batchTag = batch ? (batch.batch_label || (siblingBatches > 1 ? 'Batch ' + batch.batch_number : '')) : '';
       grid.innerHTML = '';
 
       // O4 finding: for a batch small enough to fit on one screen (<=30
@@ -260,7 +265,7 @@
       const pendingCount = units.length - confirmedCount;
       document.getElementById('batch-summary').hidden = false;
       document.getElementById('summary-order').textContent = `${batch?.order_reference || 'Tanpa rujukan'} · ${batch?.customer_name || 'Tanpa customer'}`;
-      document.getElementById('summary-product').textContent = `${batch?.product_name || '—'} · ${batch?.variant_label || '—'} · Batch ${batch?.batch_number || '—'}`;
+      document.getElementById('summary-product').textContent = `${batch?.product_name || '—'} · ${batch?.variant_label || '—'} · ${batch?.batch_label || 'Batch ' + (batch?.batch_number || '—')}`;
       document.getElementById('summary-generated').textContent = units.length;
       document.getElementById('summary-attached').textContent = confirmedCount;
       document.getElementById('summary-pending').textContent = pendingCount;
@@ -298,6 +303,7 @@
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
           ${batch && (batch.customer_name || batch.order_reference) ? `<div class="context" style="font-weight:600;color:var(--navy);">${batch.customer_name || ''}${batch.order_reference ? ' · ' + batch.order_reference : ''}</div>` : ''}
+          ${batchTag ? `<div class="context" style="font-weight:600;">${batchTag}</div>` : ''}
           ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
           ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
           ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${u.recipient_name}</div>` : ''}

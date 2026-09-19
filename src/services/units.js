@@ -229,7 +229,7 @@ export async function reissueLabelAfterAttachment(db, unitId, actor) {
 export async function lookupUnit(db, code) {
   const { results } = await db
     .prepare(
-      `SELECT u.*, pb.batch_number, v.variant_label, p.name AS product_name, l.name AS location_name,
+      `SELECT u.*, pb.batch_number, pb.batch_label, v.variant_label, p.name AS product_name, l.name AS location_name,
               o.order_reference, c.name AS customer_name
        FROM units u
        JOIN production_batches pb ON pb.id = u.batch_id
@@ -253,6 +253,7 @@ export async function lookupUnit(db, code) {
         product: u.product_name,
         variant: u.variant_label,
         batchNumber: u.batch_number,
+        batchLabel: u.batch_label,
         internalToken: u.internal_token,
       })),
     };
@@ -278,6 +279,7 @@ export async function lookupUnit(db, code) {
     product: unit.product_name,
     variant: unit.variant_label,
     batchNumber: unit.batch_number,
+    batchLabel: unit.batch_label,
     disposition: unit.current_disposition,
     condition: unit.current_condition,
     locationId: unit.current_location_id,

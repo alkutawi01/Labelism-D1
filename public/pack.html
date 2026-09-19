@@ -127,7 +127,7 @@
       const batches = batchesCache.filter((b) => b.order_id === orderId);
       select.innerHTML = batches.length
         ? '<option value="">Pilih batch…</option>' + batches.map((b) =>
-            `<option value="${b.id}">${b.product_name} · ${b.variant_label} · Batch ${b.batch_number} · ${b.registered_count} label</option>`
+            `<option value="${b.id}">${b.product_name} · ${b.variant_label} · ${b.batch_label || 'Batch ' + b.batch_number} · ${b.registered_count} label</option>`
           ).join('')
         : '<option value="">Belum ada batch untuk tempahan ini</option>';
       loadExistingShipments();
@@ -143,7 +143,7 @@
       const startButton = document.getElementById('start-packing-btn');
       startButton.disabled = !batch;
       document.getElementById('selected-batch-summary').textContent = batch
-        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · Batch ${batch.batch_number}`
+        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · ${batch.batch_label || 'Batch ' + batch.batch_number}`
         : 'Pilih tempahan dan batch dahulu.';
       loadExistingShipments();
     });
@@ -186,7 +186,7 @@
       currentPackingQuantity = Math.min(Number(batch?.registered_count || 0), remainingForLine);
       document.getElementById('start-packing-btn').disabled = currentPackingQuantity < 1;
       document.getElementById('selected-batch-summary').textContent = batch
-        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · Batch ${batch.batch_number} · Baki untuk scan sekarang: ${currentPackingQuantity}`
+        ? `${batch.customer_name} · ${batch.order_reference} · ${batch.product_name} · ${batch.variant_label} · ${batch.batch_label || 'Batch ' + batch.batch_number} · Baki untuk scan sekarang: ${currentPackingQuantity}`
         : 'Pilih tempahan dan batch dahulu.';
       // Same staleness applied to each shipment's own row (e.g. "Shipment 1
       // (OPEN, 1/60)" frozen while the live scan count was already at 2) --
@@ -254,7 +254,7 @@
         if (!orderLineId || !batch) throw new Error('Pilih customer, tempahan dan batch dahulu.');
         const plannedQuantity = currentPackingQuantity;
         if (!plannedQuantity) throw new Error('Batch ini belum mempunyai label untuk discan.');
-        const reference = `Packing ${batch.order_reference} · Batch ${batch.batch_number}`;
+        const reference = `Packing ${batch.order_reference} · ${batch.batch_label || 'Batch ' + batch.batch_number}`;
         const shipment = await fetch('/api/shipments', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderLineId, reference, plannedQuantity }),

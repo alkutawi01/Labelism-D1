@@ -64,10 +64,10 @@
   ]
 }
 
-Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchNumber" sebagai nama kumpulan, bukan nombor:
+Jika tempahan perlu dipecahkan ikut kumpulan penerima (contoh: 1 order untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchLabel" sebagai nama kumpulan:
         { "label": "Saiz M", "quantity": 100, "batches": [
-            { "quantity": 10, "batchNumber": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
-            { "quantity": 10, "batchNumber": "SK Sekolah B", "unitNames": ["Chong", ...] }
+            { "quantity": 10, "batchLabel": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
+            { "quantity": 10, "batchLabel": "SK Sekolah B", "unitNames": ["Chong", ...] }
         ] }
 Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.
 
@@ -299,7 +299,7 @@ Peraturan penting:
         const subQty = s.querySelector('[data-sub=quantity]');
         const subNames = s.querySelector('[data-sub=names]');
         const subCount = s.querySelector('[data-sub=count]');
-        s.querySelector('[data-sub=name]').value = sub.batchNumber || '';
+        s.querySelector('[data-sub=name]').value = sub.batchLabel || sub.batchNumber || '';
         subQty.value = sub.quantity ?? '';
         subNames.value = (sub.unitNames || []).join(', ');
         const updateSub = () => {
@@ -599,7 +599,7 @@ Peraturan penting:
                 throw new Error(`Batch ${bn || i + 1} (${what}) ada ${names.length} nama tetapi kuantitinya hanya ${bq}.`);
               }
               sum += bq;
-              return { quantity: bq, ...(bn ? { batchNumber: bn } : {}), ...(names.length ? { unitNames: names } : {}) };
+              return { quantity: bq, ...(bn ? { batchLabel: bn } : {}), ...(names.length ? { unitNames: names } : {}) };
             });
             if (sum > quantity) throw new Error(`Jumlah batch (${sum}) melebihi kuantiti (${quantity}) untuk ${what}.`);
             items.push({ productName, variantLabel, quantity, unitNames: [], batches });
