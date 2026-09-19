@@ -626,6 +626,8 @@ Peraturan penting:
           ? stage(l.units_packed, l.shipment_planned, '')
           : (l.units_packed > 0 ? `<span class="muted">${l.units_packed} dipek</span>` : '<span class="muted">Belum dipek</span>');
         const disp = stage(l.units_dispatched, l.units_generated, '');
+        const ret = l.units_returned > 0 ? `<span class="pill warn">${l.units_returned}</span>` : '<span class="muted">0</span>';
+        const withCust = l.units_dispatched > 0 ? `${l.units_with_customer}` : '<span class="muted">0</span>';
 
         return `<tr>
           <td>${esc(label)}</td>
@@ -634,16 +636,19 @@ Peraturan penting:
           <td>${attach}</td>
           <td>${pack}</td>
           <td>${disp}</td>
+          <td>${ret}</td>
+          <td>${withCust}</td>
         </tr>`;
       }).join('');
 
       cell.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>Item</th><th class="num">Ditempah</th><th>Label dijana</th><th>Ditampal</th><th>Dipek</th><th>Dihantar</th></tr></thead>
+          <thead><tr><th>Item</th><th class="num">Ditempah</th><th>Label dijana</th><th>Ditampal</th><th>Dipek</th><th>Dihantar</th><th>Dipulang</th><th>Di tangan pelanggan</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
           <tfoot><tr style="font-weight:600">
             <td>Jumlah</td><td class="num">${data.totals.ordered}</td><td>${data.totals.generated}</td>
             <td>${data.totals.attached}</td><td>${data.totals.packed}</td><td>${data.totals.dispatched}</td>
+            <td>${data.totals.returned}</td><td>${data.totals.with_customer}</td>
           </tr></tfoot>
         </table>`;
 

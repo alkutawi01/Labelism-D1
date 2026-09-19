@@ -150,7 +150,19 @@ export async function getOrderReconciliation(db, orderId) {
               AND EXISTS (
                 SELECT 1 FROM shipment_units su JOIN shipments s ON s.id = su.shipment_id
                 WHERE su.unit_id = u.id AND s.status = 'DISPATCHED'
-              )) AS units_dispatched
+              )) AS units_dispatched,
+         -- Returned = currently back in the building: received through a return
+         -- intake and not dispatched again since. A unit stays in its old
+         -- DISPATCHED shipment, so "dispatched" alone would still count it.
+         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
+            WHERE pb.order_line_id = ol.id
+              AND EXISTS (
+                SELECT 1 FROM unit_events r
+                WHERE r.unit_id = u.id AND r.event_type = 'RETURN_RECEIVED'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM unit_events d
+                    WHERE d.unit_id = u.id AND d.event_type = 'UNIT_DISPATCHED' AND d.seq > r.seq)
+              )) AS units_returned
        FROM order_lines ol
        LEFT JOIN variants v ON v.id = ol.variant_id
        LEFT JOIN products p ON p.id = v.product_id
@@ -168,9 +180,13 @@ export async function getOrderReconciliation(db, orderId) {
       shipment_planned: acc.shipment_planned + l.shipment_planned,
       packed: acc.packed + l.units_packed,
       dispatched: acc.dispatched + l.units_dispatched,
+      returned: acc.returned + l.units_returned,
     }),
-    { ordered: 0, generated: 0, attached: 0, shipment_planned: 0, packed: 0, dispatched: 0 }
+    { ordered: 0, generated: 0, attached: 0, shipment_planned: 0, packed: 0, dispatched: 0, returned: 0 }
   );
+  // With the customer right now = dispatched and not (currently) returned.
+  lines.forEach((l) => { l.units_with_customer = l.units_dispatched - l.units_returned; });
+  totals.with_customer = totals.dispatched - totals.returned;
 
   return { order, lines, totals };
 }

@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 23 acceptance tests against a live local wrangler dev server.
+ * Runs 25 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -1029,6 +1029,63 @@ await run('Test 23 – Duplicate names only warn; a second return without re-dis
   const second = await scan(b.id);
   assert(second.status === 201 && second.body.expected === false && second.body.alreadyReturned === true,
     `Second return without re-dispatch must be flagged, not expected: ${JSON.stringify(second.body)}`);
+});
+
+await run('Test 24 – Only known event types can be posted by hand; system events cannot be forged', async () => {
+  const { orderId, rows } = await makeOrder('T24', [{ productName: `T24-Product-${Date.now()}`, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
+  const pr = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: rows[0].batch_id, quantity: 1 }] } });
+  const u = (await api(`/api/print-runs/${pr.body.id}`)).body.units[0];
+  const post = (body) => api(`/api/units/${u.id}/events`, { method: 'POST', body: { actor: 'test', ...body } });
+
+  for (const bad of ['ORDER_AMENDED_VOID', 'OVERPRODUCED', 'UNIT_DISPATCHED', 'LABEL_REISSUED', 'RETURN_RECEIVED', 'UNIT_REGISTERED', 'unit_sold']) {
+    const r = await post({ eventType: bad });
+    assert(r.status === 400 && /dibenarkan/.test(r.body.error), `"${bad}" must be refused: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  assert((await post({ eventType: 'DAMAGE_OBSERVED', disposition: 'VOID' })).status === 400, 'Unknown disposition must be refused');
+  assert((await post({ eventType: 'DAMAGE_OBSERVED', condition: 'HAUNTED' })).status === 400, 'Unknown condition must be refused');
+  assert((await api(`/api/units/${u.id}/events`, { method: 'POST', body: { actor: 'test' } })).status === 400, 'Missing eventType must be refused');
+
+  // Nothing was written by the refused ones.
+  const lk = await api(`/api/units/lookup/${u.internal_token}`);
+  assert(lk.body.events.length === 1, `Refused events must leave no trace: ${lk.body.events.map((e) => e.event_type)}`);
+
+  // The five buttons the app actually has keep working.
+  for (const body of [
+    { eventType: 'DAMAGE_OBSERVED', condition: 'DAMAGED' },
+    { eventType: 'UNIT_SOLD', disposition: 'SOLD' },
+    { eventType: 'UNIT_RETURNED', disposition: 'RETURNED' },
+    { eventType: 'MISSING_CONFIRMED', disposition: 'MISSING' },
+    { eventType: 'UNIT_TRANSFERRED', payload: { locationName: 'Kaunter' } },
+  ]) {
+    const r = await post(body);
+    assert(r.status === 201, `${body.eventType} must still work: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+});
+
+await run('Test 25 – Butiran shows returned units and how many are still with the customer', async () => {
+  const product = `T25-Product-${Date.now()}`;
+  const { orderId, rows } = await makeOrder('T25', [{ productName: product, variantLabel: 'Saiz M', quantity: 3, batches: null }]);
+  const pr = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: rows[0].batch_id, quantity: 3 }] } });
+  const units = (await api(`/api/print-runs/${pr.body.id}`)).body.units;
+  for (const u of units) await attachUnit(u);
+  await api(`/api/print-runs/${pr.body.id}/packing/start`, { method: 'POST', body: {} });
+  for (const u of units) await api(`/api/print-runs/${pr.body.id}/packing/scan`, { method: 'POST', body: { code: u.internal_token } });
+  await api(`/api/print-runs/${pr.body.id}/packing/close`, { method: 'POST', body: {} });
+  const lineId = (await api(`/api/orders/${orderId}/reconciliation`)).body.lines[0].order_line_id;
+  for (const s of (await api(`/api/order-lines/${lineId}/shipments`)).body) await api(`/api/shipments/${s.id}/dispatch`, { method: 'POST', body: { locationName: 'Customer' } });
+
+  let t = (await api(`/api/orders/${orderId}/reconciliation`)).body;
+  assert(t.totals.dispatched === 3 && t.totals.returned === 0 && t.totals.with_customer === 3, `Before any return: ${JSON.stringify(t.totals)}`);
+
+  const intake = (await api('/api/return-intakes', { method: 'POST', body: { reference: 'T25' } })).body;
+  for (const u of units.slice(0, 2)) await api(`/api/return-intakes/${intake.id}/scans`, { method: 'POST', body: { code: u.internal_token, actor: 'test' } });
+  t = (await api(`/api/orders/${orderId}/reconciliation`)).body;
+  assert(t.totals.returned === 2 && t.totals.dispatched === 3 && t.totals.with_customer === 1, `After returning 2: ${JSON.stringify(t.totals)}`);
+  assert(t.lines[0].units_returned === 2 && t.lines[0].units_with_customer === 1, 'Per-line figures must match');
+
+  // A unit scanned into a still-open intake already counts: it is physically back.
+  const ev = await api(`/api/units/lookup/${units[0].internal_token}`);
+  assert(ev.body.events.some((e) => e.event_type === 'RETURN_RECEIVED'), 'return event recorded');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

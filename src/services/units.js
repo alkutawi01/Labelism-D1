@@ -313,10 +313,31 @@ export async function lookupUnit(db, code) {
   };
 }
 
+// Events a person may record by hand through the API (the buttons on the scan
+// and stocktake pages). Everything else the system writes itself as a side
+// effect of a real action (packing, dispatch, label attach/reissue, return
+// intake, QC) and must never be forgeable from here: a hand-posted
+// UNIT_DISPATCHED, for instance, would make a unit look shipped.
+// Free-form types were accepted before and meant nothing to any report.
+export const MANUAL_EVENT_TYPES = ['UNIT_SOLD', 'DAMAGE_OBSERVED', 'UNIT_RETURNED', 'MISSING_CONFIRMED', 'UNIT_TRANSFERRED'];
+export const MANUAL_DISPOSITIONS = ['AVAILABLE', 'SOLD', 'RETURNED', 'MISSING', 'REJECTED'];
+export const MANUAL_CONDITIONS = ['DAMAGED'];
+
 export async function recordUnitEvent(db, unitId, { eventType, payload, actor, disposition, condition, locationId, occurredAt }) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
   if (!eventType) throw new ValidationError('eventType is required.');
+  if (!MANUAL_EVENT_TYPES.includes(eventType)) {
+    throw new ValidationError(
+      `eventType "${eventType}" tidak dibenarkan di sini. Jenis yang dibenarkan: ${MANUAL_EVENT_TYPES.join(', ')}. Event lain dicatat oleh sistem sendiri (packing, dispatch, label, pemulangan).`
+    );
+  }
+  if (disposition !== undefined && disposition !== null && !MANUAL_DISPOSITIONS.includes(disposition)) {
+    throw new ValidationError(`disposition "${disposition}" tidak sah. Pilihan: ${MANUAL_DISPOSITIONS.join(', ')}.`);
+  }
+  if (condition !== undefined && condition !== null && !MANUAL_CONDITIONS.includes(condition)) {
+    throw new ValidationError(`condition "${condition}" tidak sah. Pilihan: ${MANUAL_CONDITIONS.join(', ')}.`);
+  }
 
   const eventId = newInternalId();
   const statements = buildEventBatch(db, {

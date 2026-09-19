@@ -141,6 +141,7 @@ sessions[1] = async () => {
   ];
   for (const [label, item, expect] of cases) {
     const r = await mk('S1c', [item]);
+    if (r.fail && r.fail.status === 409 && label.startsWith('nama berganda')) { ok(`${label}: server minta pengesahan (409), bukan tolak: ${r.fail.body.warnings[0].slice(0, 80)}`); continue; }
     if (r.fail) { (expect === 'tolak' ? ok : (m) => note(m))(`${label}: ditolak (${err(r.fail).slice(0, 90)})`); continue; }
     const units = await allUnits(r.orderId);
     const got = units.map((u) => u.recipient_name ?? '∅').join(',');
@@ -204,6 +205,7 @@ sessions[2] = async () => {
   const still = (await getRun(r2.body.id)).units.some((u) => u.id === u0.id);
   note(`unit yang ditanda VOID: masih boleh dicetak/dipack? cetak baki ${r2.status === 201 ? 'ya' : 'tidak'}; unit sendiri dalam cetakan baru: ${still}`);
   if (ev.status < 300) temuan('TINGGI', 'eventType bebas diterima tetapi tiada makna: unit "VOID" tetap dikira wajib, boleh dicetak dan dipack', 'Tiada senarai event yang sah. Event rekaan tidak mengubah keadaan unit; ia hanya catatan.');
+  else ok('event rekaan ORDER_AMENDED_VOID ditolak: ' + err(ev).slice(0, 100));
   // Over-generate to "fix" a quantity increase, and try to reduce via add-batch of negative
   const line = (await recon(o.orderId)).lines[0];
   const addBad = await api(`/api/order-lines/${line.order_line_id}/batches`, { method: 'POST', body: { quantity: 5, actor: 'sim' } });
@@ -642,7 +644,9 @@ sessions[10] = async () => {
   ledger.reissue = all.filter((u) => has(u, 'LABEL_REISSUED')).length;
   ledger['belum dicetak'] = all.filter((u) => !u.print_run_id).length;
   say('   ' + Object.entries(ledger).map(([k, v]) => `${k}: ${v}`).join(' | '));
-  say(`   Butiran sistem: ditempah ${t.ordered}, dijana ${t.generated}, ditampal ${t.attached}, dipek ${t.packed}, dihantar ${t.dispatched}`);
+  say(`   Butiran sistem: ditempah ${t.ordered}, dijana ${t.generated}, ditampal ${t.attached}, dipek ${t.packed}, dihantar ${t.dispatched}, dipulang ${t.returned}, di tangan pelanggan ${t.with_customer}`);
+  if (t.returned !== ledger.dikembalikan) temuan('TINGGI', 'Butiran "dipulang" tidak sepadan dengan event pemulangan unit', `Butiran ${t.returned} vs event ${ledger.dikembalikan}`);
+  else ok(`Butiran dipulang (${t.returned}) sepadan dengan jejak event unit`);
   const outstanding = all.filter((u) => !has(u, 'UNIT_DISPATCHED') || has(u, 'RETURN_RECEIVED'));
   say(`   tertunggak (belum dihantar atau sudah dipulang): ${outstanding.length}`);
   const gaps = [];
