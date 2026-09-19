@@ -93,7 +93,7 @@
     .print-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
     .print-table td.num, .print-table th.num { text-align: right; }
     .print-table input[type=checkbox] { width: 20px; height: 20px; }
-    .print-table input[type=number] { width: 88px; padding: 8px; font-size: 15px; text-align: right; }
+    .print-table input[type=number], .print-table select { width: 88px; padding: 8px; font-size: 15px; text-align: right; }
     .print-table tr.done td { color: var(--muted); }
     .print-table .variant-cell { font-weight: 700; }
     .print-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
@@ -314,6 +314,20 @@
       return overview.runs.reduce((m, r) => Math.max(m, r.run_number), 0) + 1;
     }
 
+    // Pick-list from the balance down to 0 (e.g. 4, 3, 2, 1, 0) so the amount
+    // is chosen, not typed. A row with hundreds of labels would make that list
+    // unusable, so those keep a typed number box.
+    const PICK_LIST_MAX = 60;
+    function qtyControl(row, value) {
+      const label = `Kuantiti untuk ${esc(row.variant_label)}`;
+      if (row.unprinted > PICK_LIST_MAX) {
+        return `<input type="number" min="0" max="${row.unprinted}" value="${value}" data-qty="${row.batch_id}" aria-label="${label}">`;
+      }
+      let options = '';
+      for (let n = row.unprinted; n >= 0; n--) options += `<option value="${n}" ${n === value ? 'selected' : ''}>${n}</option>`;
+      return `<select data-qty="${row.batch_id}" aria-label="${label}">${options}</select>`;
+    }
+
     function renderPrintTable() {
       const rows = overview.rows;
       const hasGroups = rows.some((r) => r.group_label);
@@ -336,14 +350,22 @@
           <td class="num">${r.total}</td>
           <td class="num">${r.printed}</td>
           <td class="num">${r.unprinted}</td>
-          <td class="num">${done ? '—' : `<input type="number" min="1" max="${r.unprinted}" value="${sel ? sel.qty : r.unprinted}" data-qty="${r.batch_id}" aria-label="Kuantiti untuk ${esc(r.variant_label)}">`}</td>
+          <td class="num">${done ? '—' : qtyControl(r, sel ? sel.qty : r.unprinted)}</td>
         </tr>`;
       }).join('');
 
       document.querySelectorAll('[data-check]').forEach((box) => {
         box.addEventListener('change', () => {
           const s = selection.get(box.dataset.check);
-          if (s) s.checked = box.checked;
+          const row = overview.rows.find((r) => r.batch_id === box.dataset.check);
+          if (s) {
+            s.checked = box.checked;
+            if (box.checked && s.qty === 0) {
+              s.qty = row.unprinted;
+              const control = document.querySelector(`[data-qty="${box.dataset.check}"]`);
+              if (control) control.value = s.qty;
+            }
+          }
           updatePrintSummary();
         });
       });
@@ -360,10 +382,12 @@
           document.querySelector(`[data-check="${input.dataset.qty}"]`).checked = s.checked;
           updatePrintSummary();
         });
-        input.addEventListener('blur', () => {
-          const s = selection.get(input.dataset.qty);
-          input.value = s.qty || '';
-        });
+        if (input.tagName === 'INPUT') {
+          input.addEventListener('blur', () => {
+            const s = selection.get(input.dataset.qty);
+            input.value = s.qty || 0;
+          });
+        }
       });
       updatePrintSummary();
     }
