@@ -2,6 +2,8 @@
 
 Status: **DRAF UNTUK SEMAKAN. Tiada kod, tiada skema, tiada migrasi.** Lakaran jadual di bawah hanya untuk menerangkan model dan belum muktamad.
 
+**Keputusan Izzat 19/9 (Soalan 1): nama penerima ada pada baju itu sendiri** (bukan hanya pada label). Nama ialah sebahagian spesifikasi pengeluaran, jadi mengubah nama selepas baju wujud = baju itu salah. Jadual 4.1 dikemas kini.
+
 Sumber: sesi simulasi 1 hingga 10 (`tests/stress-sessions.js`) dan arahan Izzat 19/9. Empat temuan yang model ini mesti jawab: pindaan order tiada (S2, S3), baju terlebih tiada tempat (S6), salah saiz tak boleh dinyatakan (S10), dan shipment planned 103 untuk order 100 (S6).
 
 ---
@@ -47,14 +49,16 @@ Tiga jenis perubahan: **Nama** penerima, **Variasi/saiz** (termasuk produk), **K
 
 ### 4.1 Nama penerima
 
+Nama ada pada baju. Maka nama ialah sebahagian identiti pengeluaran, sama seperti saiz, sebaik sahaja baju dihasilkan.
+
 | | Mekanisme | Obligasi baru? | Akibat fizikal | Jejak |
 |---|---|---|---|---|
-| **S1** | Pembetulan di tempat (label belum wujud) | Tidak | Tiada | Event `NAME_CORRECTED {lama, baru}` + pindaan |
-| **S2** | Pembetulan + label lama dimatikan (token diputar), cetak semula | Tidak (baju belum wujud) | Label kertas lama mesti dibuang | `NAME_CORRECTED` + `LABEL_REISSUED` |
-| **S3** | Bergantung **Soalan 1** (nama ada pada baju atau hanya pada label?) | | | |
-| | 3a. Nama hanya pada label: label diganti (mekanisme reissue sedia ada) + `NAME_CORRECTED` | Tidak | Label lama dibuang, label baru ditampal semula | `NAME_CORRECTED` + `DAMAGE_OBSERVED` + `LABEL_REISSUED` |
-| | 3b. Nama pada baju (dicetak/dijahit): baju itu salah | **Ya**: VOID + pengganti | Baju lama jadi UP asal `VOID_RELEASED` | Pindaan + UP + pautan `replaces` |
-| **S4** | Tidak boleh diubah. Jika pelanggan mahu baju baru: **SUPERSEDE** | Ya (pengganti) | Baju lama dipulang melalui Return Intake (sedia ada), atau pelanggan simpan | `replaces` + pindaan |
+| **S1** | Pembetulan di tempat. Label dan baju belum wujud. | Tidak | Tiada | Event `NAME_CORRECTED {lama, baru}` + pindaan |
+| **S2** | Operator wajib mengesahkan: "baju ini **belum** dihasilkan dengan nama lama". Jika ya: pembetulan + label lama dimatikan (token diputar) + cetak semula. Jika baju sudah dihasilkan (label belum ditampal sahaja): ikut laluan **S3**. | Tidak jika belum dihasilkan; Ya jika sudah | Label kertas lama dibuang. Jika baju sudah ada, ia jadi UP. | `NAME_CORRECTED` + `LABEL_REISSUED`, atau pindaan VOID |
+| **S3** | **VOID + obligasi pengganti.** Baju bernama lama tak boleh dipakai untuk penerima baru, jadi ia jadi UP `VOID_RELEASED`. Tiada "tukar label sahaja". | Ya | Baju lama jadi UP; operator pilih reject / spare / convert (convert hanya jika baju itu memang sesuai untuk obligasi baru; sebab nama berbeza, biasanya reject atau spare) | Pindaan + UP + `replaces` |
+| **S4** | Tidak boleh diubah. Jika pelanggan mahu baju bernama baru: **SUPERSEDE**. | Ya (pengganti) | Baju lama dipulang melalui Return Intake, atau pelanggan simpan | `replaces` + pindaan |
+
+Kesan keputusan ini: mekanisme "reissue selepas tampal" sedia ada (yang hanya menukar QR) **bukan** cara membetulkan nama. Ia kekal untuk label rosak sahaja.
 
 ### 4.2 Variasi / saiz
 
@@ -230,7 +234,8 @@ Sebab dipisahkan: pencetus, pelaku dan invarian berbeza. Jika digabung, satu `un
 
 ## 12. Soalan untuk Izzat (dengan lalai yang dicadangkan)
 
-1. **Nama penerima: pada baju atau hanya pada label?** Menentukan S3 (3a atau 3b). Lalai: anggap pada baju (3b, lebih selamat) sehingga dijawab.
+1. ~~Nama penerima: pada baju atau hanya pada label?~~ **DIJAWAB (Izzat 19/9): pada baju.** S3 nama = VOID + pengganti + UP.
+11. **Bilakah nama dikenakan pada baju berbanding cetak label?** Menentukan sama ada S2 selamat untuk pembetulan di tempat. Jika baju biasanya dihasilkan (nama dicetak/dijahit) selepas label dicetak tetapi sebelum ditampal, S2 nama sering sebenarnya S3. Lalai: operator mengesahkan "baju belum dihasilkan" pada S2; jika ragu, ikut S3.
 2. **Siapa boleh terapkan pindaan?** Lalai: staf boleh S1 dan S2; S3 dan S4 (ada akibat fizikal) admin sahaja.
 3. **UP `PENDING` menyekat apa-apa?** Lalai: tidak menyekat, tetapi merah pada Butiran.
 4. **Keluarkan unit daripada packing** (`SHIPMENT_UNIT_REMOVED`) perlu dibina sebagai prasyarat S3b. Lalai: ya, tindakan admin berjejak.
