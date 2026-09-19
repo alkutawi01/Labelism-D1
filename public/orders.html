@@ -751,7 +751,7 @@ Peraturan penting:
         if (!items.length) throw new Error('Sila isi sekurang-kurangnya satu produk dengan variasi dan kuantiti.');
 
         const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
-        const res = await fetch('/api/orders/create-with-labels', {
+        const send = (acknowledgeWarnings) => fetch('/api/orders/create-with-labels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -763,8 +763,17 @@ Peraturan penting:
             notes,
             items,
             actor,
+            acknowledgeWarnings,
           }),
         }).then(r => r.json());
+        let res = await send(false);
+        // Ambiguous spellings (e.g. XL and X-L in one order): nothing has been
+        // created yet, so ask, and only go ahead if the person says they differ.
+        if (res.requiresAcknowledgement) {
+          const go = confirm(res.warnings.join('\n\n') + '\n\nTeruskan tempahan ini seperti yang ditaip?');
+          if (!go) { resDiv.innerHTML = '<div class="msg info">Tempahan belum dibuat. Betulkan ejaan variasi, kemudian sahkan semula.</div>'; return; }
+          res = await send(true);
+        }
 
         if (res.error) throw new Error(res.error);
 

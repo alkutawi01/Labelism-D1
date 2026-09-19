@@ -2,7 +2,7 @@
 // predictable D1/SQLite constraint failures to useful client responses,
 // without exposing raw SQL, table names, or stack traces. Any error not
 // recognized here stays a 500 (fail loud on the truly unexpected).
-import { ValidationError } from './validation.js';
+import { ValidationError, ConfirmationRequired } from './validation.js';
 
 const D1_ERROR_PATTERNS = [
   { test: /FOREIGN KEY constraint failed/i, status: 400, message: 'Referenced resource does not exist.' },
@@ -10,6 +10,9 @@ const D1_ERROR_PATTERNS = [
 ];
 
 export function toErrorResponse(err) {
+  if (err instanceof ConfirmationRequired) {
+    return Response.json({ error: err.message, warnings: err.warnings, requiresAcknowledgement: true }, { status: 409 });
+  }
   if (err instanceof ValidationError) {
     return Response.json({ error: err.message }, { status: 400 });
   }

@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 21 acceptance tests against a live local wrangler dev server.
+ * Runs 22 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -947,6 +947,49 @@ await run('Test 21 – Group labels: whitespace is cleaned and duplicates ignore
     ] },
   });
   assert(twoSizes.status === 201, `Same school on two sizes must be allowed: ${JSON.stringify(twoSizes.body)}`);
+});
+
+await run('Test 22 – Variation spelling guard: refuse case-only duplicates, ask about near-duplicates, never rewrite', async () => {
+  const ts = Date.now();
+  const P = `T22-Product-${ts}`;
+  const order = (labels, extra = {}, product = P) => api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: { customerName: `T22-${ts}-${Math.random()}`, orderReference: '', actor: 'test', ...extra,
+      items: labels.map((l) => ({ productName: product, variantLabel: l, quantity: 1, unitNames: [], batches: null })) },
+  });
+
+  // Case-only: refused, nothing created.
+  const caseOnly = await order(['XL', 'xl']);
+  assert(caseOnly.status === 400 && /huruf besar/.test(caseOnly.body.error), `XL vs xl must be refused: ${JSON.stringify(caseOnly.body)}`);
+
+  // Near-duplicate: asks first (409, nothing created)...
+  const asked = await order(['XL', 'X-L']);
+  assert(asked.status === 409 && asked.body.requiresAcknowledgement && asked.body.warnings.length === 1, `XL vs X-L must ask: ${asked.status} ${JSON.stringify(asked.body)}`);
+  const none = await api('/api/orders');
+  assert(!none.body.some((o) => o.lines.some((l) => /T22-Product/.test(l.product_name || '') && String(o.customer_name).startsWith(`T22-${ts}`))), 'Nothing may be created before acknowledgement');
+
+  // ...and goes ahead unchanged when acknowledged: both spellings kept as typed.
+  const acked = await order(['XL', 'X-L'], { acknowledgeWarnings: true });
+  assert(acked.status === 201 && acked.body.warnings.length === 1, `Acknowledged order must be created: ${JSON.stringify(acked.body)}`);
+  const ov = await api(`/api/orders/${acked.body.orderId}/print-overview`);
+  assert(ov.body.rows.map((r) => r.variant_label).join('|') === 'XL|X-L', 'Both spellings stay exactly as typed');
+
+  // Against a variation the product already has (XL now exists).
+  const vsExisting = await order(['xl']);
+  assert(vsExisting.status === 400, `xl vs existing XL must be refused: ${JSON.stringify(vsExisting.body)}`);
+  const punctVsExisting = await order(['X L']);
+  assert(punctVsExisting.status === 409, `"X L" vs existing XL must ask: ${punctVsExisting.status}`);
+
+  // Whitespace is cleaned, not treated as a different spelling; identical repeats are fine.
+  const P2 = `${P}-b`;
+  const spaced = await order(['XL ', ' XL', 'XL'], {}, P2);
+  assert(spaced.status === 201, `Whitespace variants of the same label must be accepted as one: ${JSON.stringify(spaced.body)}`);
+  const ov2 = await api(`/api/orders/${spaced.body.orderId}/print-overview`);
+  assert(new Set(ov2.body.rows.map((r) => r.variant_label)).size === 1 && ov2.body.rows[0].variant_label === 'XL', 'One clean "XL" variation');
+
+  // Genuinely different sizes trigger nothing.
+  const fine = await order(['S', 'M', 'L', '2XL'], {}, `${P}-c`);
+  assert(fine.status === 201 && !fine.body.warnings, 'Distinct sizes must not warn');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 import { buildUnitStatementsForBatch } from './receiving.js';
-import { cleanLabelText, labelKey } from '../domain/validation.js';
+import { cleanLabelText, labelKey, looseKey, ConfirmationRequired } from '../domain/validation.js';
 
 export async function createCustomer(db, { name, contactInfo }) {
   if (!name) throw new ValidationError('Customer name is required.');
@@ -334,7 +334,66 @@ async function nextBatchNumbers(db, variantId, count, inFlightCount = 0) {
 //
 // All writes are in one db.batch(). Preflight reads only.
 // ─────────────────────────────────────────────────────────────────────────────
-export async function createOrderWithLabels(db, { customerId, customerName, orderReference, orderDate, dueDate, notes, items, actor }) {
+// Variation spelling guard. Never rewrites what the person typed (XL and X-L
+// may be genuinely different sizes for some companies); it only refuses the
+// unambiguous and asks about the ambiguous:
+//   - REFUSE: two spellings that differ only by case (XL / xl), within this
+//     order or against a variation the product already has.
+//   - ASK:    two spellings that differ only by punctuation/spacing (XL / X-L),
+//     answered by resending with acknowledgeWarnings: true.
+// Whitespace inside/around a label is cleaned first (that is not a spelling).
+async function checkVariantSpellings(db, items, acknowledged) {
+  const byProduct = new Map(); // product key -> { name, labels: Map(labelKey -> Set(clean text)), sources }
+  const note = (productName, label, where) => {
+    const pKey = String(productName).trim().toLowerCase();
+    if (!byProduct.has(pKey)) byProduct.set(pKey, { name: String(productName).trim(), spellings: new Map() });
+    const spellings = byProduct.get(pKey).spellings;
+    if (!spellings.has(label)) spellings.set(label, where);
+  };
+  for (const item of items) {
+    if (item.variantId || !item.productName || !item.variantLabel) continue;
+    note(item.productName, item.variantLabel, 'tempahan ini');
+  }
+  for (const [pKey, entry] of byProduct) {
+    const { results } = await db
+      .prepare(
+        `SELECT v.variant_label FROM variants v JOIN products p ON p.id = v.product_id
+         WHERE LOWER(TRIM(p.name)) = ?`
+      )
+      .bind(pKey)
+      .all();
+    for (const r of results) {
+      const existing = cleanLabelText(r.variant_label);
+      if (!entry.spellings.has(existing)) entry.spellings.set(existing, 'sedia ada');
+    }
+  }
+
+  const warnings = [];
+  for (const { name, spellings } of byProduct.values()) {
+    const labels = [...spellings.keys()];
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        const a = labels[i];
+        const b = labels[j];
+        if (spellings.get(a) === 'sedia ada' && spellings.get(b) === 'sedia ada') continue; // not this order's doing
+        if (labelKey(a) === labelKey(b)) {
+          throw new ValidationError(
+            `Produk "${name}": variasi "${a}" dan "${b}" sama kecuali huruf besar/kecil. Guna satu ejaan sahaja.`
+          );
+        }
+        if (looseKey(a) === looseKey(b)) {
+          warnings.push(`Produk "${name}": variasi "${a}" hampir sama dengan "${b}". Pastikan ia memang saiz yang berbeza.`);
+        }
+      }
+    }
+  }
+  if (warnings.length && !acknowledged) {
+    throw new ConfirmationRequired('Ejaan variasi hampir sama. Sahkan jika ia memang berbeza.', warnings);
+  }
+  return warnings;
+}
+
+export async function createOrderWithLabels(db, { customerId, customerName, orderReference, orderDate, dueDate, notes, items, actor, acknowledgeWarnings }) {
   // A Job Order often has no JO/invoice number yet when it is first entered
   // (a real Zaicorp JO had both blank), so a blank reference is allowed and
   // gets a readable placeholder instead of blocking the order.
@@ -349,6 +408,8 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
   if (!Array.isArray(items) || items.length === 0) {
     throw new ValidationError('At least one item is required in the order.');
   }
+  // Whitespace cleanup only (trim + collapse); casing and punctuation are kept.
+  items = items.map((it) => (it && typeof it.variantLabel === 'string' ? { ...it, variantLabel: cleanLabelText(it.variantLabel) } : it));
 
   // ── Fix 5: Pre-validate ALL items and ALL batch specs before any reads/writes ──
   for (const [iIdx, item] of items.entries()) {
@@ -428,6 +489,8 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       }
     }
   }
+
+  const spellingWarnings = await checkVariantSpellings(db, items, acknowledgeWarnings === true);
 
   // ── Handle Customer (Preflight read only) ──
   let customer;
@@ -557,7 +620,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
   // ── Single atomic db.batch() -- all or nothing ──
   await db.batch(allStatements);
 
-  return { orderId, orderReference: String(orderReference).trim(), customerName: customer.name, lines: createdLines };
+  return { orderId, orderReference: String(orderReference).trim(), customerName: customer.name, lines: createdLines, ...(spellingWarnings.length ? { warnings: spellingWarnings } : {}) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
