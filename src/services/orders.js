@@ -364,6 +364,14 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       throw new ValidationError(`items[${iIdx}]: variantLabel or variantId or description is required.`);
     }
 
+    // Item-level names must not outnumber the units ordered, whether or not
+    // the item is split into batches (batch-level names are checked below).
+    if (Array.isArray(item.unitNames) && item.unitNames.length > quantity) {
+      throw new ValidationError(
+        `items[${iIdx}]: ${item.unitNames.length} nama penerima tetapi kuantiti hanya ${quantity}.`
+      );
+    }
+
     if (Array.isArray(item.batches) && item.batches.length > 0) {
       let batchSum = 0;
       for (const [bIdx, b] of item.batches.entries()) {
@@ -395,6 +403,13 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       if (batchSum > quantity) {
         throw new ValidationError(
           `items[${iIdx}]: sum of batch quantities (${batchSum}) exceeds ordered quantity (${quantity}).`
+        );
+      }
+      // Names given once for the whole item are sliced across the batches, so
+      // any that fall beyond the batches' total would be silently dropped.
+      if (Array.isArray(item.unitNames) && item.unitNames.length > batchSum) {
+        throw new ValidationError(
+          `items[${iIdx}]: ${item.unitNames.length} nama penerima tetapi kumpulan hanya menjana ${batchSum} unit.`
         );
       }
     }

@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 17 acceptance tests against a live local wrangler dev server.
+ * Runs 18 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -812,6 +812,33 @@ await run('Test 17 – A print run whose labels never came out can be cancelled,
   await attachUnit(labels.units[0]);
   const c2 = await api(`/api/print-runs/${r2.body.id}/cancel`, { method: 'POST', body: {} });
   assert(c2.status >= 400 && /ditampal/.test(c2.body.error), `Cancel with attached label must be refused: ${JSON.stringify(c2.body)}`);
+});
+
+await run('Test 18 – The server rejects more recipient names than units (no silent dropping)', async () => {
+  const ts = Date.now();
+  const order = (items) => api('/api/orders/create-with-labels', {
+    method: 'POST', body: { customerName: `T18-${ts}-${Math.random()}`, orderReference: '', items, actor: 'test' },
+  });
+  const P = `T18-Product-${ts}`;
+
+  const flat = await order([{ productName: P, variantLabel: 'M', quantity: 3, unitNames: ['A', 'B', 'C', 'D', 'E'], batches: null }]);
+  assert(flat.status === 400 && /nama/.test(flat.body.error), `5 names / 3 units must be rejected: ${flat.status} ${JSON.stringify(flat.body)}`);
+
+  const perBatch = await order([{ productName: P, variantLabel: 'M', quantity: 4, unitNames: [], batches: [{ quantity: 2, batchLabel: 'A', unitNames: ['1', '2', '3'] }, { quantity: 2 }] }]);
+  assert(perBatch.status === 400, `3 names in a 2-unit batch must be rejected: ${perBatch.status}`);
+
+  const spread = await order([{ productName: P, variantLabel: 'M', quantity: 10, unitNames: ['1', '2', '3', '4', '5', '6', '7', '8'], batches: [{ quantity: 4, batchLabel: 'A' }] }]);
+  assert(spread.status === 400, `Item-level names beyond the batches' 4 units must be rejected: ${spread.status}`);
+
+  // Nothing partial was created by any rejected attempt.
+  const orders = await api('/api/orders');
+  assert(!orders.body.some((o) => String(o.customer_name).startsWith(`T18-${ts}`)), 'A rejected order left rows behind');
+
+  // Fewer names than units, and exactly as many, are still fine.
+  const fewer = await order([{ productName: P, variantLabel: 'M', quantity: 3, unitNames: ['A', 'B'], batches: null }]);
+  assert(fewer.status === 201, `fewer names than units must still work: ${JSON.stringify(fewer.body)}`);
+  const exact = await order([{ productName: P, variantLabel: 'M', quantity: 2, unitNames: ['A', 'B'], batches: null }]);
+  assert(exact.status === 201, `exact names must work: ${JSON.stringify(exact.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -57,6 +57,14 @@ export async function createReceipt(db, batchId, { observedQuantity, acceptedQua
 // and batch_receipt_id stays null (schema already allows this).
 export function buildUnitStatementsForBatch(db, batchId, plannedQuantity, existingInBatch = 0, unitNames = [], actor = 'system') {
   const toCreate = plannedQuantity - existingInBatch;
+  // Invariant, enforced here because every unit-creating path funnels through
+  // this function: more recipient names than units to create is never valid.
+  // Silently dropping the extra names would hide a data-entry mistake.
+  if (Array.isArray(unitNames) && unitNames.length > Math.max(toCreate, 0)) {
+    throw new ValidationError(
+      `Ada ${unitNames.length} nama penerima tetapi hanya ${Math.max(toCreate, 0)} unit akan dijana. Semak senarai nama.`
+    );
+  }
   if (toCreate <= 0) return { createdUnits: [], statements: [] };
 
   const createdUnits = [];
