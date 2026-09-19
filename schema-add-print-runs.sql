@@ -19,6 +19,11 @@ CREATE TABLE print_runs (
 ALTER TABLE units ADD COLUMN print_run_id TEXT REFERENCES print_runs(id);
 CREATE INDEX idx_units_print_run ON units(print_run_id);
 
+-- The print/packing screens walk order -> order line -> batch -> unit; without
+-- these, every such walk scans the whole table.
+CREATE INDEX IF NOT EXISTS idx_order_lines_order ON order_lines(order_id);
+CREATE INDEX IF NOT EXISTS idx_batches_order_line ON production_batches(order_line_id);
+
 -- A packing shipment made for a print run (NULL for shipments made the old
 -- way, per order line, before print runs existed).
 ALTER TABLE shipments ADD COLUMN print_run_id TEXT REFERENCES print_runs(id);

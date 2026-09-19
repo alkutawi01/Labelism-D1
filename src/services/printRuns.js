@@ -24,18 +24,20 @@ const PACKED_SQL = `EXISTS (
 // Every order with how many of its labels are still unprinted, so the print
 // screen can default to orders that still need printing.
 export async function listPrintOrders(db) {
+  // One pass over the units, grouped per order. (Three correlated subqueries
+  // per order took ~30s once a few hundred orders with big batches existed.)
   const { results } = await db
     .prepare(
-      `SELECT o.id, o.order_reference, o.created_at, c.name AS customer_name,
-         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
-            JOIN order_lines ol ON ol.id = pb.order_line_id WHERE ol.order_id = o.id) AS total_units,
-         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
-            JOIN order_lines ol ON ol.id = pb.order_line_id
-            WHERE ol.order_id = o.id AND u.print_run_id IS NULL) AS unprinted_units,
-         (SELECT COUNT(*) FROM units u JOIN production_batches pb ON pb.id = u.batch_id
-            JOIN order_lines ol ON ol.id = pb.order_line_id
-            WHERE ol.order_id = o.id AND u.label_confirmed_at IS NOT NULL) AS attached_units
-       FROM orders o JOIN customers c ON c.id = o.customer_id
+      `SELECT o.id, o.customer_id, o.order_reference, o.created_at, c.name AS customer_name,
+              COUNT(u.id) AS total_units,
+              COALESCE(SUM(CASE WHEN u.print_run_id IS NULL THEN 1 ELSE 0 END), 0) AS unprinted_units,
+              COALESCE(SUM(CASE WHEN u.label_confirmed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS attached_units
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN order_lines ol ON ol.order_id = o.id
+       LEFT JOIN production_batches pb ON pb.order_line_id = ol.id
+       LEFT JOIN units u ON u.batch_id = pb.id
+       GROUP BY o.id
        ORDER BY o.rowid DESC`
     )
     .all();
@@ -74,7 +76,10 @@ export async function getPrintOverview(db, orderId) {
     .prepare(
       `SELECT pr.id, pr.run_number, pr.actor, pr.created_at,
               (SELECT COUNT(*) FROM units u WHERE u.print_run_id = pr.id) AS label_count,
-              (SELECT COUNT(*) FROM units u WHERE u.print_run_id = pr.id AND u.label_confirmed_at IS NOT NULL) AS attached_count
+              (SELECT COUNT(*) FROM units u WHERE u.print_run_id = pr.id AND u.label_confirmed_at IS NOT NULL) AS attached_count,
+              (SELECT COUNT(*) FROM units u WHERE u.print_run_id = pr.id AND EXISTS (
+                 SELECT 1 FROM shipment_units su JOIN shipments s ON s.id = su.shipment_id
+                 WHERE su.unit_id = u.id AND (s.print_run_id = pr.id OR s.status != 'DISPATCHED'))) AS packed_count
        FROM print_runs pr WHERE pr.order_id = ? ORDER BY pr.run_number`
     )
     .bind(orderId)

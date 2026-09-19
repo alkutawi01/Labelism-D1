@@ -72,8 +72,6 @@
     .summary-label { color: var(--muted); font-size: 12px; }
     .summary-value { margin-top: 4px; font-size: 20px; font-weight: 750; overflow-wrap: anywhere; }
     .summary-card.wide .summary-value { font-size: 15px; }
-    .steps { margin: 18px 0; padding: 14px 18px; border-left: 4px solid var(--navy); background: var(--surface); border-radius: 6px; }
-    .steps ol { margin: 8px 0 0; padding-left: 22px; }
     .print-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
     .scan-station { margin-top: 22px; padding: 18px; border: 2px solid var(--navy); border-radius: 10px; background: var(--surface); }
     .scan-station h2 { margin: 0 0 5px; }
@@ -85,11 +83,30 @@
     .settings label { display: block; margin-top: 12px; }
     .completion { margin-top: 18px; padding: 16px; border: 1px solid var(--ok); border-radius: 8px; background: #ecfdf3; }
     .completion a { display: inline-block; margin-top: 8px; }
+
+    /* Print step: pick what to print, per variation. */
+    .print-panel { margin-top: 20px; padding: 18px; border: 2px solid var(--navy); border-radius: 10px; background: var(--surface); }
+    .print-panel h2 { margin: 0 0 4px; }
+    .print-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .print-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+    .print-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    .print-table td.num, .print-table th.num { text-align: right; }
+    .print-table input[type=checkbox] { width: 20px; height: 20px; }
+    .print-table input[type=number] { width: 88px; padding: 8px; font-size: 15px; text-align: right; }
+    .print-table tr.done td { color: var(--muted); }
+    .print-table .variant-cell { font-weight: 700; }
+    .print-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+    .print-actions button.primary { font-size: 16px; padding: 12px 20px; }
+    .run-picker { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .run-picker button { font-size: 14px; }
+    .run-picker button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .link-btn { background: none; border: none; padding: 0; color: var(--navy); text-decoration: underline; cursor: pointer; font-size: 13px; width: auto; }
     @media (max-width: 720px) {
       .summary-grid { grid-template-columns: 1fr 1fr; }
       .summary-card.wide { grid-column: span 2; }
       .scan-station form { display: block; }
       .scan-station button { width: 100%; margin-top: 8px; }
+      .print-table th:nth-child(4), .print-table td:nth-child(4) { display: none; }
     }
   </style>
 </head>
@@ -97,29 +114,48 @@
   <div class="page">
   <header class="page-header no-print">
     <h1>Cetak &amp; Tampal</h1>
-    <p class="muted workflow-note">Setiap label mewakili satu unit yang dijanjikan. Cetak semua label dalam batch ini, tampal satu label pada setiap unit, kemudian scan untuk mengesahkan.</p>
+    <p class="muted workflow-note">Pilih order, tick variasi yang nak dicetak dan isi kuantiti. Yang tak dipilih kekal belum dicetak dan boleh dicetak dalam batch seterusnya. Selepas cetak, tampal satu label pada setiap unit dan sahkan.</p>
   </header>
 
-  <label class="no-print batch-picker">Pilih Tempahan / Batch
-    <select id="batch-select"><option value="">Loading…</option></select>
+  <label class="no-print batch-picker">Order
+    <select id="order-select"><option value="">Memuatkan…</option></select>
   </label>
+  <label class="no-print" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin-top:8px;font-weight:400;font-size:14px;">
+    <input type="checkbox" id="show-all-orders" style="width:auto;"> Tunjuk juga order yang semua labelnya sudah dicetak
+  </label>
+
+  <section id="print-panel" class="print-panel no-print" hidden>
+    <h2>Pilih untuk dicetak</h2>
+    <div class="muted" id="print-order-info"></div>
+    <table class="print-table">
+      <thead id="print-head"></thead>
+      <tbody id="print-rows"></tbody>
+    </table>
+    <div class="print-actions">
+      <button type="button" id="run-print-btn" class="primary">Cetak</button>
+      <span id="print-selected-info" class="muted"></span>
+      <button type="button" class="link-btn" id="select-all-btn">Pilih semua</button>
+      <button type="button" class="link-btn" id="select-none-btn">Kosongkan</button>
+    </div>
+    <div id="print-message"></div>
+  </section>
+
+  <section id="runs-section" class="no-print" hidden style="margin-top:22px">
+    <strong>Batch yang sudah dicetak</strong>
+    <div class="run-picker" id="run-picker"></div>
+  </section>
 
   <section id="batch-summary" class="no-print" hidden>
     <div class="summary-grid">
       <div class="summary-card wide"><div class="summary-label">Tempahan · Customer</div><div class="summary-value" id="summary-order">—</div></div>
-      <div class="summary-card wide"><div class="summary-label">Produk / Variant · Batch</div><div class="summary-value" id="summary-product">—</div></div>
-      <div class="summary-card"><div class="summary-label">Label Dijana</div><div class="summary-value" id="summary-generated">0</div></div>
+      <div class="summary-card wide"><div class="summary-label">Kandungan batch</div><div class="summary-value" id="summary-product">—</div></div>
+      <div class="summary-card"><div class="summary-label">Label Dicetak</div><div class="summary-value" id="summary-generated">0</div></div>
       <div class="summary-card"><div class="summary-label">Sudah Ditampal</div><div class="summary-value" id="summary-attached">0</div></div>
       <div class="summary-card"><div class="summary-label">Belum Ditampal</div><div class="summary-value" id="summary-pending">0</div></div>
     </div>
 
-    <div class="steps">
-      <strong>Langkah kerja</strong>
-      <ol><li>Cetak semua label.</li><li>Tampal satu label pada setiap unit.</li><li>Scan label untuk sahkan.</li></ol>
-    </div>
-
     <div class="print-row">
-      <button id="print-btn">Cetak Semua Label Batch Ini</button>
+      <button id="print-btn" class="secondary">Cetak Semula Batch Ini</button>
       <strong id="print-count"></strong>
     </div>
 
@@ -137,7 +173,7 @@
 
     <section class="scan-station">
       <h2>Scan Label yang Telah Ditampal</h2>
-      <p class="muted">Imbas QR pada unit fizikal. Sistem akan memastikan label itu milik batch ini sebelum membenarkan pengesahan.</p>
+      <p class="muted">Imbas QR pada unit fizikal untuk cari dan sahkan labelnya dengan cepat. Atau klik "Sahkan Sudah Ditampal" terus pada label di bawah.</p>
       <form id="main-scan-form">
         <input id="main-scan-input" autocomplete="off" placeholder="Imbas QR di sini…" required>
         <button type="submit">Semak Label</button>
@@ -147,7 +183,7 @@
 
     <div id="completion" class="completion" hidden>
       <strong id="completion-text"></strong><br>
-      <a class="button" href="/pack.html">Terus ke Packing &amp; QC</a>
+      <a class="button" id="completion-link" href="/pack.html">Terus ke Packing</a>
     </div>
   </section>
 
@@ -160,9 +196,12 @@
 
   <script src="/nav.js"></script>
   <script>
-    const select = document.getElementById('batch-select');
+    const orderSelect = document.getElementById('order-select');
+    const showAllBox = document.getElementById('show-all-orders');
     const sizeSelect = document.getElementById('size-select');
     const grid = document.getElementById('grid');
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const actorName = () => (window.LabelismActor && window.LabelismActor.get()) || 'unknown';
 
     const SIZES = {
       '40x30': { w: 40, h: 30, qr: 60 },
@@ -190,53 +229,228 @@
         `;
       }
     }
-    sizeSelect.addEventListener('change', () => { applyPageSize(); loadUnits(); });
+    sizeSelect.addEventListener('change', () => { applyPageSize(); renderUnits(); });
 
-    let batchesCache = [];
-
-    async function loadBatches() {
-      const rows = await fetch('/api/production-batches').then(r => r.json());
-      batchesCache = rows;
-      if (!rows.length) {
-        select.innerHTML = '<option value="">Belum ada tempahan / batch</option>';
-        return;
-      }
-      select.innerHTML = rows.map(r =>
-        `<option value="${r.id}">${r.customer_name || 'Tanpa customer'} · ${r.order_reference || 'Tanpa rujukan'} · ${r.product_name} · ${r.variant_label} · ${r.batch_label || 'Batch ' + r.batch_number} · ${r.registered_count} label</option>`
-      ).join('');
-      const params = new URLSearchParams(location.search);
-      if (params.get('batchId')) {
-        select.value = params.get('batchId');
-      } else if (params.get('orderLineId')) {
-        const match = rows.find(r => r.order_line_id === params.get('orderLineId'));
-        if (match) select.value = match.id;
-      }
-      loadUnits();
-    }
-
+    // ------------------------------------------------------------------
+    // State
+    // ------------------------------------------------------------------
+    let ordersList = [];
+    let overview = null;         // /api/orders/:id/print-overview
+    let selection = new Map();   // batchId -> { checked, qty }
+    let currentRun = null;       // /api/print-runs/:id (with units)
+    let currentUnits = [];
     const PAGE_SIZE = 30;
     let currentPage = 1;
-    let currentUnits = [];
 
-    function parseBatchContext(batch) {
-      if (!batch || !batch.notes) return '';
-      try {
-        const parsed = JSON.parse(batch.notes);
-        return parsed.context || '';
-      } catch {
-        return '';
-      }
-    }
-
-    async function loadUnits(resetPage = true) {
-      if (!select.value) {
-        currentUnits = [];
-        document.getElementById('batch-summary').hidden = true;
-        grid.innerHTML = '';
+    // ------------------------------------------------------------------
+    // Order picker
+    // ------------------------------------------------------------------
+    // Only orders that still have labels to print are listed by default, so
+    // the list stays short and finished orders do not pile up in it.
+    function renderOrderOptions(preferId) {
+      const list = ordersList.filter((o) => showAllBox.checked || o.unprinted_units > 0 || o.id === preferId);
+      if (!list.length) {
+        orderSelect.innerHTML = '<option value="">Tiada order yang menunggu cetakan</option>';
         return;
       }
-      currentUnits = await fetch(`/api/production-batches/${select.value}/units`).then(r => r.json());
-      if (resetPage) currentPage = 1;
+      orderSelect.innerHTML = list.map((o) => {
+        const state = o.unprinted_units > 0 ? `${o.unprinted_units} belum dicetak` : 'semua sudah dicetak';
+        return `<option value="${o.id}">${esc(o.customer_name)} · ${esc(o.order_reference)} · ${state}</option>`;
+      }).join('');
+      if (preferId && list.some((o) => o.id === preferId)) orderSelect.value = preferId;
+    }
+
+    async function init() {
+      ordersList = await fetch('/api/print-orders').then((r) => r.json());
+      const params = new URLSearchParams(location.search);
+      let orderId = params.get('orderId');
+      const runId = params.get('runId');
+      if (!orderId && runId) {
+        const run = await fetch(`/api/print-runs/${runId}`).then((r) => r.json());
+        if (!run.error) orderId = run.order_id;
+      }
+      renderOrderOptions(orderId);
+      await loadOrder(orderSelect.value, runId);
+    }
+
+    showAllBox.addEventListener('change', () => {
+      renderOrderOptions(orderSelect.value);
+      loadOrder(orderSelect.value);
+    });
+    orderSelect.addEventListener('change', () => loadOrder(orderSelect.value));
+
+    // ------------------------------------------------------------------
+    // Print table
+    // ------------------------------------------------------------------
+    async function loadOrder(orderId, preferRunId) {
+      currentRun = null;
+      currentUnits = [];
+      document.getElementById('batch-summary').hidden = true;
+      document.getElementById('runs-section').hidden = true;
+      document.getElementById('print-panel').hidden = true;
+      grid.innerHTML = '';
+      document.getElementById('pagination').innerHTML = '';
+      document.getElementById('pending-attachment').innerHTML = '';
+      document.getElementById('unit-count-summary').textContent = '';
+      if (!orderId) return;
+
+      overview = await fetch(`/api/orders/${orderId}/print-overview`).then((r) => r.json());
+      if (overview.error) return;
+      selection = new Map();
+      overview.rows.forEach((r) => {
+        if (r.unprinted > 0) selection.set(r.batch_id, { checked: true, qty: r.unprinted });
+      });
+      renderPrintTable();
+      renderRuns();
+
+      const runToOpen = preferRunId && overview.runs.find((r) => r.id === preferRunId)
+        ? preferRunId
+        : (overview.runs.length && !overview.rows.some((r) => r.unprinted > 0) ? overview.runs[overview.runs.length - 1].id : null);
+      if (runToOpen) await openRun(runToOpen);
+    }
+
+    function nextRunNumber() {
+      return overview.runs.reduce((m, r) => Math.max(m, r.run_number), 0) + 1;
+    }
+
+    function renderPrintTable() {
+      const rows = overview.rows;
+      const hasGroups = rows.some((r) => r.group_label);
+      document.getElementById('print-panel').hidden = false;
+      document.getElementById('print-order-info').textContent =
+        `${overview.order.customer_name} · ${overview.order.order_reference}`;
+
+      document.getElementById('print-head').innerHTML = `<tr>
+        <th></th><th>Produk</th><th>Variasi</th>${hasGroups ? '<th>Kumpulan</th>' : ''}
+        <th class="num">Order</th><th class="num">Sudah dicetak</th><th class="num">Baki</th><th class="num">Cetak sekarang</th></tr>`;
+
+      document.getElementById('print-rows').innerHTML = rows.map((r) => {
+        const done = r.unprinted === 0;
+        const sel = selection.get(r.batch_id);
+        return `<tr class="${done ? 'done' : ''}" data-row="${r.batch_id}">
+          <td><input type="checkbox" data-check="${r.batch_id}" ${done ? 'disabled' : ''} ${sel && sel.checked ? 'checked' : ''} aria-label="Pilih ${esc(r.variant_label)}"></td>
+          <td>${esc(r.product_name)}</td>
+          <td class="variant-cell">${esc(r.variant_label)}</td>
+          ${hasGroups ? `<td>${esc(r.group_label || '')}</td>` : ''}
+          <td class="num">${r.total}</td>
+          <td class="num">${r.printed}</td>
+          <td class="num">${r.unprinted}</td>
+          <td class="num">${done ? '—' : `<input type="number" min="1" max="${r.unprinted}" value="${sel ? sel.qty : r.unprinted}" data-qty="${r.batch_id}" aria-label="Kuantiti untuk ${esc(r.variant_label)}">`}</td>
+        </tr>`;
+      }).join('');
+
+      document.querySelectorAll('[data-check]').forEach((box) => {
+        box.addEventListener('change', () => {
+          const s = selection.get(box.dataset.check);
+          if (s) s.checked = box.checked;
+          updatePrintSummary();
+        });
+      });
+      document.querySelectorAll('[data-qty]').forEach((input) => {
+        input.addEventListener('input', () => {
+          const row = overview.rows.find((r) => r.batch_id === input.dataset.qty);
+          let qty = Math.floor(Number(input.value));
+          if (!Number.isFinite(qty)) qty = 0;
+          qty = Math.max(0, Math.min(qty, row.unprinted));
+          const s = selection.get(input.dataset.qty);
+          s.qty = qty;
+          // Typing a quantity means "print this" -- tick the row for them.
+          s.checked = qty > 0;
+          document.querySelector(`[data-check="${input.dataset.qty}"]`).checked = s.checked;
+          updatePrintSummary();
+        });
+        input.addEventListener('blur', () => {
+          const s = selection.get(input.dataset.qty);
+          input.value = s.qty || '';
+        });
+      });
+      updatePrintSummary();
+    }
+
+    function selectedTotal() {
+      let n = 0;
+      selection.forEach((s) => { if (s.checked && s.qty > 0) n += s.qty; });
+      return n;
+    }
+
+    function updatePrintSummary() {
+      const n = selectedTotal();
+      const btn = document.getElementById('run-print-btn');
+      const left = overview.rows.reduce((sum, r) => sum + r.unprinted, 0);
+      btn.disabled = n < 1;
+      btn.textContent = n > 0 ? `Cetak ${n} label (Batch ${nextRunNumber()})` : 'Cetak';
+      document.getElementById('print-selected-info').textContent = left === 0
+        ? 'Semua label order ini sudah dicetak.'
+        : `${n} daripada ${left} label belum dicetak dipilih.`;
+      document.getElementById('select-all-btn').hidden = left === 0;
+      document.getElementById('select-none-btn').hidden = left === 0;
+    }
+
+    document.getElementById('select-all-btn').addEventListener('click', () => {
+      overview.rows.forEach((r) => { if (r.unprinted > 0) selection.set(r.batch_id, { checked: true, qty: r.unprinted }); });
+      renderPrintTable();
+    });
+    document.getElementById('select-none-btn').addEventListener('click', () => {
+      selection.forEach((s) => { s.checked = false; });
+      renderPrintTable();
+    });
+
+    document.getElementById('run-print-btn').addEventListener('click', async () => {
+      const msg = document.getElementById('print-message');
+      msg.innerHTML = '';
+      const selections = [];
+      selection.forEach((s, batchId) => { if (s.checked && s.qty > 0) selections.push({ batchId, quantity: s.qty }); });
+      if (!selections.length) return;
+      const btn = document.getElementById('run-print-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/orders/${overview.order.id}/print-runs`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selections, actor: actorName() }),
+        }).then((r) => r.json());
+        if (res.error) throw new Error(res.error);
+        // Refresh counts (the picker's "belum dicetak" and this table's Baki),
+        // open the new batch, then hand its labels to the browser print dialog.
+        ordersList = await fetch('/api/print-orders').then((r) => r.json());
+        renderOrderOptions(overview.order.id);
+        await loadOrder(overview.order.id, res.id);
+        setTimeout(() => window.print(), 400);
+      } catch (err) {
+        msg.innerHTML = `<div class="msg error" style="margin-top:12px">${esc(err.message)}</div>`;
+        btn.disabled = false;
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // Printed batches
+    // ------------------------------------------------------------------
+    function renderRuns() {
+      const section = document.getElementById('runs-section');
+      if (!overview.runs.length) { section.hidden = true; return; }
+      section.hidden = false;
+      document.getElementById('run-picker').innerHTML = overview.runs.map((r) =>
+        `<button type="button" class="secondary" data-run="${r.id}">Batch ${r.run_number} · ${r.label_count} label · ${r.attached_count}/${r.label_count} ditampal</button>`
+      ).join('');
+      document.querySelectorAll('[data-run]').forEach((b) => b.addEventListener('click', () => openRun(b.dataset.run)));
+    }
+
+    async function openRun(runId) {
+      currentRun = await fetch(`/api/print-runs/${runId}`).then((r) => r.json());
+      if (currentRun.error) return;
+      currentUnits = currentRun.units;
+      currentPage = 1;
+      document.querySelectorAll('[data-run]').forEach((b) => b.classList.toggle('active', b.dataset.run === runId));
+      document.getElementById('main-scan-feedback').innerHTML = '';
+      renderUnits();
+    }
+
+    async function refreshRun() {
+      const runId = currentRun.id;
+      currentRun = await fetch(`/api/print-runs/${runId}`).then((r) => r.json());
+      currentUnits = currentRun.units;
+      overview = await fetch(`/api/orders/${currentRun.order_id}/print-overview`).then((r) => r.json());
+      renderRuns();
+      document.querySelectorAll('[data-run]').forEach((b) => b.classList.toggle('active', b.dataset.run === runId));
       renderUnits();
     }
 
@@ -246,69 +460,61 @@
     // front, and printing always includes all of them regardless of which
     // page is currently shown on screen (see beforeprint/afterprint below).
     function renderUnits() {
+      if (!currentRun) return;
       const units = currentUnits;
       const qrSize = SIZES[sizeSelect.value].qr;
-      const batch = batchesCache.find(b => b.id === select.value);
-      const batchContext = parseBatchContext(batch);
-      // Batch marked on the printed label: its name when it has one (e.g. a
-      // school), otherwise "Batch N" only when the order line is actually
-      // split into several batches (a single-batch order needs no tag).
-      const siblingBatches = batch && batch.order_line_id ? batchesCache.filter((b) => b.order_line_id === batch.order_line_id).length : 0;
-      const batchTag = batch ? (batch.batch_label || (siblingBatches > 1 ? 'Batch ' + batch.batch_number : '')) : '';
       grid.innerHTML = '';
 
-      // O4 finding: for a batch small enough to fit on one screen (<=30
-      // units), nothing told the operator how many labels were about to
-      // print -- the pagination summary only appeared once a batch was
-      // large enough to need pages. Always state it plainly before Print.
       const confirmedCount = units.filter((u) => u.label_confirmed_at).length;
       const pendingCount = units.length - confirmedCount;
+
+      // "Saiz M ×2 · Saiz L ×1" -- what this batch actually contains.
+      const parts = new Map();
+      units.forEach((u) => {
+        const key = `${u.variant_label}${u.group_label ? ' (' + u.group_label + ')' : ''}`;
+        parts.set(key, (parts.get(key) || 0) + 1);
+      });
+
       document.getElementById('batch-summary').hidden = false;
-      document.getElementById('summary-order').textContent = `${batch?.order_reference || 'Tanpa rujukan'} · ${batch?.customer_name || 'Tanpa customer'}`;
-      document.getElementById('summary-product').textContent = `${batch?.product_name || '—'} · ${batch?.variant_label || '—'} · ${batch?.batch_label || 'Batch ' + (batch?.batch_number || '—')}`;
+      document.getElementById('summary-order').textContent = `${currentRun.order_reference} · ${currentRun.customer_name} · Batch ${currentRun.run_number}`;
+      document.getElementById('summary-product').textContent = [...parts].map(([k, n]) => `${k} ×${n}`).join(' · ');
       document.getElementById('summary-generated').textContent = units.length;
       document.getElementById('summary-attached').textContent = confirmedCount;
       document.getElementById('summary-pending').textContent = pendingCount;
+      document.getElementById('print-btn').textContent = `Cetak Semula Batch ${currentRun.run_number}`;
       document.getElementById('print-count').textContent = `Anda akan mencetak ${units.length} label.`;
       document.getElementById('unit-count-summary').textContent = units.length
         ? `${pendingCount} daripada ${units.length} label masih perlu ditampal dan disahkan.`
         : 'Batch ini belum mempunyai label.';
       const completion = document.getElementById('completion');
       completion.hidden = !units.length || pendingCount !== 0;
-      document.getElementById('completion-text').textContent = `Semua ${units.length} label telah ditampal dan disahkan.`;
+      document.getElementById('completion-text').textContent = `Semua ${units.length} label dalam Batch ${currentRun.run_number} telah ditampal dan disahkan.`;
+      document.getElementById('completion-link').href = `/pack.html?runId=${currentRun.id}`;
 
-      // Field Simulation Pass 3 Scenario B2 (exception recovery during
-      // handover): confirmed live that a scattered handful of pending
-      // units among many (e.g. 3 of 65) IS visually distinguishable once
-      // you find its card -- but with pagination hiding most of the batch
-      // by default, an operator picking up someone else's unfinished work
-      // had no way to know WHICH codes still need attention without
-      // paging through the entire grid looking for the ones missing the
-      // green border. Same problem Stocktake already solved with its
-      // dedicated "Not Observed" list -- applying the same pattern here:
-      // name the pending codes directly, with a jump-to-card shortcut.
+      // Name the codes still waiting to be attached, with a jump-to-card
+      // shortcut, so someone taking over half-finished work does not have to
+      // page through the whole grid looking for the ones without a green border.
       const pendingEl = document.getElementById('pending-attachment');
       const pending = units.filter((u) => !u.label_confirmed_at);
       pendingEl.innerHTML = pending.length
-        ? `<div class="msg error"><strong>${pending.length} label belum ditampal:</strong> ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${u.human_code}</button>`).join('')}</div>`
+        ? `<div class="msg error"><strong>${pending.length} label belum ditampal:</strong> ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${esc(u.variant_label)} ${esc(u.human_code)}</button>`).join('')}</div>`
         : '';
       pendingEl.querySelectorAll('button[data-jump]').forEach((btn) => {
         btn.addEventListener('click', () => jumpToUnit(btn.dataset.jump));
       });
 
       const displayUnits = [...units].sort((a, b) => Number(!!a.label_confirmed_at) - Number(!!b.label_confirmed_at));
-      displayUnits.forEach(u => {
+      displayUnits.forEach((u) => {
         const cell = document.createElement('div');
         cell.id = `label-cell-${u.id}`;
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
-          ${batch && (batch.customer_name || batch.order_reference) ? `<div class="context" style="font-weight:600;color:var(--navy);">${batch.customer_name || ''}${batch.order_reference ? ' · ' + batch.order_reference : ''}</div>` : ''}
-          ${batchTag ? `<div class="context" style="font-weight:600;">${batchTag}</div>` : ''}
-          ${batchContext ? `<div class="context">${batchContext}</div>` : ''}
-          ${batch ? `<div class="product">${batch.product_name}</div><div class="variant">${batch.variant_label}</div>` : ''}
-          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${u.recipient_name}</div>` : ''}
+          <div class="context" style="font-weight:600;color:var(--navy);">${esc(currentRun.customer_name)} · ${esc(currentRun.order_reference)}</div>
+          <div class="context" style="font-weight:600;">Batch ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
+          <div class="product">${esc(u.product_name)}</div><div class="variant">${esc(u.variant_label)}</div>
+          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Penerima: ${esc(u.recipient_name)}</div>` : ''}
           <div class="qr" id="qr-${u.id}"></div>
-          <div class="code">UNIT ${u.human_code}</div>
+          <div class="code">UNIT ${esc(u.human_code)}</div>
           <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : 'Belum Ditampal'}</div>
           ${u.label_confirmed_at ? `
             <button class="no-print" disabled>Disahkan</button>
@@ -335,51 +541,44 @@
           height: qrSize,
         });
       });
-      grid.querySelectorAll('button[data-action="confirm"]').forEach(btn => {
+
+      grid.querySelectorAll('button[data-action="confirm"]').forEach((btn) => {
         btn.addEventListener('click', async () => {
-          // Gate B readiness fix (2026-09-15): this call sent no body at
-          // all, so every Confirm Attachment -- the single most common
-          // action on this page, and the one Gate B Test 2 is built
-          // around -- fell through to the server's own 'izzat' default,
-          // same silent-misattribution problem already fixed elsewhere.
           await fetch(`/api/units/${btn.dataset.id}/confirm-label`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+            body: JSON.stringify({ actor: actorName() }),
           });
-          loadUnits(false);
+          await refreshRun();
         });
       });
       // Inline confirm, not window.confirm() -- a native dialog looks out of
-      // place here and (per the same lesson already learned on scan.html's
-      // transfer form) cannot be driven by automated browser testing at all,
-      // since it auto-dismisses.
-      grid.querySelectorAll('button[data-action="reissue"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = false;
-        });
+      // place here and cannot be driven by automated browser testing at all.
+      grid.querySelectorAll('button[data-action="reissue"]').forEach((btn) => {
+        btn.addEventListener('click', () => { document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = false; });
       });
-      grid.querySelectorAll('button[data-action="reissue-cancel"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = true;
-        });
+      grid.querySelectorAll('button[data-action="reissue-cancel"]').forEach((btn) => {
+        btn.addEventListener('click', () => { document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = true; });
       });
-      grid.querySelectorAll('button[data-action="reissue-confirm"]').forEach(btn => {
+      grid.querySelectorAll('button[data-action="reissue-confirm"]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const res = await fetch(`/api/units/${btn.dataset.id}/reissue-label`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
-          }).then(r => r.json());
+            body: JSON.stringify({ actor: actorName() }),
+          }).then((r) => r.json());
           if (res.error) {
-            grid.querySelector(`#reissue-confirm-${btn.dataset.id} .muted`).insertAdjacentHTML('afterend', `<div class="msg error">${res.error}</div>`);
+            grid.querySelector(`#reissue-confirm-${btn.dataset.id} .muted`).insertAdjacentHTML('afterend', `<div class="msg error">${esc(res.error)}</div>`);
             return;
           }
-          loadUnits(false);
+          await refreshRun();
         });
       });
 
       applyPagination();
     }
 
+    // ------------------------------------------------------------------
+    // Scan station (optional shortcut to find and confirm a label)
+    // ------------------------------------------------------------------
     function scannedCode(raw) {
       const value = String(raw || '').trim();
       try {
@@ -390,24 +589,23 @@
     }
 
     function showScanFeedback(kind, html) {
-      const feedback = document.getElementById('main-scan-feedback');
-      feedback.innerHTML = `<div class="msg ${kind}" style="margin-top:12px">${html}</div>`;
+      document.getElementById('main-scan-feedback').innerHTML = `<div class="msg ${kind}" style="margin-top:12px">${html}</div>`;
     }
 
     async function confirmScannedUnit(unitId) {
       const response = await fetch(`/api/units/${unitId}/confirm-label`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+        body: JSON.stringify({ actor: actorName() }),
       });
       const result = await response.json();
       if (!response.ok || result.error) {
-        showScanFeedback('error', result.error || 'Label tidak dapat disahkan.');
+        showScanFeedback('error', esc(result.error || 'Label tidak dapat disahkan.'));
         return;
       }
       const unit = currentUnits.find((u) => u.id === unitId);
-      await loadUnits(false);
-      showScanFeedback('ok', `Unit <strong>${unit?.human_code || ''}</strong> sudah disahkan ditampal.`);
+      await refreshRun();
+      showScanFeedback('ok', `Unit <strong>${esc(unit?.human_code || '')}</strong> sudah disahkan ditampal.`);
       const input = document.getElementById('main-scan-input');
       input.value = '';
       input.focus();
@@ -418,14 +616,20 @@
       const input = document.getElementById('main-scan-input');
       const raw = input.value.trim();
       const code = scannedCode(raw);
-      const unit = currentUnits.find((u) => u.internal_token === code || u.human_code === code);
-      if (!unit) {
+      const matches = currentUnits.filter((u) => u.internal_token === code || u.human_code === code);
+      if (!matches.length) {
         showScanFeedback('error', 'Label ini bukan daripada batch yang sedang dipilih. Kiraan tidak diubah.');
         input.select();
         return;
       }
+      if (matches.length > 1) {
+        showScanFeedback('error', 'Kod ini sama untuk beberapa variasi dalam batch ini. Sila scan QR penuh.');
+        input.select();
+        return;
+      }
+      const unit = matches[0];
       if (unit.label_confirmed_at) {
-        showScanFeedback('ok', `Unit <strong>${unit.human_code}</strong> sudah pernah disahkan ditampal.`);
+        showScanFeedback('ok', `Unit <strong>${esc(unit.human_code)}</strong> sudah pernah disahkan ditampal.`);
         input.value = '';
         input.focus();
         return;
@@ -434,7 +638,7 @@
       const response = await fetch(`/api/units/${unit.id}/verify-label-scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: raw, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
+        body: JSON.stringify({ code: raw, actor: actorName() }),
       });
       const result = await response.json();
       if (!response.ok || result.error || !result.verified) {
@@ -443,16 +647,15 @@
           : result.reason === 'ambiguous'
           ? 'Kod ini tidak unik. Sila scan QR penuh.'
           : result.error || 'Label tidak dikenali.';
-        showScanFeedback('error', message);
+        showScanFeedback('error', esc(message));
         input.select();
         return;
       }
 
-      await loadUnits(false);
-      const recipient = unit.recipient_name ? ` · Penerima: ${unit.recipient_name}` : '';
+      const recipient = unit.recipient_name ? ` · Penerima: ${esc(unit.recipient_name)}` : '';
       showScanFeedback(
         'ok',
-        `Scan betul: <strong>Unit ${unit.human_code}</strong> · ${batchesCache.find((b) => b.id === select.value)?.product_name || ''} · ${batchesCache.find((b) => b.id === select.value)?.variant_label || ''}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`
+        `Scan betul: <strong>Unit ${esc(unit.human_code)}</strong> · ${esc(unit.product_name)} · ${esc(unit.variant_label)}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`
       );
       document.getElementById('main-confirm-btn').addEventListener('click', () => confirmScannedUnit(unit.id));
     });
@@ -485,24 +688,17 @@
       document.getElementById('page-next')?.addEventListener('click', () => { currentPage++; applyPagination(); window.scrollTo(0, 0); });
     }
 
-    // Printing must always include every unit, regardless of which page is
-    // currently shown on screen -- temporarily lift the pagination display
-    // override for the duration of the print, then restore it.
-    let prePrintDisplays = null;
+    // Printing must always include every label of the batch, regardless of
+    // which page is currently shown on screen -- temporarily lift the
+    // pagination display override for the duration of the print, then restore it.
     window.addEventListener('beforeprint', () => {
-      const cards = Array.from(grid.querySelectorAll('.label'));
-      prePrintDisplays = cards.map(c => c.style.display);
-      cards.forEach(c => { c.style.display = ''; });
+      grid.querySelectorAll('.label').forEach((c) => { c.style.display = ''; });
     });
-    window.addEventListener('afterprint', () => {
-      applyPagination();
-      prePrintDisplays = null;
-    });
+    window.addEventListener('afterprint', () => { applyPagination(); });
 
-    select.addEventListener('change', loadUnits);
     document.getElementById('print-btn').addEventListener('click', () => window.print());
     applyPageSize();
-    loadBatches();
+    init();
   </script>
 </body>
 </html>
