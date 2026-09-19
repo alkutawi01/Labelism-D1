@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 18 acceptance tests against a live local wrangler dev server.
+ * Runs 19 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -839,6 +839,55 @@ await run('Test 18 – The server rejects more recipient names than units (no si
   assert(fewer.status === 201, `fewer names than units must still work: ${JSON.stringify(fewer.body)}`);
   const exact = await order([{ productName: P, variantLabel: 'M', quantity: 2, unitNames: ['A', 'B'], batches: null }]);
   assert(exact.status === 201, `exact names must work: ${JSON.stringify(exact.body)}`);
+});
+
+await run('Test 19 – A unit sits in one active return intake and has one QC decision (changes need a reason and leave a trail)', async () => {
+  const product = `T19-Product-${Date.now()}`;
+  const { orderId, rows } = await makeOrder('T19', [{ productName: product, variantLabel: 'Saiz M', quantity: 3, batches: null }]);
+  const pr = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: rows[0].batch_id, quantity: 3 }] } });
+  const units = (await api(`/api/print-runs/${pr.body.id}`)).body.units;
+  for (const u of units) await attachUnit(u);
+  await api(`/api/print-runs/${pr.body.id}/packing/start`, { method: 'POST', body: {} });
+  for (const u of units) await api(`/api/print-runs/${pr.body.id}/packing/scan`, { method: 'POST', body: { code: u.internal_token } });
+  await api(`/api/print-runs/${pr.body.id}/packing/close`, { method: 'POST', body: {} });
+  const rec = await api(`/api/orders/${orderId}/reconciliation`);
+  const ships = await api(`/api/order-lines/${rec.body.lines[0].order_line_id}/shipments`);
+  for (const s of ships.body) await api(`/api/shipments/${s.id}/dispatch`, { method: 'POST', body: { locationName: 'Customer' } });
+
+  const intake = async (ref) => (await api('/api/return-intakes', { method: 'POST', body: { reference: ref } })).body;
+  const scan = (id, u) => api(`/api/return-intakes/${id}/scans`, { method: 'POST', body: { code: u.internal_token, actor: 'test' } });
+  const qc = (id, u, body) => api(`/api/return-intakes/${id}/units/${u.id}/qc`, { method: 'POST', body });
+  const i1 = await intake('T19-A');
+  const i2 = await intake('T19-B');
+
+  // 1. Exclusivity: same unit cannot be in two open intakes.
+  assert((await scan(i1.id, units[0])).status === 201, 'first scan');
+  const second = await scan(i2.id, units[0]);
+  assert(second.status === 400 && /T19-A/.test(second.body.error), `Second open intake must be refused, naming the first: ${JSON.stringify(second.body)}`);
+  // ...also when two devices do it at the same moment.
+  const race = await Promise.all([scan(i1.id, units[1]), scan(i2.id, units[1])]);
+  assert(race.filter((r) => r.status === 201).length === 1, `Exactly one of two simultaneous scans may win: ${race.map((r) => r.status)}`);
+
+  // 2. One decision; same again is a no-op; a change needs a reason and is recorded.
+  assert((await qc(i1.id, units[0], { outcome: 'AVAILABLE' })).status === 200, 'first decision');
+  const same = await qc(i1.id, units[0], { outcome: 'AVAILABLE' });
+  assert(same.status === 200 && same.body.unchanged === true, 'same decision again should be a no-op');
+  const noReason = await qc(i1.id, units[0], { outcome: 'DAMAGED' });
+  assert(noReason.status === 400 && /sebab/.test(noReason.body.error), `Change without reason must be refused: ${JSON.stringify(noReason.body)}`);
+  const changed = await qc(i1.id, units[0], { outcome: 'DAMAGED', reason: 'jahitan koyak dijumpai kemudian' });
+  assert(changed.status === 200 && changed.body.changedFrom === 'AVAILABLE', `Change with reason: ${JSON.stringify(changed.body)}`);
+  const lk = await api(`/api/units/lookup/${units[0].internal_token}`);
+  const qcEvents = lk.body.events.filter((e) => e.event_type === 'RETURN_QC_DECIDED');
+  assert(qcEvents.length === 2, `Both decisions must be in the trail: ${qcEvents.length}`);
+  assert(/previousOutcome/.test(JSON.stringify(qcEvents[1].payload)), 'The change must record the previous outcome');
+
+  // 3. After closing, the same unit can be returned again, and only the newest intake decides it.
+  await api(`/api/return-intakes/${i1.id}/close`, { method: 'POST', body: {} });
+  const again = await scan(i2.id, units[0]);
+  assert(again.status === 201, `A finished intake must not block a later return: ${JSON.stringify(again.body)}`);
+  const stale = await qc(i1.id, units[0], { outcome: 'REJECTED', reason: 'x' });
+  assert(stale.status === 400 && /T19-B/.test(stale.body.error), `Old intake must not decide it: ${JSON.stringify(stale.body)}`);
+  assert((await qc(i2.id, units[0], { outcome: 'AVAILABLE' })).status === 200, 'newest intake decides');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

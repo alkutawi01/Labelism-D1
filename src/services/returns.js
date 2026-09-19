@@ -72,6 +72,23 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     return { unitId: unit.id, humanCode: unit.human_code, alreadyScanned: true };
   }
 
+  // One active intake per unit. A unit physically arrives once; letting it
+  // sit in two open intakes would allow two QC decisions for the same object.
+  // (A finished intake does not block a later return of the same unit.)
+  const openElsewhere = await db
+    .prepare(
+      `SELECT ri.reference FROM return_intake_units riu
+       JOIN return_intakes ri ON ri.id = riu.return_intake_id
+       WHERE riu.unit_id = ? AND ri.status = 'OPEN' AND ri.id != ?`
+    )
+    .bind(unit.id, returnIntakeId)
+    .first();
+  if (openElsewhere) {
+    throw new ValidationError(
+      `Unit ${unit.human_code} sudah berada dalam pemulangan terbuka "${openElsewhere.reference}". Selesaikan atau tutup pemulangan itu dahulu.`
+    );
+  }
+
   // Answers Question B: "expected return or mystery item?" -- a unit that
   // was never actually dispatched has no business being returned. Not a
   // hard block (a walk-in / miscategorized item is still real and needs
@@ -128,14 +145,29 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     actor: actor ?? 'izzat',
     locationId: location.id,
   });
-  statements.push(
-    db
-      .prepare(
-        'INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected, customer_mismatch, active_shipment_conflict) VALUES (?, ?, ?, ?, ?, ?)'
-      )
-      .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0, activeShipmentConflict)
-  );
-  await db.batch(statements);
+  // The membership row is written first, guarded in SQL so two devices
+  // scanning the same unit into two intakes at once cannot both succeed; the
+  // check above only gives the friendly message for the common case.
+  const guarded = await db
+    .prepare(
+      `INSERT INTO return_intake_units (return_intake_id, unit_id, actor, expected, customer_mismatch, active_shipment_conflict)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6
+       WHERE NOT EXISTS (
+         SELECT 1 FROM return_intake_units riu JOIN return_intakes ri ON ri.id = riu.return_intake_id
+         WHERE riu.unit_id = ?2 AND ri.status = 'OPEN' AND ri.id != ?1
+       )`
+    )
+    .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0, activeShipmentConflict)
+    .run();
+  if (!guarded.meta || guarded.meta.changes === 0) {
+    throw new ValidationError(`Unit ${unit.human_code} baru sahaja dimasukkan ke pemulangan terbuka lain. Selesaikan pemulangan itu dahulu.`);
+  }
+  try {
+    await db.batch(statements);
+  } catch (e) {
+    await db.prepare('DELETE FROM return_intake_units WHERE return_intake_id = ? AND unit_id = ?').bind(returnIntakeId, unit.id).run();
+    throw e;
+  }
 
   return {
     unitId: unit.id,
@@ -156,7 +188,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
 // (the unit might sit in the Returns Area for days before anyone
 // inspects it), matching the same principle already applied to
 // Stocktake/Shipment: observation now, decision later.
-export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, actor }) {
+export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, actor, reason }) {
   const row = await db
     .prepare('SELECT * FROM return_intake_units WHERE return_intake_id = ? AND unit_id = ?')
     .bind(returnIntakeId, unitId)
@@ -165,15 +197,49 @@ export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, acto
   const change = QC_OUTCOMES[outcome];
   if (!change) throw new ValidationError(`outcome must be one of: ${Object.keys(QC_OUTCOMES).join(', ')}.`);
 
+  // Only the unit's most recent intake may decide it: if the unit has been
+  // received again in a later intake, this older intake's decision is stale.
+  const newer = await db
+    .prepare(
+      `SELECT ri.reference FROM return_intake_units riu
+       JOIN return_intakes ri ON ri.id = riu.return_intake_id
+       WHERE riu.unit_id = ?1 AND riu.rowid > (
+         SELECT rowid FROM return_intake_units WHERE return_intake_id = ?2 AND unit_id = ?1)
+       LIMIT 1`
+    )
+    .bind(unitId, returnIntakeId)
+    .first();
+  if (newer) {
+    throw new ValidationError(
+      `Unit ini sudah diterima semula dalam pemulangan "${newer.reference}". Keputusan QC mesti dibuat di sana, bukan di pemulangan lama.`
+    );
+  }
+
+  // One final decision per intake. Repeating the same outcome is a no-op;
+  // changing it is allowed but must carry a reason, and the event records both
+  // the old and the new outcome so the trail shows the change.
+  if (row.qc_outcome === outcome) return { unitId, outcome, unchanged: true };
+  const isChange = !!row.qc_outcome;
+  if (isChange && !String(reason || '').trim()) {
+    throw new ValidationError(
+      `Unit ini sudah diputuskan "${row.qc_outcome}". Untuk menukar kepada "${outcome}", nyatakan sebab (reason).`
+    );
+  }
+
   const eventId = newInternalId();
   const statements = buildEventBatch(db, {
     eventId,
     unitId,
     eventType: 'RETURN_QC_DECIDED',
-    payload: { returnIntakeId, outcome },
+    payload: isChange
+      ? { returnIntakeId, outcome, previousOutcome: row.qc_outcome, changed: true, reason: String(reason).trim() }
+      : { returnIntakeId, outcome },
     actor: actor ?? 'izzat',
-    disposition: change.disposition,
-    condition: change.condition,
+    // Changing a decision must not leave the old one's leftovers behind:
+    // a unit re-decided from DAMAGED loses the damaged condition, and one
+    // re-decided to DAMAGED from REJECTED is no longer rejected.
+    disposition: change.disposition ?? (isChange && row.qc_outcome === 'REJECTED' ? 'AVAILABLE' : undefined),
+    condition: change.condition ?? (isChange && row.qc_outcome === 'DAMAGED' ? null : undefined),
   });
   statements.push(
     db
@@ -183,7 +249,7 @@ export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, acto
       .bind(outcome, returnIntakeId, unitId)
   );
   await db.batch(statements);
-  return { unitId, outcome };
+  return { unitId, outcome, ...(isChange ? { changedFrom: row.qc_outcome } : {}) };
 }
 
 export async function getReturnIntake(db, id) {
