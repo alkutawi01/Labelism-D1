@@ -106,9 +106,9 @@ Peraturan penting:
 - "totalOrder" ialah jumlah unit yang tertulis dalam dokumen. Jika satu fail ada beberapa Job Order/halaman, tambah "Total Order" setiap satu.
 - "warnings": senaraikan setiap kejanggalan atau perkara yang tidak pasti sebagai ayat pendek yang jelas (apa, di mana, kenapa). Contoh: nama yang mungkin tersalah gabung atau pecah kerana teks terputus baris, bilangan nama kurang atau lebih daripada kuantiti, jumlah tidak sepadan, tulisan tidak jelas, nombor rujukan tiada, atau beberapa dokumen berbeza dalam satu fail. Jika benar-benar tiada, letak []. Lebih baik memberi amaran daripada menyembunyikan keraguan.
 - SEMAK JUMLAH SEBELUM MENJAWAB: tambah semua "quantity" dalam semua variants. Jumlahnya mesti sama dengan "totalOrder". Jika tidak sama, semak semula dokumen dan betulkan dahulu.
-- Bilangan nama dalam "unitNames" tidak boleh melebihi "quantity". Jika nama kurang daripada quantity, biarkan begitu. Jangan reka nama.
+- Bilangan teks dalam "unitNames" tidak boleh melebihi "quantity". Jika kurang daripada quantity, biarkan begitu. Jangan reka.
 - Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
-- "unitNames" ialah NAMA DI BAJU (contoh nama pelajar: Amin, Ahmad, Ali), bukan nama pelanggan. Salin tepat seperti dalam dokumen. Jika dokumen tidak menulis nama untuk baju itu, biarkan kosong. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
+- "unitNames" ialah TEKS PADA BAJU/LABEL untuk setiap baju, seperti yang ditulis dalam dokumen: boleh nama orang (contoh nama pelajar: Amin, Ahmad, Ali), jenama, atau apa sahaja. Ia bukan nama pelanggan. Salin tepat seperti dalam dokumen. Jika dokumen tidak menulis apa-apa untuk baju itu, biarkan kosong. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
       <div style="margin:8px 0 4px;"><button type="button" class="btn-secondary btn-sm" onclick="copyAiPrompt()">Salin prompt</button></div>
       <div class="ai-step">2. Tampal jawapan (JSON) daripada AI di sini.</div>
       <textarea id="ai-text-input" rows="6" placeholder='{ "customerName": "...", "orderReference": "...", "products": [ ... ] }'></textarea>
@@ -153,7 +153,7 @@ Peraturan penting:
         <div class="section-head">
           <div>
             <h2 class="section-title">Item tempahan</h2>
-            <p class="section-sub">Taip nama produk sekali, kemudian tambah setiap saiz dengan kuantitinya. Nama di baju (jika ada) di bawah setiap saiz.</p>
+            <p class="section-sub">Taip nama produk sekali, kemudian tambah setiap saiz dengan kuantitinya. Teks pada label (nama, jenama, dll.; jika ada) di bawah setiap saiz.</p>
           </div>
         </div>
         <div id="items-container"></div>
@@ -328,10 +328,10 @@ Peraturan penting:
         </div>
         <div class="names-cell">
           <div class="names-head">
-            <span>Nama di baju (jika ada) · asingkan dengan koma atau baris baru</span>
+            <span>Teks pada label (nama, jenama, dll.; jika ada) · asingkan dengan koma atau baris baru</span>
             <span class="names-count" data-field="namesCount"></span>
           </div>
-          <textarea data-field="unitNames" rows="2" placeholder="cth: Amin, Ahmad, Ali" aria-label="Nama di baju"></textarea>
+          <textarea data-field="unitNames" rows="2" placeholder="cth: Amin, Ahmad, Ali  atau  Jenama X" aria-label="Teks pada label"></textarea>
         </div>
         <div class="batch-subrows" hidden>
           <div class="group-note" data-field="groupNote"></div>
@@ -350,7 +350,7 @@ Peraturan penting:
 
       function showCount(inputEl, countEl, limit) {
         const n = parseNames(inputEl.value).length;
-        countEl.textContent = n ? `${n} nama / ${limit} unit` : '';
+        countEl.textContent = n ? `${n} teks / ${limit} unit` : '';
         countEl.classList.toggle('over', n > limit);
       }
 
@@ -378,7 +378,7 @@ Peraturan penting:
           <div><input type="text" data-sub="name" placeholder="Nama kumpulan (cth: SK Sekolah A)" aria-label="Nama kumpulan"></div>
           <div><input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" aria-label="Kuantiti kumpulan"></div>
           <div>
-            <textarea data-sub="names" rows="2" placeholder="Nama di baju untuk kumpulan ini" aria-label="Nama di baju untuk kumpulan"></textarea>
+            <textarea data-sub="names" rows="2" placeholder="Teks pada label untuk kumpulan ini" aria-label="Teks pada label untuk kumpulan"></textarea>
             <div class="names-count" data-sub="count"></div>
           </div>
           <button type="button" class="btn-danger btn-sm" aria-label="Buang kumpulan" style="height:40px;">✕</button>
@@ -493,7 +493,7 @@ Peraturan penting:
 
         // Rows where only some units have a name (e.g. 12 names for 16 units).
         rows.filter((r) => r.unitNames.length && r.unitNames.length < r.quantity).forEach((r) => {
-          issues.push(`Nama kurang daripada kuantiti: ${esc(r.variantLabel)} (${r.unitNames.length} nama / ${r.quantity} unit).`);
+          issues.push(`Teks label kurang daripada kuantiti: ${esc(r.variantLabel)} (${r.unitNames.length} teks / ${r.quantity} unit).`);
         });
 
         // Anomalies the AI itself flagged (ambiguous name splits, unclear
@@ -721,7 +721,7 @@ Peraturan penting:
 
             if (!subrows.length) {
               if (unitNames.length > quantity) {
-                throw new Error(`${what} ada ${unitNames.length} nama tetapi kuantitinya hanya ${quantity}.`);
+                throw new Error(`${what} ada ${unitNames.length} teks label tetapi kuantitinya hanya ${quantity}.`);
               }
               items.push({ productName, variantLabel, quantity, unitNames, batches: null });
               return;
@@ -742,7 +742,7 @@ Peraturan penting:
               }
               const names = parseNames(s.querySelector('[data-sub=names]').value);
               if (names.length > bq) {
-                throw new Error(`Kumpulan ${bn || i + 1} (${what}) ada ${names.length} nama tetapi kuantitinya hanya ${bq}.`);
+                throw new Error(`Kumpulan ${bn || i + 1} (${what}) ada ${names.length} teks label tetapi kuantitinya hanya ${bq}.`);
               }
               sum += bq;
               return { quantity: bq, ...(bn ? { batchLabel: bn } : {}), ...(names.length ? { unitNames: names } : {}) };

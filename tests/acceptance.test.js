@@ -822,7 +822,7 @@ await run('Test 18 – The server rejects more recipient names than units (no si
   const P = `T18-Product-${ts}`;
 
   const flat = await order([{ productName: P, variantLabel: 'M', quantity: 3, unitNames: ['A', 'B', 'C', 'D', 'E'], batches: null }]);
-  assert(flat.status === 400 && /nama/.test(flat.body.error), `5 names / 3 units must be rejected: ${flat.status} ${JSON.stringify(flat.body)}`);
+  assert(flat.status === 400 && /teks/.test(flat.body.error), `5 names / 3 units must be rejected: ${flat.status} ${JSON.stringify(flat.body)}`);
 
   const perBatch = await order([{ productName: P, variantLabel: 'M', quantity: 4, unitNames: [], batches: [{ quantity: 2, batchLabel: 'A', unitNames: ['1', '2', '3'] }, { quantity: 2 }] }]);
   assert(perBatch.status === 400, `3 names in a 2-unit batch must be rejected: ${perBatch.status}`);
@@ -992,7 +992,7 @@ await run('Test 22 – Variation spelling guard: refuse case-only duplicates, as
   assert(fine.status === 201 && !fine.body.warnings, 'Distinct sizes must not warn');
 });
 
-await run('Test 23 – Duplicate names only warn; a second return without re-dispatch is not "expected"', async () => {
+await run('Test 23 – Duplicate label texts only warn (and a repeated brand does not); a second return without re-dispatch is not "expected"', async () => {
   const ts = Date.now();
   const P = `T23-Product-${ts}`;
   const order = (unitNames, extra = {}) => api('/api/orders/create-with-labels', {
@@ -1006,6 +1006,10 @@ await run('Test 23 – Duplicate names only warn; a second return without re-dis
   assert(ok.status === 201, 'Acknowledged duplicate names must be accepted');
   const units = (await api(`/api/production-batches/${ok.body.lines[0].batches[0].batchId}/units`)).body;
   assert(units.map((u) => u.recipient_name).join(',') === 'Ali,ali,Abu', `Names are kept exactly as typed (only trimmed): ${units.map((u) => u.recipient_name)}`);
+
+  // The same text on every garment (a brand) is normal and must not ask.
+  const brand = await order(['Jenama X', 'Jenama X', 'Jenama X']);
+  assert(brand.status === 201, `A brand repeated on every garment must not warn: ${brand.status} ${JSON.stringify(brand.body)}`);
 
   // Return, then return again without a new dispatch.
   const { orderId, rows } = await makeOrder('T23r', [{ productName: P, variantLabel: 'Saiz M', quantity: 1, batches: null }]);

@@ -406,8 +406,10 @@ async function checkVariantSpellings(db, items) {
   return warnings;
 }
 
-// The same recipient name twice in one list is usually a copy/paste slip, but
-// two people can genuinely share a name, so this asks instead of refusing.
+// The same label text twice in a list of mostly different texts (a list of
+// people) is usually a copy/paste slip, but two people can share a name, so
+// this asks instead of refusing. A text that repeats on most garments (a brand)
+// is normal and is not flagged.
 function checkDuplicateNames(items) {
   const warnings = [];
   const scan = (names, where) => {
@@ -418,8 +420,10 @@ function checkDuplicateNames(items) {
       const key = clean.toLowerCase();
       seen.set(key, { name: seen.get(key)?.name ?? clean, n: (seen.get(key)?.n ?? 0) + 1 });
     }
+    const total = [...seen.values()].reduce((s, v) => s + v.n, 0);
+    if (total < 2 || seen.size / total < 0.6) return; // mostly repeats (e.g. one brand on every garment): normal
     for (const { name, n } of seen.values()) {
-      if (n > 1) warnings.push(`${where}: nama "${name}" muncul ${n} kali. Pastikan memang dua penerima berlainan.`);
+      if (n > 1) warnings.push(`${where}: teks "${name}" muncul ${n} kali. Pastikan memang sengaja berulang.`);
     }
   };
   for (const item of items) {
@@ -467,7 +471,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     // the item is split into batches (batch-level names are checked below).
     if (Array.isArray(item.unitNames) && item.unitNames.length > quantity) {
       throw new ValidationError(
-        `items[${iIdx}]: ${item.unitNames.length} nama penerima tetapi kuantiti hanya ${quantity}.`
+        `items[${iIdx}]: ${item.unitNames.length} teks label tetapi kuantiti hanya ${quantity}.`
       );
     }
 
@@ -521,7 +525,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       // any that fall beyond the batches' total would be silently dropped.
       if (Array.isArray(item.unitNames) && item.unitNames.length > batchSum) {
         throw new ValidationError(
-          `items[${iIdx}]: ${item.unitNames.length} nama penerima tetapi kumpulan hanya menjana ${batchSum} unit.`
+          `items[${iIdx}]: ${item.unitNames.length} teks label tetapi kumpulan hanya menjana ${batchSum} unit.`
         );
       }
     }

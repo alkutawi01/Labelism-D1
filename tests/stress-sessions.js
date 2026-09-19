@@ -129,7 +129,7 @@ sessions[1] = async () => {
   // Names: more names than quantity, fewer, duplicate, blank in the middle.
   const cases = [
     ['nama lebih daripada kuantiti (5 nama / 3 unit)', { productName: P, variantLabel: 'L1', quantity: 3, unitNames: names('N', 5), batches: null }, 'tolak'],
-    ['nama berganda (Ali, Ali) ', { productName: P, variantLabel: 'L2', quantity: 2, unitNames: ['Ali', 'Ali'], batches: null }, 'terima'],
+    ['nama berganda (Ali, Ali, Abu) ', { productName: P, variantLabel: 'L2', quantity: 3, unitNames: ['Ali', 'Ali', 'Abu'], batches: null }, 'terima'],
     ['nama kosong di tengah ["A","","C"]', { productName: P, variantLabel: 'L3', quantity: 3, unitNames: ['A', '', 'C'], batches: null }, 'lihat'],
     ['kuantiti perpuluhan 2.5', { productName: P, variantLabel: 'L4', quantity: 2.5, unitNames: [], batches: null }, 'tolak'],
     ['kuantiti "3" (string)', { productName: P, variantLabel: 'L5', quantity: '3', unitNames: [], batches: null }, 'lihat'],

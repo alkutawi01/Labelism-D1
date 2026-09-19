@@ -734,7 +734,7 @@
         return;
       }
 
-      const recipient = unit.recipient_name ? ` · Nama di baju: ${esc(unit.recipient_name)}` : '';
+      const recipient = unit.recipient_name ? ` · Teks label: ${esc(unit.recipient_name)}` : '';
       showScanFeedback(
         'ok',
         `Scan betul: <strong>Unit ${esc(unit.human_code)}</strong> · ${esc(unit.product_name)} · ${esc(unit.variant_label)}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`
