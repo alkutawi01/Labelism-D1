@@ -8,6 +8,7 @@
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 import { buildUnitStatementsForBatch } from './receiving.js';
+import { cleanLabelText, labelKey } from '../domain/validation.js';
 
 export async function createCustomer(db, { name, contactInfo }) {
   if (!name) throw new ValidationError('Customer name is required.');
@@ -374,6 +375,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
 
     if (Array.isArray(item.batches) && item.batches.length > 0) {
       let batchSum = 0;
+      const groupKeys = new Map();
       for (const [bIdx, b] of item.batches.entries()) {
         const bqty = Number(b.quantity ?? b.plannedQuantity);
         if (!Number.isInteger(bqty) || bqty < 1) {
@@ -385,8 +387,20 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
           const bn = String(b.batchNumber).trim();
           if (!bn) throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchNumber must be a non-empty string if provided.`);
         }
-        if (b.batchLabel !== undefined && b.batchLabel !== null && !String(b.batchLabel).trim()) {
+        if (b.batchLabel !== undefined && b.batchLabel !== null && !cleanLabelText(b.batchLabel)) {
           throw new ValidationError(`items[${iIdx}].batches[${bIdx}]: batchLabel must be a non-empty string if provided.`);
+        }
+        if (b.batchLabel) {
+          // The same group named twice in one item ("SK Sekolah A" and
+          // "sk  sekolah a ") is almost certainly one group entered twice.
+          const key = labelKey(b.batchLabel);
+          const seen = groupKeys;
+          if (seen.has(key)) {
+            throw new ValidationError(
+              `items[${iIdx}]: kumpulan "${cleanLabelText(b.batchLabel)}" sama dengan "${seen.get(key)}" (huruf besar/kecil atau ruang berbeza sahaja). Gabungkan menjadi satu kumpulan.`
+            );
+          }
+          seen.set(key, cleanLabelText(b.batchLabel));
         }
         if (b.unitNames !== undefined) {
           if (!Array.isArray(b.unitNames)) {
@@ -513,7 +527,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
         db.prepare(
           `INSERT INTO production_batches (id, variant_id, batch_number, planned_quantity, order_line_id, batch_label)
            VALUES (?, ?, ?, ?, ?, ?)`
-        ).bind(batchId, variantId, bNum, bQty, lineId, bSpec.batchLabel ? String(bSpec.batchLabel).trim() : null)
+        ).bind(batchId, variantId, bNum, bQty, lineId, bSpec.batchLabel ? cleanLabelText(bSpec.batchLabel) : null)
       );
 
       // Per-batch unitNames (e.g. each batch is one school's named
@@ -531,7 +545,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       const { createdUnits, statements: uStmts } = buildUnitStatementsForBatch(db, batchId, bQty, 0, batchUnitNames, actor);
       allStatements.push(...uStmts);
 
-      lineBatches.push({ batchId, batchNumber: bNum, batchLabel: bSpec.batchLabel ? String(bSpec.batchLabel).trim() : null, plannedQuantity: bQty, createdUnits: createdUnits.length });
+      lineBatches.push({ batchId, batchNumber: bNum, batchLabel: bSpec.batchLabel ? cleanLabelText(bSpec.batchLabel) : null, plannedQuantity: bQty, createdUnits: createdUnits.length });
     }
 
     // Update in-flight count for this variant

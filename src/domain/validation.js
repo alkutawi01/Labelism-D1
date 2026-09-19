@@ -9,3 +9,13 @@ export function requireInt(value, label) {
   }
   return value;
 }
+
+// Text that names a group of recipients (a school, a branch). Display keeps
+// what the person typed, minus stray/duplicated whitespace; duplicate
+// detection compares a case-insensitive key of the same text.
+export function cleanLabelText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+export function labelKey(value) {
+  return cleanLabelText(value).toLowerCase();
+}

@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 20 acceptance tests against a live local wrangler dev server.
+ * Runs 21 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -918,6 +918,35 @@ await run('Test 20 – A dispatched unit cannot have its label reissued; undispa
   // The unit that was never dispatched can still be reissued as before.
   const ok = await api(`/api/units/${units[2].id}/reissue-label-after-attachment`, { method: 'POST', body: { actor: 'test' } });
   assert(ok.status === 201, `Undispatched unit must still be reissuable: ${ok.status} ${JSON.stringify(ok.body)}`);
+});
+
+await run('Test 21 – Group labels: whitespace is cleaned and duplicates ignore case/spacing, display text is kept', async () => {
+  const ts = Date.now();
+  const order = (batches, quantity) => api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: { customerName: `T21-${ts}-${Math.random()}`, orderReference: '', actor: 'test',
+      items: [{ productName: `T21-Product-${ts}`, variantLabel: 'Saiz M', quantity, unitNames: [], batches }] },
+  });
+
+  const dup = await order([{ quantity: 2, batchLabel: 'SK Sekolah A' }, { quantity: 2, batchLabel: '  sk   sekolah a ' }], 4);
+  assert(dup.status === 400 && /SK Sekolah A/.test(dup.body.error), `Same group in different case/spacing must be refused: ${JSON.stringify(dup.body)}`);
+
+  const ok = await order([{ quantity: 2, batchLabel: '  SK   Sekolah  A ' }, { quantity: 2, batchLabel: 'SK Sekolah B' }], 4);
+  assert(ok.status === 201, `Distinct groups must work: ${JSON.stringify(ok.body)}`);
+  const labels = ok.body.lines[0].batches.map((b) => b.batchLabel);
+  assert(labels[0] === 'SK Sekolah A', `Spacing is cleaned but case is kept: ${JSON.stringify(labels)}`);
+  const ov = await api(`/api/orders/${ok.body.orderId}/print-overview`);
+  assert(ov.body.rows.map((r) => r.group_label).join('|') === 'SK Sekolah A|SK Sekolah B', 'Stored labels');
+
+  // The same school on a different variant (different size) is normal, not a duplicate.
+  const twoSizes = await api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: { customerName: `T21b-${ts}`, orderReference: '', actor: 'test', items: [
+      { productName: `T21-Product-${ts}`, variantLabel: 'Saiz M', quantity: 2, unitNames: [], batches: [{ quantity: 2, batchLabel: 'SK Sekolah A' }] },
+      { productName: `T21-Product-${ts}`, variantLabel: 'Saiz L', quantity: 2, unitNames: [], batches: [{ quantity: 2, batchLabel: 'sk sekolah a' }] },
+    ] },
+  });
+  assert(twoSizes.status === 201, `Same school on two sizes must be allowed: ${JSON.stringify(twoSizes.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -731,8 +731,9 @@ Peraturan penting:
               }
               const bn = s.querySelector('[data-sub=name]').value.trim();
               if (bn) {
-                if (seen.has(bn.toLowerCase())) throw new Error(`Nama kumpulan "${bn}" digunakan dua kali untuk ${what}.`);
-                seen.add(bn.toLowerCase());
+                const key = bn.replace(/\s+/g, ' ').toLowerCase();
+                if (seen.has(key)) throw new Error(`Nama kumpulan "${bn}" digunakan dua kali untuk ${what}.`);
+                seen.add(key);
               }
               const names = parseNames(s.querySelector('[data-sub=names]').value);
               if (names.length > bq) {
