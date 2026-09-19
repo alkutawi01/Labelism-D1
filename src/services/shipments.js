@@ -56,6 +56,11 @@ async function canUnitFulfillShipment(db, unit, shipment) {
         : 'This unit is not linked to any order line, so it cannot fulfill this shipment.',
     };
   }
+  // A shipment made for a print run (batch) only takes labels printed in that
+  // run -- otherwise packing Batch 2 could quietly consume a Batch 1 unit.
+  if (shipment.print_run_id && unit.print_run_id !== shipment.print_run_id) {
+    return { ok: false, reason: 'Unit ini bukan dalam batch cetakan untuk sesi packing ini.' };
+  }
   // Core Production Simulation Priority 6 (F6-001), Director-approved
   // 2026-09-14: confirmed live that a unit whose label was NEVER confirmed
   // attached (still sitting on Print Labels as "awaiting attachment") could

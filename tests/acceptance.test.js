@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 14 acceptance tests against a live local wrangler dev server.
+ * Runs 16 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -655,6 +655,141 @@ await run('Test 14 – Named batches (e.g. schools) can repeat across orders for
   const units = await api(`/api/production-batches/${batches[1].batchId}/units`);
   assert(units.body.map(u => u.recipient_name).join(',') === 'Chong,Wei',
     `Batch-level names not applied: ${JSON.stringify(units.body.map(u => u.recipient_name))}`);
+});
+
+async function makeOrder(tag, items) {
+  const ts = Date.now() + Math.floor(Math.random() * 1000);
+  const res = await api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: { customerName: `${tag}-Customer-${ts}`, orderReference: `${tag}-REF-${ts}`, items, actor: 'test' },
+  });
+  assert(res.status === 201, `${tag} order failed: ${res.status} ${JSON.stringify(res.body)}`);
+  const overview = await api(`/api/orders/${res.body.orderId}/print-overview`);
+  assert(overview.status === 200, `${tag} overview failed: ${overview.status}`);
+  return { orderId: res.body.orderId, orderReference: res.body.orderReference, rows: overview.body.rows };
+}
+
+await run('Test 15 – Print runs: tick variations and quantities, the rest stays unprinted', async () => {
+  const ts = Date.now();
+  const product = `T15-Product-${ts}`;
+  const { orderId, rows } = await makeOrder('T15', [
+    { productName: product, variantLabel: 'Saiz M', quantity: 3, unitNames: ['Ahmad', 'Ali', 'Abu'], batches: null },
+    { productName: product, variantLabel: 'Saiz L', quantity: 2, batches: null },
+  ]);
+  assert(rows.length === 2, `Expected one row per variation, got ${rows.length}`);
+  const [rowM, rowL] = rows;
+  assert(rowM.variant_label === 'Saiz M' && rowM.total === 3 && rowM.printed === 0 && rowM.unprinted === 3,
+    `Bad initial row for M: ${JSON.stringify(rowM)}`);
+
+  // Nothing selected, and a row from another order, are both rejected.
+  const empty = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [] } });
+  assert(empty.status >= 400, 'Empty selection should be rejected');
+  const other = await makeOrder('T15X', [{ productName: product, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
+  const foreign = await api(`/api/orders/${orderId}/print-runs`, {
+    method: 'POST', body: { selections: [{ batchId: other.rows[0].batch_id, quantity: 1 }] },
+  });
+  assert(foreign.status >= 400, "A row from another order must not be printable here");
+
+  // Batch 1: 2 of the 3 size M, 1 of the 2 size L.
+  const run1 = await api(`/api/orders/${orderId}/print-runs`, {
+    method: 'POST', body: { selections: [{ batchId: rowM.batch_id, quantity: 2 }, { batchId: rowL.batch_id, quantity: 1 }] },
+  });
+  assert(run1.status === 201 && run1.body.runNumber === 1, `Run 1 failed: ${run1.status} ${JSON.stringify(run1.body)}`);
+  const labels1 = await api(`/api/print-runs/${run1.body.id}`);
+  assert(labels1.body.units.length === 3, `Run 1 should hold 3 labels, got ${labels1.body.units.length}`);
+  assert(labels1.body.units.filter(u => u.variant_label === 'Saiz M').map(u => u.recipient_name).join(',') === 'Ahmad,Ali',
+    'The first two unprinted M labels (lowest serial, with their names) should be printed first');
+
+  const mid = await api(`/api/orders/${orderId}/print-overview`);
+  assert(mid.body.rows[0].printed === 2 && mid.body.rows[0].unprinted === 1, 'M should show 2 printed, 1 left');
+  assert(mid.body.rows[1].printed === 1 && mid.body.rows[1].unprinted === 1, 'L should show 1 printed, 1 left');
+
+  // Cannot print more than what is left.
+  const tooMany = await api(`/api/orders/${orderId}/print-runs`, {
+    method: 'POST', body: { selections: [{ batchId: rowM.batch_id, quantity: 2 }] },
+  });
+  assert(tooMany.status >= 400, 'Printing more than the unprinted balance must be rejected');
+
+  // Batch 2 takes the rest, continuing from where Batch 1 stopped.
+  const run2 = await api(`/api/orders/${orderId}/print-runs`, {
+    method: 'POST', body: { selections: [{ batchId: rowM.batch_id, quantity: 1 }, { batchId: rowL.batch_id, quantity: 1 }] },
+  });
+  assert(run2.status === 201 && run2.body.runNumber === 2, `Run 2 failed: ${JSON.stringify(run2.body)}`);
+  const labels2 = await api(`/api/print-runs/${run2.body.id}`);
+  assert(labels2.body.units.find(u => u.variant_label === 'Saiz M').recipient_name === 'Abu', 'Batch 2 should continue with Abu');
+
+  const end = await api(`/api/orders/${orderId}/print-overview`);
+  assert(end.body.rows.every(r => r.unprinted === 0), 'Everything should now be printed');
+  assert(end.body.runs.length === 2 && end.body.runs[0].label_count === 3 && end.body.runs[1].label_count === 2,
+    `Runs summary wrong: ${JSON.stringify(end.body.runs)}`);
+});
+
+await run('Test 16 – Packing works against one batch and only expects the labels printed in it', async () => {
+  const product = `T16-Product-${Date.now()}`;
+  const { orderId, rows } = await makeOrder('T16', [
+    { productName: product, variantLabel: 'Saiz M', quantity: 3, batches: null },
+    { productName: product, variantLabel: 'Saiz L', quantity: 2, batches: null },
+  ]);
+  const [rowM, rowL] = rows;
+  const print = async (m, l) => {
+    const r = await api(`/api/orders/${orderId}/print-runs`, {
+      method: 'POST', body: { selections: [{ batchId: rowM.batch_id, quantity: m }, { batchId: rowL.batch_id, quantity: l }] },
+    });
+    assert(r.status === 201, `print failed: ${JSON.stringify(r.body)}`);
+    return (await api(`/api/print-runs/${r.body.id}`)).body;
+  };
+  const run1 = await print(2, 1);
+  const run2 = await print(1, 1);
+
+  // Attach every label of Batch 1, and all of Batch 2 except one size L.
+  for (const u of run1.units) await attachUnit(u);
+  const run2Attached = run2.units.filter(u => u.variant_label === 'Saiz M');
+  for (const u of run2Attached) await attachUnit(u);
+
+  // Batch 1 expects 3, not 5 -- the unprinted/other-batch labels are not its business.
+  const start1 = await api(`/api/print-runs/${run1.id}/packing/start`, { method: 'POST', body: {} });
+  assert(start1.status === 200 && start1.body.planned === 3 && start1.body.rows.length === 2,
+    `Batch 1 should expect 3 labels in 2 variations: ${JSON.stringify(start1.body)}`);
+
+  const scan = (runId, unit) => api(`/api/print-runs/${runId}/packing/scan`, { method: 'POST', body: { code: unit.internal_token } });
+
+  // A label from Batch 2 is rejected inside Batch 1 and changes nothing.
+  const wrongBatch = await scan(run1.id, run2Attached[0]);
+  assert(wrongBatch.status >= 400 && /Batch 2/.test(wrongBatch.body.error), `Wrong-batch scan: ${JSON.stringify(wrongBatch.body)}`);
+
+  // A label from a different order is rejected and names that order.
+  const foreign = await makeOrder('T16X', [{ productName: product, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
+  const fr = await api(`/api/orders/${foreign.orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: foreign.rows[0].batch_id, quantity: 1 }] } });
+  const foreignUnit = (await api(`/api/print-runs/${fr.body.id}`)).body.units[0];
+  await attachUnit(foreignUnit);
+  const foreignScan = await scan(run1.id, foreignUnit);
+  assert(foreignScan.status >= 400 && foreignScan.body.error.includes(foreign.orderReference), `Foreign scan: ${JSON.stringify(foreignScan.body)}`);
+
+  for (const u of run1.units) {
+    const r = await scan(run1.id, u);
+    assert(r.status === 201, `Scan of Batch 1 label failed: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  const dup = await scan(run1.id, run1.units[0]);
+  assert(dup.status === 200 && dup.body.alreadyScanned === true, 'Re-scanning the same label should be a harmless no-op');
+  const st = await api(`/api/print-runs/${run1.id}/packing`);
+  assert(st.body.planned === 3 && st.body.packed === 3 && st.body.missing === 0, `Batch 1 status: ${JSON.stringify(st.body)}`);
+
+  const close1 = await api(`/api/print-runs/${run1.id}/packing/close`, { method: 'POST', body: {} });
+  assert(close1.body.missing === 0, `Batch 1 should close complete: ${JSON.stringify(close1.body)}`);
+  const again = await api(`/api/print-runs/${run1.id}/packing/start`, { method: 'POST', body: {} });
+  assert(again.status >= 400, 'A fully packed batch cannot be started again');
+
+  // Batch 2: one size L label was never attached, so packing reports it short
+  // and says WHY (not finished yet), rather than calling it lost.
+  await api(`/api/print-runs/${run2.id}/packing/start`, { method: 'POST', body: {} });
+  for (const u of run2Attached) {
+    const r = await scan(run2.id, u);
+    assert(r.status === 201, `Batch 2 scan failed: ${JSON.stringify(r.body)}`);
+  }
+  const close2 = await api(`/api/print-runs/${run2.id}/packing/close`, { method: 'POST', body: {} });
+  assert(close2.body.planned === 2 && close2.body.packed === 1 && close2.body.missing === 1, `Batch 2 close: ${JSON.stringify(close2.body)}`);
+  assert(close2.body.missingUnits.length === 1 && close2.body.missingUnits[0].variant_label === 'Saiz L'
+    && close2.body.missingUnits[0].attached === false, `Missing unit detail: ${JSON.stringify(close2.body.missingUnits)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import * as importManifest from '../services/importManifest.js';
 import * as orders from '../services/orders.js';
 import * as shipments from '../services/shipments.js';
 import * as returns from '../services/returns.js';
+import * as printRuns from '../services/printRuns.js';
 import { toErrorResponse } from '../domain/errors.js';
 import {
   bootstrapAdminIfEmpty,
@@ -197,6 +198,45 @@ export async function routeApi(request, env, session) {
     if ((m = pathname.match(/^\/api\/orders\/([^/]+)\/reconciliation$/)) && method === 'GET') {
       const result = await orders.getOrderReconciliation(env.DB, m[1]);
       if (!result) return notFound('Order not found.');
+      return ok(result);
+    }
+
+    if (pathname === '/api/print-orders' && method === 'GET') {
+      return ok(await printRuns.listPrintOrders(env.DB));
+    }
+    if ((m = pathname.match(/^\/api\/orders\/([^/]+)\/print-overview$/)) && method === 'GET') {
+      const result = await printRuns.getPrintOverview(env.DB, m[1]);
+      if (!result) return notFound('Order not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/orders\/([^/]+)\/print-runs$/)) && method === 'POST') {
+      const result = await printRuns.createPrintRun(env.DB, m[1], await body(request, session));
+      if (result.notFound) return notFound('Order not found.');
+      return ok(result, 201);
+    }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)$/)) && method === 'GET') {
+      const result = await printRuns.getPrintRun(env.DB, m[1]);
+      if (!result) return notFound('Print run not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/packing$/)) && method === 'GET') {
+      const result = await printRuns.getRunPacking(env.DB, m[1]);
+      if (!result) return notFound('Print run not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/packing\/start$/)) && method === 'POST') {
+      const result = await printRuns.startRunPacking(env.DB, m[1]);
+      if (result.notFound) return notFound('Print run not found.');
+      return ok(result);
+    }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/packing\/scan$/)) && method === 'POST') {
+      const result = await printRuns.scanRunPacking(env.DB, m[1], await body(request, session));
+      if (result.notFound) return notFound('Print run not found.');
+      return ok(result, result.alreadyScanned ? 200 : 201);
+    }
+    if ((m = pathname.match(/^\/api\/print-runs\/([^/]+)\/packing\/close$/)) && method === 'POST') {
+      const result = await printRuns.closeRunPacking(env.DB, m[1]);
+      if (result.notFound) return notFound('Print run not found.');
       return ok(result);
     }
 
