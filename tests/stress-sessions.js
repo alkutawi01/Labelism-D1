@@ -95,20 +95,36 @@ sessions[1] = async () => {
     { productName: P.replace('Home', 'home') + ' ', variantLabel: 'M', quantity: 2, unitNames: [], batches: null }, // same product, other case + trailing space
     { productName: P.replace('Jersi', 'Jersey'), variantLabel: 'M', quantity: 2, unitNames: [], batches: null }, // near-duplicate product
   ];
-  const o = await mk('S1', items);
-  if (o.fail) return temuan('?', 'tempahan kotor ditolak sepenuhnya', err(o.fail));
-  const labels = o.ov.rows.map((r) => `${r.product_name} / "${r.variant_label}"`);
-  note(`baris label yang terhasil: ${labels.length}`);
-  labels.forEach((l) => note('  ' + l));
-  const variantsOfP = new Set(o.ov.rows.filter((r) => r.product_name.toLowerCase().startsWith(P.toLowerCase().slice(0, 10)) && /^xl|^x-l/i.test(r.variant_label)).map((r) => r.variant_label));
-  if (variantsOfP.size > 1) temuan('TINGGI', 'Variasi hampir-duplikat dicipta di server (XL / X-L / "XL " / xl dianggap berbeza)', `${[...variantsOfP].map((v) => `"${v}"`).join(', ')}. Client hanya trim; server terima terus. Satu saiz fizikal jadi beberapa baris, cetakan dan packing terpecah.`);
-  const prods = new Set(o.ov.rows.map((r) => r.product_name));
-  note(`produk dicipta: ${[...prods].join(' | ')}`);
-  if (prods.size > 2) temuan('SEDERHANA', 'Produk hampir sama (Jersi/Jersey) jadi produk berasingan tanpa amaran', [...prods].join(' | '));
+  // Case-only duplicates (XL / xl) must be refused outright.
+  const caseOnly = await mk('S1', items);
+  if (caseOnly.fail && caseOnly.fail.status === 400 && /huruf besar/.test(err(caseOnly.fail))) ok('XL / xl dalam satu order ditolak: ' + err(caseOnly.fail).slice(0, 100));
+  else temuan('TINGGI', 'XL dan xl diterima sebagai variasi berbeza', j(caseOnly.fail || 'dicipta'));
+
+  // Punctuation-only difference (XL / X-L) must ask, then keep both as typed.
+  const P2 = P + ' B';
+  const askItems = [
+    { productName: P2, variantLabel: 'XL', quantity: 4, unitNames: names('A', 4), batches: null },
+    { productName: P2, variantLabel: 'X-L', quantity: 3, unitNames: names('B', 3), batches: null },
+    { productName: P2, variantLabel: 'XL ', quantity: 2, unitNames: [], batches: null }, // trailing space = same as XL
+  ];
+  const asked = await mk('S1b', askItems);
+  if (asked.fail && asked.fail.status === 409 && asked.fail.body.requiresAcknowledgement) ok('XL / X-L: server minta pengesahan (409), belum ada apa dicipta: ' + asked.fail.body.warnings[0].slice(0, 90));
+  else temuan('TINGGI', 'XL / X-L tidak diminta pengesahan', j(asked.fail ? asked.fail.body : 'dicipta'));
+  const o = await mk('S1c', askItems, { acknowledgeWarnings: true });
+  if (o.fail) return temuan('?', 'order kotor yang disahkan tetap ditolak', err(o.fail));
+  const labels = o.ov.rows.map((r) => '"' + r.variant_label + '"');
+  ok('selepas disahkan, ejaan kekal seperti ditaip: ' + labels.join(', '));
+  if (new Set(o.ov.rows.map((r) => r.variant_label)).size !== 2) temuan('SEDERHANA', '"XL " dengan ruang tidak digabungkan dengan "XL"', labels.join(','));
   const total = (await recon(o.orderId)).totals;
-  const asked = items.reduce((s, i) => s + i.quantity, 0);
-  if (total.generated !== asked) temuan('KRITIKAL', 'Bilangan label tidak sama dengan yang diminta', `diminta ${asked}, dijana ${total.generated}`);
-  else ok(`jumlah label = jumlah diminta (${asked})`);
+  const asked2 = askItems.reduce((s, i) => s + i.quantity, 0);
+  if (total.generated !== asked2) temuan('KRITIKAL', 'Bilangan label tidak sama dengan yang diminta', 'diminta ' + asked2 + ', dijana ' + total.generated);
+  else ok('jumlah label = jumlah diminta (' + asked2 + ')');
+  // Similar product names are not merged or guessed
+  const sim = await mk('S1p', [
+    { productName: 'Jersi Home ' + uniq(), variantLabel: 'M', quantity: 1, unitNames: [], batches: null },
+    { productName: 'Jersey Home ' + uniq(), variantLabel: 'M', quantity: 1, unitNames: [], batches: null },
+  ]);
+  note('produk hampir sama (Jersi / Jersey): ' + (sim.fail ? 'ditolak' : 'dicipta sebagai dua produk, tanpa digabung (tiada auto-betul)'));
 
   // Names: more names than quantity, fewer, duplicate, blank in the middle.
   const cases = [
@@ -143,7 +159,7 @@ sessions[1] = async () => {
   if (dup.fail) ok(`sekolah sama dua kali (huruf/spasi berbeza) ditolak: ${err(dup.fail).slice(0, 90)}`);
   else {
     const labelsOf = dup.ov.rows.map((r) => `"${r.group_label}"`).join(', ');
-    temuan('SEDERHANA', 'Sekolah sama (huruf besar/kecil/spasi berbeza) jadi dua kumpulan berlainan', `kumpulan: ${labelsOf}. Client hanya menyemak padanan tepat huruf kecil tanpa trim server.`);
+    temuan('SEDERHANA', 'Sekolah sama (huruf besar/kecil/spasi berbeza) masih jadi dua kumpulan berlainan', `kumpulan: ${labelsOf}. Client hanya menyemak padanan tepat huruf kecil tanpa trim server.`);
   }
 
   // batch sum < quantity sent directly to the API (UI adds remainder itself)
@@ -417,6 +433,7 @@ sessions[7] = async () => {
   const rp = await api(`/api/units/${packedUnit.id}/reissue-label-after-attachment`, { method: 'POST', body: { actor: 'sim' } });
   say(`   reissue selepas tampal pada unit yang SUDAH dipek dan dihantar -> ${rp.status}`);
   if (rp.status < 300) temuan('TINGGI', 'Unit yang sudah dipek/dihantar boleh direissue (label dikosongkan), memutuskan sambungan unit-shipment', 'Status tampal jadi belum, sedangkan unit sudah dalam shipment DISPATCHED. Tiada halangan berdasarkan keadaan packing/dispatch.');
+  else ok('reissue unit yang sudah dihantar ditolak: ' + err(rp).slice(0, 110));
   const cl2 = await packClose(run.body.id);
   note(`tutup kali kedua: ${cl2.status} planned ${cl2.body.planned} packed ${cl2.body.packed} missing ${cl2.body.missing} ${cl2.body.missingUnits ? 'namaUnit=' + cl2.body.missingUnits.length : ''}`);
   const d2 = await dispatchRun(run.body.id);
@@ -425,7 +442,7 @@ sessions[7] = async () => {
   const t = (await recon(o.orderId)).totals;
   note(`akhir: planned ${fin.planned} packed ${fin.packed} missing ${fin.missing}; Butiran dijana ${t.generated} ditampal ${t.attached} dipek ${t.packed} dihantar ${t.dispatched}`);
   if (fin.packed !== 46) temuan('SEDERHANA', 'Kiraan packed tidak sepadan dengan 46 unit sebenar', `packed=${fin.packed}`);
-  if (t.attached !== 50 - 2) temuan('SEDERHANA', 'Kiraan ditampal berubah selepas reissue (2 unit dikosongkan)', `attached=${t.attached}`);
+  if (t.attached !== 50 - 1) temuan('SEDERHANA', 'Kiraan ditampal tidak sepadan (1 unit sengaja direissue tanpa tampal semula)', `attached=${t.attached}`);
 };
 
 // ---------------------------------------------------------------- 8
@@ -480,11 +497,13 @@ sessions[8] = async () => {
   // same unit into a different intake
   const dup = await sc(in2.body.id, uA[0].internal_token);
   say(`   unit yang sama ke intake kedua -> ${dup.status} ${dup.status < 300 ? 'DITERIMA tanpa amaran (expected=' + dup.body.expected + ')' : err(dup)}`);
+  if (dup.status >= 400) ok('unit yang sama ke intake kedua ditolak: ' + err(dup).slice(0, 110));
   if (dup.status < 300) temuan('TINGGI', 'Unit yang sama boleh masuk dua return intake berlainan tanpa amaran', 'Semakan "sudah discan" hanya dalam intake yang sama. Dua pemulangan aktif untuk satu unit; keputusan QC bercanggah mungkin.');
   say(`   selepas pemulangan: unit boleh terus dipek semula? (tanpa QC)`);
   const qc = await api(`/api/return-intakes/${in1.body.id}/units/${uA[0].id}/qc`, { method: 'POST', body: { outcome: 'AVAILABLE', actor: 'sim' } });
   const qc2 = await api(`/api/return-intakes/${in2.body.id}/units/${uA[0].id}/qc`, { method: 'POST', body: { outcome: 'DAMAGED', actor: 'sim' } });
   note(`QC bercanggah untuk unit sama: intake1 ${qc.status} (${qc.body && (qc.body.outcome || err(qc))}), intake2 ${qc2.status} (${qc2.body && (qc2.body.outcome || err(qc2))})`);
+  if (!(qc.status < 300 && qc2.status < 300)) ok('dua keputusan QC bercanggah tidak berlaku: intake kedua tidak dapat memegang unit yang sama');
   if (qc.status < 300 && qc2.status < 300) temuan('TINGGI', 'Dua keputusan QC yang bercanggah diterima untuk satu unit', 'AVAILABLE dan DAMAGED, tiada rujukan silang.');
   // after return, can the unit be re-packed immediately (no restock)?
   const cl = await api(`/api/return-intakes/${in1.body.id}/close`, { method: 'POST', body: {} });
@@ -635,7 +654,6 @@ sessions[10] = async () => {
   if (t.dispatched === undefined || t.dispatched !== ledger.dispatched) gaps.push(`kiraan "dihantar" Butiran (${t.dispatched}) berbeza daripada bilangan event dispatch unit (${ledger.dispatched})`);
   if (t.packed !== undefined && t.packed !== ledger.dispatched) gaps.push(`dipek (${t.packed}) vs dihantar (${ledger.dispatched}): dipek termasuk unit yang sudah dihantar atau tidak, bergantung takrif`);
   const attachedNow = ledger.ditampal;
-  if (ledger.reissue && attachedNow < all.length - ledger['belum dicetak']) gaps.push('unit yang direissue menunjukkan "belum ditampal" walaupun garmentnya sudah dipek');
   gaps.forEach((g) => temuan('AUDIT', g));
   const answered = ['ditempah', 'label diwajibkan', 'dicetak', 'ditampal', 'dispatched', 'dikembalikan'].length;
   say(`   Boleh dijawab tepat: ${answered} daripada 9 soalan. Tidak boleh: terlebih, salah saiz, perubahan order (dan "berapa unit sebenar di lantai").`);
