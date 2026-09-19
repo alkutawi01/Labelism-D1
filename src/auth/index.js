@@ -18,7 +18,7 @@ import bcrypt from 'bcryptjs';
 const COOKIE_NAME = 'labelism_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
 
-const PUBLIC_PATHS = new Set(['/login.html', '/style.css', '/favicon.ico']);
+const PUBLIC_PATHS = new Set(['/login.html', '/style.css', '/ui.js', '/favicon.ico']);
 const PUBLIC_API_PATHS = new Set(['/api/login', '/api/logout', '/api/health']);
 
 function toHex(buf) {
