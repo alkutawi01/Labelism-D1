@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 22 acceptance tests against a live local wrangler dev server.
+ * Runs 23 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -990,6 +990,45 @@ await run('Test 22 – Variation spelling guard: refuse case-only duplicates, as
   // Genuinely different sizes trigger nothing.
   const fine = await order(['S', 'M', 'L', '2XL'], {}, `${P}-c`);
   assert(fine.status === 201 && !fine.body.warnings, 'Distinct sizes must not warn');
+});
+
+await run('Test 23 – Duplicate names only warn; a second return without re-dispatch is not "expected"', async () => {
+  const ts = Date.now();
+  const P = `T23-Product-${ts}`;
+  const order = (unitNames, extra = {}) => api('/api/orders/create-with-labels', {
+    method: 'POST',
+    body: { customerName: `T23-${ts}-${Math.random()}`, orderReference: '', actor: 'test', ...extra,
+      items: [{ productName: P, variantLabel: 'M', quantity: 3, unitNames, batches: null }] },
+  });
+  const warned = await order(['Ali', 'ali ', 'Abu']);
+  assert(warned.status === 409 && warned.body.requiresAcknowledgement && /Ali/.test(warned.body.warnings[0]), `Duplicate name must ask: ${warned.status} ${JSON.stringify(warned.body)}`);
+  const ok = await order(['Ali', 'ali ', 'Abu'], { acknowledgeWarnings: true });
+  assert(ok.status === 201, 'Acknowledged duplicate names must be accepted');
+  const units = (await api(`/api/production-batches/${ok.body.lines[0].batches[0].batchId}/units`)).body;
+  assert(units.map((u) => u.recipient_name).join(',') === 'Ali,ali,Abu', `Names are kept exactly as typed (only trimmed): ${units.map((u) => u.recipient_name)}`);
+
+  // Return, then return again without a new dispatch.
+  const { orderId, rows } = await makeOrder('T23r', [{ productName: P, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
+  const pr = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: rows[0].batch_id, quantity: 1 }] } });
+  const u = (await api(`/api/print-runs/${pr.body.id}`)).body.units[0];
+  await attachUnit(u);
+  await api(`/api/print-runs/${pr.body.id}/packing/start`, { method: 'POST', body: {} });
+  await api(`/api/print-runs/${pr.body.id}/packing/scan`, { method: 'POST', body: { code: u.internal_token } });
+  await api(`/api/print-runs/${pr.body.id}/packing/close`, { method: 'POST', body: {} });
+  const rec = await api(`/api/orders/${orderId}/reconciliation`);
+  for (const s of (await api(`/api/order-lines/${rec.body.lines[0].order_line_id}/shipments`)).body) {
+    await api(`/api/shipments/${s.id}/dispatch`, { method: 'POST', body: { locationName: 'Customer' } });
+  }
+  const mkIntake = async (ref) => (await api('/api/return-intakes', { method: 'POST', body: { reference: ref } })).body;
+  const scan = (id) => api(`/api/return-intakes/${id}/scans`, { method: 'POST', body: { code: u.internal_token, actor: 'test' } });
+  const a = await mkIntake('T23-A');
+  const first = await scan(a.id);
+  assert(first.body.expected === true && first.body.alreadyReturned === false, `First return is expected: ${JSON.stringify(first.body)}`);
+  await api(`/api/return-intakes/${a.id}/close`, { method: 'POST', body: {} });
+  const b = await mkIntake('T23-B');
+  const second = await scan(b.id);
+  assert(second.status === 201 && second.body.expected === false && second.body.alreadyReturned === true,
+    `Second return without re-dispatch must be flagged, not expected: ${JSON.stringify(second.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

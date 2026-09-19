@@ -93,11 +93,18 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
   // was never actually dispatched has no business being returned. Not a
   // hard block (a walk-in / miscategorized item is still real and needs
   // handling), just a surfaced warning the operator can act on.
-  const dispatched = await db
-    .prepare("SELECT 1 FROM unit_events WHERE unit_id = ? AND event_type = 'UNIT_DISPATCHED' LIMIT 1")
+  // "Expected" means the unit's latest movement was OUT the door. A unit that
+  // was dispatched, returned, and has not been dispatched again is back in the
+  // building; a second return of it is not a normal one, so it is flagged
+  // (alreadyReturned) and reported as unexpected rather than as a routine return.
+  const lastMove = await db
+    .prepare(
+      "SELECT event_type FROM unit_events WHERE unit_id = ? AND event_type IN ('UNIT_DISPATCHED', 'RETURN_RECEIVED') ORDER BY seq DESC LIMIT 1"
+    )
     .bind(unit.id)
     .first();
-  const expected = !!dispatched;
+  const expected = !!lastMove && lastMove.event_type === 'UNIT_DISPATCHED';
+  const alreadyReturned = !!lastMove && lastMove.event_type === 'RETURN_RECEIVED';
 
   // Field Simulation P5 (Customer Verification) fix: a return intake
   // already carries an optional customer_id (who called in to return
@@ -141,7 +148,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     eventId,
     unitId: unit.id,
     eventType: 'RETURN_RECEIVED',
-    payload: { returnIntakeId, reference: intake.reference, expected, customerMismatch, activeShipmentConflict },
+    payload: { returnIntakeId, reference: intake.reference, expected, alreadyReturned, customerMismatch, activeShipmentConflict },
     actor: actor ?? 'izzat',
     locationId: location.id,
   });
@@ -176,6 +183,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     orderReference: unit.order_reference,
     customerName: unit.customer_name,
     expected,
+    alreadyReturned,
     customerMismatch,
     activeShipmentConflict,
     locationName: location.name,

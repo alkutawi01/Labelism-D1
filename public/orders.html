@@ -771,7 +771,7 @@ Peraturan penting:
         // created yet, so ask, and only go ahead if the person says they differ.
         if (res.requiresAcknowledgement) {
           const go = confirm(res.warnings.join('\n\n') + '\n\nTeruskan tempahan ini seperti yang ditaip?');
-          if (!go) { resDiv.innerHTML = '<div class="msg info">Tempahan belum dibuat. Betulkan ejaan variasi, kemudian sahkan semula.</div>'; return; }
+          if (!go) { resDiv.innerHTML = '<div class="msg info">Tempahan belum dibuat. Semak perkara di atas dalam borang, kemudian sahkan semula.</div>'; return; }
           res = await send(true);
         }
 

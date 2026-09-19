@@ -342,7 +342,7 @@ async function nextBatchNumbers(db, variantId, count, inFlightCount = 0) {
 //   - ASK:    two spellings that differ only by punctuation/spacing (XL / X-L),
 //     answered by resending with acknowledgeWarnings: true.
 // Whitespace inside/around a label is cleaned first (that is not a spelling).
-async function checkVariantSpellings(db, items, acknowledged) {
+async function checkVariantSpellings(db, items) {
   const byProduct = new Map(); // product key -> { name, labels: Map(labelKey -> Set(clean text)), sources }
   const note = (productName, label, where) => {
     const pKey = String(productName).trim().toLowerCase();
@@ -387,8 +387,29 @@ async function checkVariantSpellings(db, items, acknowledged) {
       }
     }
   }
-  if (warnings.length && !acknowledged) {
-    throw new ConfirmationRequired('Ejaan variasi hampir sama. Sahkan jika ia memang berbeza.', warnings);
+  return warnings;
+}
+
+// The same recipient name twice in one list is usually a copy/paste slip, but
+// two people can genuinely share a name, so this asks instead of refusing.
+function checkDuplicateNames(items) {
+  const warnings = [];
+  const scan = (names, where) => {
+    const seen = new Map();
+    for (const raw of names || []) {
+      const clean = cleanLabelText(raw);
+      if (!clean) continue;
+      const key = clean.toLowerCase();
+      seen.set(key, { name: seen.get(key)?.name ?? clean, n: (seen.get(key)?.n ?? 0) + 1 });
+    }
+    for (const { name, n } of seen.values()) {
+      if (n > 1) warnings.push(`${where}: nama "${name}" muncul ${n} kali. Pastikan memang dua penerima berlainan.`);
+    }
+  };
+  for (const item of items) {
+    const where = [item.productName, item.variantLabel].filter(Boolean).join(' ');
+    scan(item.unitNames, where);
+    (item.batches || []).forEach((b) => scan(b.unitNames, `${where}${b.batchLabel ? ' (' + cleanLabelText(b.batchLabel) + ')' : ''}`));
   }
   return warnings;
 }
@@ -490,7 +511,10 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     }
   }
 
-  const spellingWarnings = await checkVariantSpellings(db, items, acknowledgeWarnings === true);
+  const spellingWarnings = [...(await checkVariantSpellings(db, items)), ...checkDuplicateNames(items)];
+  if (spellingWarnings.length && acknowledgeWarnings !== true) {
+    throw new ConfirmationRequired('Ada perkara yang perlu disahkan sebelum tempahan dibuat.', spellingWarnings);
+  }
 
   // ── Handle Customer (Preflight read only) ──
   let customer;

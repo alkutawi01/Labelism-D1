@@ -143,7 +143,11 @@
         result.innerHTML = `<div class="msg error">${res.humanCode} -- already scanned into this intake.</div>`;
       } else {
         const context = res.orderReference ? ` -- from Order ${res.orderReference}${res.customerName ? ` (${res.customerName})` : ''}` : ' -- no order on record';
-        const dispatchNote = res.expected ? 'Expected return (was previously dispatched).' : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.';
+        const dispatchNote = res.expected
+          ? 'Expected return (was previously dispatched).'
+          : res.alreadyReturned
+          ? 'UNEXPECTED -- this unit was already returned and has not been dispatched again since. Verify before accepting.'
+          : 'UNEXPECTED -- this unit was never dispatched. Verify before accepting.';
         const mismatchNote = res.customerMismatch ? ` This unit belongs to ${res.customerName || 'a different customer'}, not this intake's customer -- verify who is actually returning it.` : '';
         const shipmentConflictNote = res.activeShipmentConflict ? ` CONFLICT -- this unit is still packed in Shipment "${res.activeShipmentConflict}", which hasn't dispatched yet. Someone else may be actively working this unit -- check before that shipment ships.` : '';
         result.innerHTML = `<div class="msg ${res.expected && !res.customerMismatch && !res.activeShipmentConflict ? 'ok' : 'error'}">${res.humanCode} · ${res.product}${context}. ${dispatchNote}${mismatchNote}${shipmentConflictNote}</div>`;
