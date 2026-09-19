@@ -10,62 +10,64 @@
        label printer actually loads -- one physical label per printed
        page, not a grid on A4. @page size is set dynamically per the
        selected size (see script below). */
+    /* The label FACE is the physical label. It is drawn at its real size (mm)
+       on screen and on paper, so what is checked here is what is printed.
+       Everything else inside .label (status, buttons) is screen-only.
+       The garment name is the primary element (mandatory on the label), so it
+       gets its own row, is never clamped away, and shrinks in steps until it fits. */
+    :root { --label-w: 60mm; --label-h: 40mm; --label-u: 53.3mm; }
+    .lbl-face {
+      box-sizing: border-box; width: var(--label-w); height: var(--label-h);
+      padding: calc(var(--label-u) * .04); overflow: hidden;
+      display: flex; flex-direction: column; justify-content: center; gap: calc(var(--label-u) * .02);
+      background: #fff; color: #000; text-align: left; line-height: 1.1;
+    }
+    .lbl-name { flex: 0 0 auto; text-align: center; font-weight: 800; line-height: 1.08; overflow-wrap: anywhere; }
+    .lbl-name.n1 { font-size: calc(var(--label-u) * .125); }
+    .lbl-name.n2 { font-size: calc(var(--label-u) * .095); }
+    .lbl-name.n3 { font-size: calc(var(--label-u) * .075); }
+    .lbl-name.n4 { font-size: calc(var(--label-u) * .065); }
+    .lbl-name.n5 { font-size: calc(var(--label-u) * .056); }
+    .lbl-name.n6 { font-size: calc(var(--label-u) * .049); }
+    .lbl-row { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; gap: calc(var(--label-u) * .03); }
+    .lbl-row .qr { flex: 0 0 auto; display: flex; margin: 0; }
+    .lbl-row .qr img, .lbl-row .qr canvas { display: block; }
+    .lbl-text { flex: 1 1 auto; min-width: 0; max-height: 100%; overflow: hidden; font-size: calc(var(--label-u) * .05); line-height: 1.12; }
+    .lbl-clamp1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbl-clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .lbl-var { font-weight: 800; font-size: 1.15em; }
+    .lbl-code { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
     @media print {
       .no-print { display: none !important; }
       body { max-width: none; padding: 0; margin: 0 !important; }
       .page { max-width: none; padding: 0; margin: 0; }
       .label-grid { display: block; }
       .label {
-        border: none;
-        border-radius: 0;
-        page-break-after: always;
-        width: var(--label-w);
-        height: var(--label-h);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2mm;
+        border: none; border-radius: 0; padding: 0; background: none;
+        page-break-after: always; width: var(--label-w); height: var(--label-h); display: block;
       }
       .label:last-child { page-break-after: auto; }
       .label.confirmed { display: none !important; }
+      .label .lbl-face { border: none; }
 
-      /* A4 sheet mode: many labels per page, cut by hand -- for testing
-         before a thermal printer/driver is set up. Dashed border doubles
-         as a cut guide. */
-      body.print-a4 .label-grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8mm; }
-      body.print-a4 .label {
-        width: auto; height: auto;
-        page-break-after: auto;
-        page-break-inside: avoid;
-        border: 1px dashed #999;
-        border-radius: 0;
-        padding: 4mm;
-      }
+      /* A4 sheet mode: many labels per page, cut by hand (for testing before a
+         thermal printer/driver is set up). The dashed outline is the cut guide. */
+      body.print-a4 .label-grid { display: grid !important; grid-template-columns: repeat(3, var(--label-w)); gap: 4mm; }
+      body.print-a4 .label { width: auto; height: auto; page-break-after: auto; page-break-inside: avoid; }
+      body.print-a4 .label .lbl-face { outline: 1px dashed #999; }
     }
     .label-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--label-w) + 28px), 1fr));
       gap: 12px;
-      margin-top: 20px;
+      margin-top: 14px;
     }
-    .label {
-      border: 1px dashed var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      text-align: center;
-      background: var(--surface);
-    }
-    .label .context { font-size: 9px; color: var(--muted); line-height: 1.15; margin-bottom: 3px; }
-    .label .product { font-size: 10px; color: var(--muted); line-height: 1.2; }
-    .label .variant { font-size: 12px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
-    .label .qr { display: flex; justify-content: center; margin: 6px 0; }
-    .label .code { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .label .status { font-size: 11px; color: var(--muted); }
+    .label { border: 1px dashed var(--line); border-radius: 6px; padding: 10px; text-align: center; background: var(--surface); display: flex; flex-direction: column; align-items: center; }
+    .label .lbl-face { border: 1px solid var(--line-strong); }
+    .label .status { font-size: 11px; color: var(--muted); margin-top: 6px; }
     .label button { width: 100%; margin-top: 6px; padding: 6px; font-size: 12px; }
     .label.confirmed { border-style: solid; border-color: var(--ok); }
-    .label-grid { margin-top: 14px; }
-    .label button { font-size: 12px; padding: 6px; }
 
     /* Screen-only layout. Cards, buttons, tables and messages come from style.css. */
     .picker-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; }
@@ -210,10 +212,32 @@
 
     const SIZES = {
       '40x30': { w: 40, h: 30, qr: 60 },
-      '50x30': { w: 50, h: 30, qr: 70 },
-      '60x40': { w: 60, h: 40, qr: 90 },
+      '50x30': { w: 50, h: 30, qr: 60 },
+      '60x40': { w: 60, h: 40, qr: 80 },
       'a4': { a4: true, qr: 110 },
     };
+
+    // Name size by length; fitNames() then shrinks any name that still does not
+    // fit its row, so a long student name is never cut off the label.
+    function nameClass(name) {
+      const n = String(name).length;
+      return n <= 14 ? 'n1' : n <= 24 ? 'n2' : n <= 40 ? 'n3' : 'n4';
+    }
+    function fitNames(root) {
+      root.querySelectorAll('.lbl-face').forEach((face) => {
+        const name = face.querySelector('.lbl-name');
+        if (!name) return;
+        const text = face.querySelector('.lbl-text');
+        let step = Number((name.className.match(/n(\d)/) || [])[1] || 1);
+        // Shrink the name (never the QR or the code line) until the face and the
+        // text column both fit.
+        while (step < 6 && (face.scrollHeight > face.clientHeight + 1 || text.scrollHeight > text.clientHeight + 1)) {
+          name.classList.remove('n' + step);
+          step += 1;
+          name.classList.add('n' + step);
+        }
+      });
+    }
 
     function applyPageSize() {
       const s = SIZES[sizeSelect.value];
@@ -225,12 +249,12 @@
       }
       if (s.a4) {
         document.body.classList.add('print-a4');
-        styleTag.textContent = `@page { size: A4; margin: 10mm; }`;
+        styleTag.textContent = `@page { size: A4; margin: 10mm; } :root { --label-w: 60mm; --label-h: 40mm; --label-u: 53.3mm; }`;
       } else {
         document.body.classList.remove('print-a4');
         styleTag.textContent = `
           @page { size: ${s.w}mm ${s.h}mm; margin: 0; }
-          :root { --label-w: ${s.w}mm; --label-h: ${s.h}mm; }
+          :root { --label-w: ${s.w}mm; --label-h: ${s.h}mm; --label-u: ${Math.min(s.w, s.h * 4 / 3)}mm; }
         `;
       }
     }
@@ -558,12 +582,19 @@
         cell.id = `label-cell-${u.id}`;
         cell.className = 'label' + (u.label_confirmed_at ? ' confirmed' : '');
         cell.innerHTML = `
-          <div class="context" style="font-weight:600;color:var(--navy);">${esc(currentRun.customer_name)} · ${esc(currentRun.order_reference)}</div>
-          <div class="context" style="font-weight:600;">Cetakan ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
-          <div class="product">${esc(u.product_name)}</div><div class="variant">${esc(u.variant_label)}</div>
-          ${u.recipient_name ? `<div class="variant" style="color:var(--navy);font-size:11px;font-weight:600;margin-top:2px;">Nama: ${esc(u.recipient_name)}</div>` : ''}
-          <div class="qr" id="qr-${u.id}"></div>
-          <div class="code">UNIT ${esc(u.human_code)}</div>
+          <div class="lbl-face">
+            ${u.recipient_name ? `<div class="lbl-name ${nameClass(u.recipient_name)}">${esc(u.recipient_name)}</div>` : ''}
+            <div class="lbl-row">
+              <div class="qr" id="qr-${u.id}"></div>
+              <div class="lbl-text">
+                <div class="lbl-clamp1 lbl-var">${esc(u.variant_label)}</div>
+                <div class="lbl-code">UNIT ${esc(u.human_code)}</div>
+                <div class="lbl-clamp2"><strong>${esc(currentRun.customer_name)}</strong> · ${esc(currentRun.order_reference)}</div>
+                <div class="${u.group_label ? 'lbl-clamp2' : 'lbl-clamp1'}">Cetakan ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
+                <div class="lbl-clamp1">${esc(u.product_name)}</div>
+              </div>
+            </div>
+          </div>
           <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : 'Belum Ditampal'}</div>
           ${u.label_confirmed_at ? `
             <button class="no-print" disabled>Disahkan</button>
@@ -590,6 +621,8 @@
           height: qrSize,
         });
       });
+
+      fitNames(grid);
 
       grid.querySelectorAll('button[data-action="confirm"]').forEach((btn) => {
         btn.addEventListener('click', async () => {
