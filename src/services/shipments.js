@@ -15,6 +15,41 @@ import { newInternalId, buildEventBatch } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
 import { getOrCreateLocation } from './catalog.js';
 
+// What other shipments of an order line already account for. An OPEN shipment
+// holds its planned quantity; a CLOSED or DISPATCHED one holds only the units
+// actually in it (a shipment closed short does not keep holding the balance it
+// never packed). Cancelled shipments hold nothing. Shared by the SQL guard in
+// createShipment and the read-only check used when packing starts.
+const committedSql = (lineParam, excludeParam) => `
+  SELECT COALESCE(SUM(
+           CASE WHEN s.status = 'OPEN' THEN s.planned_quantity
+                ELSE (SELECT COUNT(*) FROM shipment_units su WHERE su.shipment_id = s.id) END), 0)
+  FROM shipments s
+  WHERE s.order_line_id = ${lineParam} AND s.status != 'CANCELLED' AND s.id != ${excludeParam}`;
+
+// Outstanding obligation of an order line: what the order still requires that no
+// other shipment has taken. Today the target is quantity_ordered; when order
+// amendments exist it becomes quantity_ordered + net amendments (the original
+// is never rewritten).
+export async function getOutstandingForLine(db, orderLineId, excludeShipmentId = '') {
+  const row = await db
+    .prepare(`SELECT ol.quantity_ordered AS target, (${committedSql('?1', '?2')}) AS committed
+             FROM order_lines ol WHERE ol.id = ?1`)
+    .bind(orderLineId, excludeShipmentId)
+    .first();
+  if (!row) return null;
+  return { target: Number(row.target), committed: Number(row.committed), outstanding: Number(row.target) - Number(row.committed) };
+}
+
+function overPlanMessage(planned, o) {
+  return `Planned ${planned} melebihi baki tertunggak ${Math.max(o.outstanding, 0)} untuk baris order ini (ditempah ${o.target}, sudah dirancang/dipek/dihantar ${o.committed}). Naikkan kuantiti order melalui pindaan dahulu jika memang perlu.`;
+}
+
+export async function assertPlannedWithinOutstanding(db, orderLineId, plannedQuantity, excludeShipmentId = '') {
+  const o = await getOutstandingForLine(db, orderLineId, excludeShipmentId);
+  if (o && plannedQuantity > o.outstanding) throw new ValidationError(overPlanMessage(plannedQuantity, o));
+}
+
 export async function createShipment(db, { orderLineId, reference, plannedQuantity }) {
   if (!orderLineId || !reference) throw new ValidationError('orderLineId and reference are required.');
   if (!Number.isInteger(plannedQuantity) || plannedQuantity < 1) {
@@ -23,11 +58,21 @@ export async function createShipment(db, { orderLineId, reference, plannedQuanti
   const line = await db.prepare('SELECT id FROM order_lines WHERE id = ?').bind(orderLineId).first();
   if (!line) return { notFound: true };
 
+  // The guard lives in the INSERT itself so two shipments created at the same
+  // moment cannot each plan the same remaining balance.
   const id = newInternalId();
-  await db
-    .prepare('INSERT INTO shipments (id, order_line_id, reference, planned_quantity) VALUES (?, ?, ?, ?)')
+  const inserted = await db
+    .prepare(
+      `INSERT INTO shipments (id, order_line_id, reference, planned_quantity)
+       SELECT ?1, ?2, ?3, ?4
+       WHERE ?4 <= (SELECT quantity_ordered FROM order_lines WHERE id = ?2) - (${committedSql('?2', '?1')})`
+    )
     .bind(id, orderLineId, reference, plannedQuantity)
     .run();
+  if (!inserted.meta || inserted.meta.changes === 0) {
+    const o = await getOutstandingForLine(db, orderLineId);
+    throw new ValidationError(overPlanMessage(plannedQuantity, o));
+  }
   return { id, orderLineId, reference, plannedQuantity, status: 'OPEN' };
 }
 

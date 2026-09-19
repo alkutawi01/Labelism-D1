@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 25 acceptance tests against a live local wrangler dev server.
+ * Runs 26 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -1086,6 +1086,40 @@ await run('Test 25 – Butiran shows returned units and how many are still with 
   // A unit scanned into a still-open intake already counts: it is physically back.
   const ev = await api(`/api/units/lookup/${units[0].internal_token}`);
   assert(ev.body.events.some((e) => e.event_type === 'RETURN_RECEIVED'), 'return event recorded');
+});
+
+await run('Test 26 – Shipment planned quantity cannot exceed the outstanding obligation of the order line', async () => {
+  const product = `T26-Product-${Date.now()}`;
+  const { orderId } = await makeOrder('T26', [{ productName: product, variantLabel: 'Saiz M', quantity: 100, batches: null }]);
+  const lineId = (await api(`/api/orders/${orderId}/reconciliation`)).body.lines[0].order_line_id;
+  const ship = (planned, ref) => api('/api/shipments', { method: 'POST', body: { orderLineId: lineId, reference: ref, plannedQuantity: planned } });
+
+  const over = await ship(103, 'T26-over');
+  assert(over.status === 400 && /100/.test(over.body.error) && /103/.test(over.body.error), `103 for 100 must fail with the real balance: ${JSON.stringify(over.body)}`);
+  assert((await api(`/api/order-lines/${lineId}/shipments`)).body.length === 0, 'A refused shipment must leave nothing behind');
+
+  // Exactly the whole balance is fine, but then nothing is left for another shipment.
+  const first = await ship(60, 'T26-a');
+  assert(first.status === 201, `60 of 100 must work: ${JSON.stringify(first.body)}`);
+  const tooMuch = await ship(41, 'T26-b');
+  assert(tooMuch.status === 400 && /40/.test(tooMuch.body.error), `41 with only 40 left must fail naming 40: ${JSON.stringify(tooMuch.body)}`);
+  assert((await ship(40, 'T26-c')).status === 201, 'the remaining 40 must work');
+  assert((await ship(1, 'T26-d')).status === 400, 'nothing is left after 100 are planned');
+
+  // Two shipments created at the same moment cannot both take the same balance.
+  const { orderId: o2 } = await makeOrder('T26r', [{ productName: product, variantLabel: 'Saiz L', quantity: 10, batches: null }]);
+  const l2 = (await api(`/api/orders/${o2}/reconciliation`)).body.lines[0].order_line_id;
+  const race = await Promise.all([1, 2, 3, 4].map((i) => api('/api/shipments', { method: 'POST', body: { orderLineId: l2, reference: `T26-r${i}`, plannedQuantity: 6 } })));
+  assert(race.filter((r) => r.status === 201).length === 1, `Only one of four simultaneous 6-of-10 shipments may win: ${race.map((r) => r.status)}`);
+
+  // A shipment closed short releases the balance it never packed.
+  const { orderId: o3, rows } = await makeOrder('T26s', [{ productName: product, variantLabel: 'Saiz S', quantity: 5, batches: null }]);
+  const l3 = (await api(`/api/orders/${o3}/reconciliation`)).body.lines[0].order_line_id;
+  const s = await api('/api/shipments', { method: 'POST', body: { orderLineId: l3, reference: 'T26-short', plannedQuantity: 5 } });
+  assert(s.status === 201, 'plan all 5');
+  await api(`/api/shipments/${s.body.id}/close`, { method: 'POST', body: {} }); // packed 0 of 5
+  const again = await api('/api/shipments', { method: 'POST', body: { orderLineId: l3, reference: 'T26-again', plannedQuantity: 5 } });
+  assert(again.status === 201, `A shipment closed with 0 packed must not keep holding its plan: ${JSON.stringify(again.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -381,6 +381,7 @@ sessions[6] = async () => {
   for (const [label, fn] of tries) {
     const r = await fn();
     say(`   ${String(r.status).padEnd(4)} ${label}\n           -> ${r.status < 300 ? 'diterima' : err(r)}`);
+    if (label.startsWith('cipta shipment') && r.status >= 400) ok('shipment planned 103 untuk baris 100 ditolak: ' + err(r).slice(0, 120));
     if (label.startsWith('cipta shipment') && r.status < 300) temuan('TINGGI', 'Shipment dengan planned 103 dicipta untuk baris 100 unit', 'Tiada semakan planned > ditempah; angka 103 boleh dilihat sebagai sasaran tanpa 3 unit itu wujud sebagai identiti.');
   }
   // the dispatch/close view: is there any place recording "3 extra"?

@@ -8,7 +8,7 @@
 // printing part of an order no longer makes packing think the rest is missing.
 import { newInternalId } from '../db/d1.js';
 import { ValidationError } from '../domain/validation.js';
-import { scanUnitIntoShipment } from './shipments.js';
+import { scanUnitIntoShipment, assertPlannedWithinOutstanding } from './shipments.js';
 
 // A unit counts as packed if it sits in a shipment of this run, or in any
 // shipment that has not been dispatched (packed the old way, before runs).
@@ -270,11 +270,15 @@ export async function startRunPacking(db, runId) {
       .prepare("SELECT id FROM shipments WHERE print_run_id = ? AND order_line_id = ? AND status = 'OPEN'")
       .bind(runId, line.order_line_id)
       .first();
+    // Packing plans real units, so this should always hold; it is checked so an
+    // over-plan can never slip in through this path either.
+    if (!existing) await assertPlannedWithinOutstanding(db, line.order_line_id, Number(line.unpacked), '');
     if (existing) {
       const { scanned } = await db
         .prepare('SELECT COUNT(*) AS scanned FROM shipment_units WHERE shipment_id = ?')
         .bind(existing.id)
         .first();
+      await assertPlannedWithinOutstanding(db, line.order_line_id, Number(scanned) + Number(line.unpacked), existing.id);
       statements.push(
         db
           .prepare('UPDATE shipments SET planned_quantity = ? WHERE id = ?')
