@@ -5,54 +5,54 @@
   <title>Scan Packing — Labelism</title>
   <link rel="stylesheet" href="/style.css">
   <style>
-    .packing-intro { max-width: 760px; font-size: 15px; line-height: 1.55; }
-    .start-card { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-    .start-card button { font-size: 17px; padding: 12px 18px; }
-    .scan-box { border: 2px solid var(--navy); border-radius: 10px; padding: 18px; margin-top: 20px; }
+    /* Cards, buttons, tables and messages come from style.css. */
+    .select-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .start-card { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .scan-box { border-color: var(--brand); border-width: 2px; }
+    .scan-box .stats { margin-bottom: 16px; }
     .scan-box input { font-size: 20px; padding: 13px; }
-    .scan-box button[type="submit"] { font-size: 17px; padding: 12px 18px; }
-    .run-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
-    .run-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
-    .run-table td { padding: 8px; border-bottom: 1px solid var(--line); }
+    .scan-box form { max-width: none; margin-top: 4px; }
+    .scan-box form button { margin-top: 10px; }
+    .run-table { margin-top: 14px; }
     .run-table th.num, .run-table td.num { text-align: right; }
-    .run-table td.short { color: #b91c1c; font-weight: 700; }
-    .run-table td.full { color: #166534; font-weight: 700; }
-    .run-table .variant-cell { font-weight: 700; }
+    .run-table td.short { color: var(--bad); font-weight: 700; }
+    .run-table td.full { color: var(--ok); font-weight: 700; }
+    .run-table .variant-cell { font-weight: 600; }
+    @media (max-width: 720px) { .select-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="page">
   <header class="page-header">
     <h1>Scan Masa Packing</h1>
-    <p class="muted packing-intro">Pilih batch yang sedang dibungkus, kemudian scan setiap label. Sistem cuma menjangka label yang dicetak dalam batch itu, dan terus menunjukkan berapa yang sudah discan dan berapa yang masih kurang.</p>
+    <p class="muted">Pilih batch yang sedang dibungkus, kemudian scan setiap label. Sistem cuma menjangka label yang dicetak dalam batch itu, dan terus menunjukkan berapa yang sudah discan dan berapa yang masih kurang.</p>
   </header>
 
-  <fieldset>
-    <legend>1. Pilih Batch untuk Packing</legend>
-    <label>Customer
-      <select id="customer-select"><option value="">Memuatkan…</option></select>
-    </label>
-    <label>No. Tempahan / Invois
-      <select id="invoice-select"><option value="">Pilih customer dahulu</option></select>
-    </label>
-    <label>Batch
-      <select id="batch-select"><option value="">Pilih tempahan dahulu</option></select>
-    </label>
-    <div id="run-summary" class="muted"></div>
-    <table class="run-table" id="run-table" hidden>
+  <div class="section">
+    <h2 class="section-title">1. Pilih batch untuk packing</h2>
+    <div class="select-grid" style="margin-top:10px;">
+      <div class="field"><label for="customer-select">Customer</label>
+        <select id="customer-select"><option value="">Memuatkan…</option></select></div>
+      <div class="field"><label for="invoice-select">No. tempahan / invois</label>
+        <select id="invoice-select"><option value="">Pilih customer dahulu</option></select></div>
+      <div class="field"><label for="batch-select">Batch</label>
+        <select id="batch-select"><option value="">Pilih tempahan dahulu</option></select></div>
+    </div>
+    <div id="run-summary" class="muted" style="margin-top:10px;"></div>
+    <table class="data-table run-table" id="run-table" hidden>
       <thead><tr><th>Produk</th><th>Variasi</th><th class="num">Sepatutnya</th><th class="num">Sudah discan</th><th class="num">Masih kurang</th></tr></thead>
       <tbody id="run-table-body"></tbody>
     </table>
     <div class="start-card">
       <div id="selected-batch-summary" class="muted">Pilih tempahan dan batch dahulu.</div>
-      <button type="button" id="start-packing-btn" disabled>Mula Scan Packing</button>
+      <button type="button" id="start-packing-btn" class="btn-primary btn-lg" disabled>Mula scan packing</button>
     </div>
-  </fieldset>
+  </div>
 
   <div id="shipment-result"></div>
 
-  <fieldset id="scan-section" class="scan-box" hidden>
-    <legend>2. Scan Semua Label</legend>
+  <div id="scan-section" class="section scan-box" hidden>
+    <h2 class="section-title" style="margin-bottom:12px;">2. Scan semua label</h2>
     <div class="stats" id="shipment-stats">
       <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Sepatutnya</div></div>
       <div class="stat"><div class="value" id="s-packed">0</div><div class="label">Sudah Discan</div></div>
@@ -62,12 +62,12 @@
       <label>Scan label pada unit yang sedang dimasukkan ke dalam bungkusan
         <input name="code" autofocus autocomplete="off" placeholder="Imbas QR di sini…" required>
       </label>
-      <button type="submit">Scan Label untuk Packing</button>
+      <button type="submit" class="btn-primary btn-lg">Scan label untuk packing</button>
     </form>
     <div id="scan-result"></div>
-    <button id="close-btn" class="secondary" style="margin-top:16px">Selesai Packing &amp; Semak Kekurangan</button>
+    <button id="close-btn" class="btn-secondary" style="margin-top:16px">Selesai packing &amp; semak kekurangan</button>
     <div id="close-result"></div>
-  </fieldset>
+  </div>
   </div>
 
   <script src="/nav.js"></script>
