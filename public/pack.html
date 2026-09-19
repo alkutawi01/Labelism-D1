@@ -1,86 +1,103 @@
 <!doctype html>
-<html lang="ms">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Scan Packing — Labelism</title>
+  <title>Packing — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
   <style>
-    /* Cards, buttons, tables and messages come from style.css. */
-    .select-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-    .start-card { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-    .scan-box { border-color: var(--brand); border-width: 2px; }
-    .scan-box .stats { margin-bottom: 16px; }
-    .scan-box input { font-size: 20px; padding: 13px; }
-    .scan-box form { max-width: none; margin-top: 4px; }
-    .scan-box form button { margin-top: 10px; }
-    .run-table { margin-top: 14px; }
-    .run-table th.num, .run-table td.num { text-align: right; }
-    .run-table td.short { color: var(--bad); font-weight: 700; }
-    .run-table td.full { color: var(--ok); font-weight: 700; }
-    .run-table .variant-cell { font-weight: 600; }
-    @media (max-width: 720px) { .select-grid { grid-template-columns: 1fr; } }
+    /* Layout only; look and feel comes from style.css. */
+    .select-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+    .start-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-4); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+    .scan-box { border: 2px solid var(--brand); }
+    .scan-input { font-size: 20px; min-height: var(--control-h-lg); }
+    .last-scan { margin-top: var(--sp-4); padding: var(--sp-4) var(--sp-5); border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+    .last-scan.ok { background: var(--ok-soft); border-color: var(--ok-line); }
+    .last-scan.error { background: var(--bad-soft); border-color: var(--bad-line); }
+    .last-scan .kicker { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .last-scan .big { font-size: 28px; font-weight: 800; line-height: 1.15; margin: 2px 0 4px; overflow-wrap: anywhere; }
+    .last-scan .detail { font-size: var(--fs-base); }
+    .last-scan.ok .kicker { color: var(--ok); }
+    .last-scan.error .kicker, .last-scan.error .big { color: var(--bad); }
+    .last-scan.error .big { font-size: var(--fs-lg); font-weight: 700; }
+    .progress-line { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); }
+    .progress-line .progress { flex: 1; }
+    .missing-list { margin: 8px 0 0; padding-left: 18px; }
+    @media (max-width: 760px) { .select-grid { grid-template-columns: minmax(0, 1fr); } .last-scan .big { font-size: 24px; } }
   </style>
 </head>
 <body>
   <div class="page">
-  <header class="page-header">
-    <h1>Scan Masa Packing</h1>
-    <p class="muted">Pilih cetakan yang sedang dibungkus, kemudian scan setiap label. Sistem cuma menjangka label yang dicetak dalam cetakan itu, dan terus menunjukkan berapa yang sudah discan dan berapa yang masih kurang.</p>
-  </header>
+    <header class="page-header">
+      <div>
+        <h1>Packing</h1>
+        <p class="muted">Choose the print run being packed, then scan every label as garments go into the parcel. Labelism only expects the labels of that print run, and shows what is still missing.</p>
+      </div>
+    </header>
 
-  <div class="section">
-    <h2 class="section-title">1. Pilih cetakan untuk packing</h2>
-    <div class="select-grid" style="margin-top:10px;">
-      <div class="field"><label for="customer-select">Customer</label>
-        <select id="customer-select"><option value="">Memuatkan…</option></select></div>
-      <div class="field"><label for="invoice-select">No. tempahan / invois</label>
-        <select id="invoice-select"><option value="">Pilih customer dahulu</option></select></div>
-      <div class="field"><label for="batch-select">Cetakan</label>
-        <select id="batch-select"><option value="">Pilih tempahan dahulu</option></select></div>
-    </div>
-    <div id="run-summary" class="muted" style="margin-top:10px;"></div>
-    <table class="data-table run-table" id="run-table" hidden>
-      <thead><tr><th>Produk</th><th>Variasi</th><th class="num">Sepatutnya</th><th class="num">Sudah discan</th><th class="num">Masih kurang</th></tr></thead>
-      <tbody id="run-table-body"></tbody>
-    </table>
-    <div class="start-card">
-      <div id="selected-batch-summary" class="muted">Pilih tempahan dan cetakan dahulu.</div>
-      <button type="button" id="start-packing-btn" class="btn-primary btn-lg" disabled>Mula scan packing</button>
-    </div>
+    <ol class="steps no-print" aria-label="Workflow">
+      <li class="is-done">Order</li><li class="is-done">Print</li><li class="is-done">Attach</li><li class="is-current">Pack</li>
+    </ol>
+
+    <section class="section">
+      <h2 class="section-title">1. Choose a print run</h2>
+      <div class="select-grid mt-3">
+        <div class="field"><label for="customer-select">Customer</label>
+          <select id="customer-select"><option value="">Loading…</option></select></div>
+        <div class="field"><label for="invoice-select">Order</label>
+          <select id="invoice-select"><option value="">Choose a customer first</option></select></div>
+        <div class="field"><label for="batch-select">Print run</label>
+          <select id="batch-select"><option value="">Choose an order first</option></select></div>
+      </div>
+
+      <div id="run-summary" class="muted mt-3"></div>
+      <div class="table-wrap">
+        <table class="data-table" id="run-table" hidden>
+          <thead><tr><th>Product</th><th>Variant</th><th class="num">Expected</th><th class="num">Scanned</th><th class="num">Missing</th></tr></thead>
+          <tbody id="run-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="start-row">
+        <div id="selected-batch-summary" class="muted">Choose an order and a print run first.</div>
+        <button type="button" id="start-packing-btn" class="btn-primary btn-lg" disabled>Start packing</button>
+      </div>
+    </section>
+
+    <div id="shipment-result"></div>
+
+    <section id="scan-section" class="section scan-box" hidden>
+      <h2 class="section-title">2. Scan every label</h2>
+      <div class="stats mt-3" id="shipment-stats">
+        <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Expected</div></div>
+        <div class="stat is-ok"><div class="value" id="s-packed">0</div><div class="label">Scanned</div></div>
+        <div class="stat is-warn"><div class="value" id="s-missing">0</div><div class="label">Still missing</div></div>
+      </div>
+      <div class="progress-line"><div class="progress" id="scan-progress"><span style="width:0%"></span></div><span class="muted nowrap" id="scan-progress-text">0%</span></div>
+
+      <form id="scan-form" class="wide mt-4">
+        <label for="scan-code">Scan the label on the garment going into the parcel</label>
+        <input id="scan-code" class="scan-input" name="code" autofocus autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="Scan the QR code here…" required>
+        <button type="submit" class="btn-primary btn-lg">Add to parcel</button>
+      </form>
+      <div id="scan-result" aria-live="polite"></div>
+
+      <div class="actions"><button id="close-btn" class="btn-secondary" type="button">Finish packing and check what is missing</button></div>
+      <div id="close-result"></div>
+    </section>
   </div>
 
-  <div id="shipment-result"></div>
-
-  <div id="scan-section" class="section scan-box" hidden>
-    <h2 class="section-title" style="margin-bottom:12px;">2. Scan semua label</h2>
-    <div class="stats" id="shipment-stats">
-      <div class="stat"><div class="value" id="s-planned">0</div><div class="label">Sepatutnya</div></div>
-      <div class="stat"><div class="value" id="s-packed">0</div><div class="label">Sudah Discan</div></div>
-      <div class="stat"><div class="value" id="s-missing">0</div><div class="label">Masih Kurang</div></div>
-    </div>
-    <form id="scan-form">
-      <label>Scan label pada unit yang sedang dimasukkan ke dalam bungkusan
-        <input name="code" autofocus autocomplete="off" placeholder="Imbas QR di sini…" required>
-      </label>
-      <button type="submit" class="btn-primary btn-lg">Scan label untuk packing</button>
-    </form>
-    <div id="scan-result"></div>
-    <button id="close-btn" class="btn-secondary" style="margin-top:16px">Selesai packing &amp; semak kekurangan</button>
-    <div id="close-result"></div>
-  </div>
-  </div>
-
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
-    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const esc = UI.esc;
     let ordersList = [];
     let overview = null;
     let currentRunId = null;
     let currentStatus = null;
 
-    // Real-world habit is hierarchical -- find the customer's folder, then the
-    // invoice inside it, then the batch being shipped -- so three cascading
-    // selects match that search order instead of one long flat list.
+    // Staff look for the customer first, then the order, then the print run being
+    // shipped, so three cascading selects match how people actually search.
     async function loadCustomers() {
       ordersList = await fetch('/api/print-orders').then((r) => r.json());
       // Only orders with at least one printed label can be packed.
@@ -89,10 +106,10 @@
       packable.forEach((o) => { if (!customers.has(o.customer_id)) customers.set(o.customer_id, o.customer_name); });
       const select = document.getElementById('customer-select');
       select.innerHTML = customers.size
-        ? '<option value="">Pilih customer…</option>' + [...customers].map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('')
-        : '<option value="">Belum ada cetakan yang dicetak</option>';
+        ? '<option value="">Choose a customer…</option>' + [...customers].map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('')
+        : '<option value="">No print runs yet</option>';
 
-      // Deep link from Cetak & Tampal: ?runId=
+      // Deep link from Print & Attach: ?runId=
       const runId = new URLSearchParams(location.search).get('runId');
       if (runId) {
         const run = await fetch(`/api/print-runs/${runId}`).then((r) => r.json());
@@ -112,17 +129,17 @@
       document.getElementById('run-summary').textContent = '';
       document.getElementById('start-packing-btn').disabled = true;
       document.getElementById('scan-section').hidden = true;
-      document.getElementById('selected-batch-summary').textContent = 'Pilih tempahan dan cetakan dahulu.';
+      document.getElementById('selected-batch-summary').textContent = 'Choose an order and a print run first.';
     }
 
     function updateInvoiceOptions(preferOrderId) {
       const customerId = document.getElementById('customer-select').value;
       const select = document.getElementById('invoice-select');
       resetRun();
-      document.getElementById('batch-select').innerHTML = '<option value="">Pilih tempahan dahulu</option>';
-      if (!customerId) { select.innerHTML = '<option value="">Pilih customer dahulu</option>'; return; }
+      document.getElementById('batch-select').innerHTML = '<option value="">Choose an order first</option>';
+      if (!customerId) { select.innerHTML = '<option value="">Choose a customer first</option>'; return; }
       const orders = ordersList.filter((o) => o.customer_id === customerId && o.total_units - o.unprinted_units > 0);
-      select.innerHTML = '<option value="">Pilih tempahan…</option>' +
+      select.innerHTML = '<option value="">Choose an order…</option>' +
         orders.map((o) => `<option value="${o.id}">${esc(o.order_reference)}</option>`).join('');
       if (preferOrderId) select.value = preferOrderId;
     }
@@ -131,11 +148,11 @@
       const orderId = document.getElementById('invoice-select').value;
       const select = document.getElementById('batch-select');
       resetRun();
-      if (!orderId) { select.innerHTML = '<option value="">Pilih tempahan dahulu</option>'; return; }
+      if (!orderId) { select.innerHTML = '<option value="">Choose an order first</option>'; return; }
       overview = await fetch(`/api/orders/${orderId}/print-overview`).then((r) => r.json());
-      select.innerHTML = '<option value="">Pilih cetakan…</option>' + overview.runs.map((r) => {
-        const state = r.packed_count >= r.label_count ? 'siap discan' : `${r.packed_count}/${r.label_count} discan`;
-        return `<option value="${r.id}">Cetakan ${r.run_number} · ${r.label_count} label · ${state}</option>`;
+      select.innerHTML = '<option value="">Choose a print run…</option>' + overview.runs.map((r) => {
+        const state = r.packed_count >= r.label_count ? 'fully scanned' : `${r.packed_count}/${r.label_count} scanned`;
+        return `<option value="${r.id}">Print run ${r.run_number} · ${r.label_count} labels · ${state}</option>`;
       }).join('');
       if (preferRunId && overview.runs.some((r) => r.id === preferRunId)) {
         select.value = preferRunId;
@@ -151,21 +168,25 @@
     }
 
     function renderTable(status) {
-      const table = document.getElementById('run-table');
-      table.hidden = false;
+      document.getElementById('run-table').hidden = false;
       document.getElementById('run-table-body').innerHTML = status.rows.map((r) => {
         const missing = r.total - r.packed;
         return `<tr>
           <td>${esc(r.product_name)}</td>
-          <td class="variant-cell">${esc(r.variant_label)}${r.group_label ? ' · ' + esc(r.group_label) : ''}</td>
+          <td><strong>${esc(r.variant_label)}</strong>${r.group_label ? ` <span class="pill neutral">${esc(r.group_label)}</span>` : ''}</td>
           <td class="num">${r.total}</td>
           <td class="num">${r.packed}</td>
-          <td class="num ${missing === 0 ? 'full' : 'short'}">${missing === 0 ? 'Cukup' : missing}</td>
+          <td class="num">${missing === 0 ? '<span class="pill ok">Complete</span>' : `<strong class="text-bad">${missing}</strong>`}</td>
         </tr>`;
       }).join('');
       document.getElementById('s-planned').textContent = status.planned;
       document.getElementById('s-packed').textContent = status.packed;
       document.getElementById('s-missing').textContent = status.missing;
+      const pct = status.planned ? Math.round((status.packed / status.planned) * 100) : 0;
+      const bar = document.getElementById('scan-progress');
+      bar.firstElementChild.style.width = pct + '%';
+      bar.classList.toggle('is-ok', status.missing === 0);
+      document.getElementById('scan-progress-text').textContent = `${status.packed} of ${status.planned}`;
     }
 
     async function refreshStatus() {
@@ -174,12 +195,12 @@
       currentStatus = status;
       renderTable(status);
       const btn = document.getElementById('start-packing-btn');
-      const label = `${status.run.customer_name} · ${status.run.order_reference} · Cetakan ${status.run.run_number}`;
+      const label = `${status.run.customer_name} · ${status.run.order_reference} · Print run ${status.run.run_number}`;
       document.getElementById('selected-batch-summary').textContent = status.missing === 0
-        ? `${label} · Semua ${status.planned} label sudah discan.`
-        : `${label} · Belum discan: ${status.missing} daripada ${status.planned}`;
+        ? `${label} · All ${status.planned} labels have been scanned.`
+        : `${label} · Not yet scanned: ${status.missing} of ${status.planned}`;
       btn.disabled = status.missing === 0;
-      btn.textContent = status.openShipments > 0 ? 'Sambung Scan Packing' : 'Mula Scan Packing';
+      btn.textContent = status.openShipments > 0 ? 'Resume packing' : 'Start packing';
       return status;
     }
 
@@ -187,25 +208,31 @@
     document.getElementById('invoice-select').addEventListener('change', () => updateBatchOptions());
     document.getElementById('batch-select').addEventListener('change', (e) => selectRun(e.target.value));
 
-    document.getElementById('start-packing-btn').addEventListener('click', async () => {
+    document.getElementById('start-packing-btn').addEventListener('click', async (e) => {
       const result = document.getElementById('shipment-result');
       result.innerHTML = '';
       try {
-        const res = await fetch(`/api/print-runs/${currentRunId}/packing/start`, {
+        const res = await UI.busy(e.currentTarget, () => fetch(`/api/print-runs/${currentRunId}/packing/start`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-        }).then((r) => r.json());
+        }).then((r) => r.json()));
         if (res.error) throw new Error(res.error);
         currentStatus = res;
         renderTable(res);
-        result.innerHTML = `<div class="msg ok">Packing dimulakan. Scan kesemua ${res.missing} label yang belum discan.</div>`;
+        result.innerHTML = `<div class="msg ok">Packing started. Scan all ${res.missing} labels that have not been scanned yet.</div>`;
         document.getElementById('scan-section').hidden = false;
         document.getElementById('scan-result').innerHTML = '';
         document.getElementById('close-result').innerHTML = '';
-        document.querySelector('#scan-form input[name="code"]').focus();
+        document.getElementById('scan-code').focus();
       } catch (err) {
         result.innerHTML = `<div class="msg error">${esc(err.message)}</div>`;
       }
     });
+
+    // The scan result names the label text first (what is printed on the garment),
+    // because the packer's job is to compare it with the garment in hand.
+    function scanCard(tone, kicker, big, detail) {
+      return `<div class="last-scan ${tone}"><div class="kicker">${esc(kicker)}</div><div class="big">${big}</div><div class="detail">${detail}</div></div>`;
+    }
 
     document.getElementById('scan-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -219,47 +246,50 @@
         });
         const res = await httpRes.json();
         if (res.error) {
-          result.innerHTML = `<div class="msg error">${esc(res.error)}</div>`;
+          result.innerHTML = scanCard('error', 'Not added', esc(res.error), '');
         } else {
-          // "Already scanned" alone reads as a harmless dedup notice; it gives
-          // no cue that a SECOND garment holding a duplicated copy of the same
-          // label would produce this exact same message. The system cannot
-          // tell those apart from a code match alone, so the wording prompts a
-          // human check instead of a passive "safe to ignore".
-          result.innerHTML = `<div class="msg ${res.alreadyScanned ? 'error' : 'ok'}">${esc(res.humanCode)} · ${esc(res.product)}${res.alreadyScanned ? ' — label ini sudah discan untuk packing. Jika ini unit fizikal yang berlainan, hentikan proses dan semak label pendua.' : ' — berjaya discan'}</div>`;
+          const text = res.labelText ? esc(res.labelText) : '<span class="muted">(no label text)</span>';
+          const detail = `${esc(res.product)}${res.groupLabel ? ' · ' + esc(res.groupLabel) : ''} · ID ${esc(res.humanCode)}`;
+          // "Already scanned" alone reads like a harmless duplicate notice, but a
+          // second garment carrying a copied label would produce this exact same
+          // message. Labelism cannot tell those apart from the code alone, so the
+          // wording asks for a human check.
+          result.innerHTML = res.alreadyScanned
+            ? scanCard('error', 'Already scanned', text, `${detail}<br>If this is a different physical garment, stop and check for a duplicate label.`)
+            : scanCard('ok', 'Added to parcel', text, detail);
           if (res.status) { currentStatus = res.status; renderTable(res.status); }
         }
       } catch (err) {
-        result.innerHTML = `<div class="msg error">Tidak dapat menghubungi server (${esc(err.message)}).</div>`;
+        result.innerHTML = scanCard('error', 'Not added', `Could not reach the server (${esc(err.message)}).`, '');
       }
       form.reset();
       form.code.focus();
     });
 
-    document.getElementById('close-btn').addEventListener('click', async () => {
-      const res = await fetch(`/api/print-runs/${currentRunId}/packing/close`, {
+    document.getElementById('close-btn').addEventListener('click', async (e) => {
+      const res = await UI.busy(e.currentTarget, () => fetch(`/api/print-runs/${currentRunId}/packing/close`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-      }).then((r) => r.json());
+      }).then((r) => r.json()));
 
       let message;
       if (res.error) {
         message = `<div class="msg error">${esc(res.error)}</div>`;
       } else if (res.missing === 0) {
-        message = `<div class="msg ok">Packing selesai. Sepatutnya ${res.planned}, discan ${res.packed} — semua unit cukup.</div>`;
+        message = `<div class="msg ok"><strong>Packing complete.</strong> Expected ${res.planned}, scanned ${res.packed}: every unit is accounted for.</div>`;
       } else {
         // Say WHY each one is short: never attached means the garment is not
-        // finished yet; attached-but-not-scanned means it is genuinely missing.
-        const list = res.missingUnits.map((m) =>
-          `${esc(m.variant_label)}${m.group_label ? ' (' + esc(m.group_label) + ')' : ''} ${esc(m.human_code)} — ${m.attached ? 'sudah ditampal tetapi tidak discan' : 'belum ditampal (belum siap)'}`
-        ).join('<br>');
-        message = `<div class="msg error">Packing selesai. Sepatutnya ${res.planned}, discan ${res.packed}, <strong>MASIH KURANG ${res.missing}</strong>:<br>${list}</div>`;
+        // finished yet; attached but not scanned means it is genuinely missing.
+        const list = res.missingUnits.map((m) => {
+          const who = m.label_text ? ` (${esc(m.label_text)})` : '';
+          return `<li>${esc(m.variant_label)}${m.group_label ? ' · ' + esc(m.group_label) : ''} · ID ${esc(m.human_code)}${who}: ${m.attached ? 'attached but not scanned' : 'not attached yet (garment not finished)'}</li>`;
+        }).join('');
+        message = `<div class="msg error"><strong>Packing finished, but ${res.missing} still missing.</strong> Expected ${res.planned}, scanned ${res.packed}.<ul class="missing-list">${list}</ul></div>`;
       }
       document.getElementById('shipment-result').innerHTML = message;
       if (!res.error) {
         document.getElementById('scan-section').hidden = true;
-        // Refresh the batch list and status so their "x/y discan" text is current.
-        const keep = currentRunId;
-        await updateBatchOptions(keep);
+        // Refresh the print-run list so its "x/y scanned" text is current.
+        await updateBatchOptions(currentRunId);
       }
     });
 

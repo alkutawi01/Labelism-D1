@@ -126,7 +126,7 @@ async function assertNotDispatched(db, unit) {
     .first();
   if (dispatched) {
     throw new ValidationError(
-      `Unit ${unit.human_code} sudah dihantar (dispatched). Label tidak boleh diganti selepas dihantar. Jika ia dipulangkan, terima melalui Pemulangan (Return Intake) dahulu.`
+      `ID ${unit.human_code} has already been dispatched. Its label cannot be replaced after dispatch. If it comes back, receive it through Returns (Return Intake) first.`
     );
   }
 }
@@ -329,14 +329,14 @@ export async function recordUnitEvent(db, unitId, { eventType, payload, actor, d
   if (!eventType) throw new ValidationError('eventType is required.');
   if (!MANUAL_EVENT_TYPES.includes(eventType)) {
     throw new ValidationError(
-      `eventType "${eventType}" tidak dibenarkan di sini. Jenis yang dibenarkan: ${MANUAL_EVENT_TYPES.join(', ')}. Event lain dicatat oleh sistem sendiri (packing, dispatch, label, pemulangan).`
+      `eventType "${eventType}" is not allowed here. Allowed types: ${MANUAL_EVENT_TYPES.join(', ')}. Other events are recorded by the system itself (packing, dispatch, labels, returns).`
     );
   }
   if (disposition !== undefined && disposition !== null && !MANUAL_DISPOSITIONS.includes(disposition)) {
-    throw new ValidationError(`disposition "${disposition}" tidak sah. Pilihan: ${MANUAL_DISPOSITIONS.join(', ')}.`);
+    throw new ValidationError(`disposition "${disposition}" is not valid. Options: ${MANUAL_DISPOSITIONS.join(', ')}.`);
   }
   if (condition !== undefined && condition !== null && !MANUAL_CONDITIONS.includes(condition)) {
-    throw new ValidationError(`condition "${condition}" tidak sah. Pilihan: ${MANUAL_CONDITIONS.join(', ')}.`);
+    throw new ValidationError(`condition "${condition}" is not valid. Options: ${MANUAL_CONDITIONS.join(', ')}.`);
   }
 
   const eventId = newInternalId();

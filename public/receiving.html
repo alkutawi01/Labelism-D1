@@ -12,12 +12,12 @@
     <p class="muted">Record what actually arrived, then register it into stock — two steps.</p>
   </header>
 
-  <fieldset style="max-width:460px">
+  <fieldset class="max-form">
     <legend>Production batch</legend>
     <label>Which batch is this receipt for?
       <select id="batch-select"><option value="">Loading…</option></select>
     </label>
-    <div id="planned-info" class="msg" style="display:none"></div>
+    <div id="planned-info" class="msg" hidden></div>
   </fieldset>
 
   <form id="receipt-form">
@@ -26,7 +26,7 @@
     <label>Quantity arrived
       <input name="observedQuantity" type="number" required min="0">
     </label>
-    <p class="muted" style="margin-top:-8px">Count what's physically in front of you, even if it doesn't match the delivery order or packing slip -- if those numbers disagree, the physical count is what matters here.</p>
+    <p class="muted mb-0">Count what's physically in front of you, even if it doesn't match the delivery order or packing slip -- if those numbers disagree, the physical count is what matters here.</p>
     <label class="inline">
       <input type="checkbox" id="has-rejects">
       Some of it is damaged / incomplete / rejected
@@ -43,7 +43,7 @@
     <label>Accepted into stock
       <input name="acceptedQuantity" type="number" min="0">
     </label>
-    <p class="muted" id="accepted-hint" style="margin-top:-8px"></p>
+    <p class="muted mb-0" id="accepted-hint"></p>
 
     <button type="submit">1. Confirm Receipt</button>
     </fieldset>
@@ -51,7 +51,7 @@
 
   <div id="receipt-result"></div>
 
-  <fieldset id="register-step" style="display:none;max-width:460px">
+  <fieldset id="register-step" class="max-form" hidden>
     <legend>Register</legend>
     <p class="muted">Receipt confirmed. Units have no identity until this step is done.</p>
     <button id="register-btn" class="secondary">2. Register Units</button>
@@ -59,6 +59,7 @@
   </fieldset>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     const select = document.getElementById('batch-select');
@@ -127,7 +128,7 @@
     async function showPlanned() {
       if (!select.value) return;
       const b = await fetch(`/api/production-batches/${select.value}`).then(r => r.json());
-      plannedInfo.style.display = 'block';
+      plannedInfo.hidden = false;
       plannedInfo.className = 'msg';
       plannedInfo.innerHTML = `Planned: <strong>${b.planned_quantity}</strong> units · Units registered so far: <strong>${b.unitCount}</strong>`;
     }
@@ -177,7 +178,7 @@
         ? `${res.variance} more than planned (${res.plannedQuantity}) -- not an error, just for your records.`
         : `${Math.abs(res.variance)} fewer than planned (${res.plannedQuantity}) -- not an error, just for your records.`;
       result.innerHTML = `<div class="msg ok">Receipt confirmed — ${accepted} accepted into stock${unresolved > 0 ? `, ${unresolved} left unresolved` : ''}. Quantity arrived ${varianceNote}</div>`;
-      document.getElementById('register-step').style.display = 'block';
+      document.getElementById('register-step').hidden = false;
     });
 
     document.getElementById('register-btn').addEventListener('click', async () => {
@@ -192,7 +193,7 @@
         return;
       }
       result.innerHTML = `<div class="msg ok">${res.created} unit(s) registered${res.alreadyRegistered ? ' (' + res.alreadyRegistered + ' already existed)' : ''}.<br>
-        Go to <a href="/label.html?batchId=${select.value}">Print Labels</a> to give each one a QR identity.</div>`;
+        Go to <a href="/label.html?batchId=${select.value}">Print & Attach</a> to give each one a QR identity.</div>`;
       showPlanned();
     });
 

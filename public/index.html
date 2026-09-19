@@ -2,139 +2,119 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Dashboard — Labelism</title>
+  <title>Home — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
+  <style>
+    .flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-6); }
+    .flow .card { flex-direction: column; gap: var(--sp-2); padding: var(--sp-5); }
+    .flow .card-top { display: flex; align-items: center; gap: var(--sp-3); }
+    .flow .step-no { width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: var(--on-brand); font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+    .flow .metric { font-size: var(--fs-sm); color: var(--muted); min-height: 1.4em; }
+    .flow .metric strong { color: var(--ink); }
+    details.more > summary { cursor: pointer; font-weight: 600; margin-bottom: var(--sp-3); }
+    @media (max-width: 760px) { .flow { grid-template-columns: 1fr; } }
+  </style>
 </head>
 <body>
   <div class="page">
     <header class="page-header">
-      <span class="eyebrow">Unit Identity Core</span>
-      <h1>Dashboard</h1>
-      <p class="muted">A snapshot of everything Labelism is currently tracking, and the tools to manage it.</p>
+      <div>
+        <h1>Home</h1>
+        <p class="muted">Every garment ordered gets one QR label. Follow the three steps below, from the order to the parcel.</p>
+      </div>
     </header>
 
-    <div id="getting-started" hidden style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 20px;margin-bottom:20px">
-      <h2 style="margin-top:0">Getting started</h2>
-      <p class="muted">Labelism gives every physical unit (a jersey, a book, a manufactured item) its own QR identity, so you can track it from production through to a customer -- and back, if it's ever returned. Four ideas to know first:</p>
-      <ul class="muted" style="line-height:1.7">
-        <li><strong>Product</strong> -- what it is in general (e.g. "Jersey Sekolah ABC").</li>
-        <li><strong>Variant</strong> -- a specific version of it (e.g. Size M).</li>
-        <li><strong>Production Batch</strong> -- one production run of a variant (e.g. 100 units of Size M).</li>
-        <li><strong>Unit</strong> -- one physical, individually-labeled copy from that batch.</li>
-      </ul>
-      <p class="muted">Typical order of work:</p>
-      <ol style="line-height:1.8">
-        <li><a href="/orders.html">1. Tempahan &amp; Label</a> -- Borang pengesahan tempahan. Labelism terus menghasilkan label lengkap mengikut kuantiti pesanan (10 order = 10 label).</li>
-        <li><a href="/label.html">2. Cetak &amp; Tampal Label</a> -- Pasukan pengeluaran mencetak label QR dan mengesahkan penampalan pada pakaian.</li>
-        <li><a href="/pack.html">3. Packing &amp; QC</a> -- Imbas label semasa pembungkusan. Rekonsiliasi automatik mengesan sebarang unit tertinggal, lebih, atau tersalah saiz.</li>
-      </ol>
-      <p class="muted">Taking an order first? Start with <a href="/orders.html">Customers &amp; Orders</a> instead -- Product Setup can link to it.</p>
-    </div>
+    <section id="getting-started" class="section" hidden>
+      <h2 class="section-title">Getting started</h2>
+      <p class="muted">Labelism gives every physical unit (a jersey, a garment, a book) its own QR identity, so you can follow it from production to the customer, and back if it is ever returned. Nothing is tracked yet. Start with your first order.</p>
+      <a class="button" href="/orders.html">Create the first order</a>
+    </section>
 
-    <div class="stats" id="stats">
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-        <div class="value">—</div><div class="label">Products</div>
-      </div>
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-        <div class="value">—</div><div class="label">Variants</div>
-      </div>
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
-        <div class="value">—</div><div class="label">Production batches</div>
-      </div>
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-        <div class="value">—</div><div class="label">Units registered</div>
-      </div>
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-        <div class="value">—</div><div class="label">Units available</div>
-      </div>
-      <div class="stat">
-        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-        <div class="value">—</div><div class="label">Locations</div>
-      </div>
-    </div>
-
-    <nav class="cards">
+    <nav class="flow" aria-label="Daily workflow">
       <a class="card" href="/orders.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg></div>
-        <div>
-          <h2>Customers &amp; Orders</h2>
-          <p>Record who ordered what before production starts.</p>
-        </div>
-      </a>
-      <a class="card" href="/import.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></div>
-        <div>
-          <h2>Import from Document</h2>
-          <p>Turn a job order, invoice, or similar document into products, variants, and batches in one step.</p>
-        </div>
-      </a>
-      <a class="card" href="/product-setup.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
-        <div>
-          <h2>Product Setup</h2>
-          <p>Create a product, variant, and production batch — set the planned quantity.</p>
-        </div>
-      </a>
-      <a class="card" href="/receiving.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></div>
-        <div>
-          <h2>Receiving &amp; Reconciliation</h2>
-          <p>Record units received, confirm, then register them.</p>
-        </div>
+        <div class="card-top"><span class="step-no">1</span><h2>Orders</h2></div>
+        <p>Enter the order. Labelism generates one label per unit ordered.</p>
+        <div class="metric" id="m-orders">&nbsp;</div>
       </a>
       <a class="card" href="/label.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></div>
-        <div>
-          <h2>Print Labels</h2>
-          <p>Print a QR label per unit, then confirm each one is attached.</p>
-        </div>
-      </a>
-      <a class="card" href="/scan.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg></div>
-        <div>
-          <h2>Unit Lookup / Scan</h2>
-          <p>Find a unit by code, view its status, record an action.</p>
-        </div>
+        <div class="card-top"><span class="step-no">2</span><h2>Print &amp; Attach</h2></div>
+        <p>Print the labels, stick one on each garment, and confirm it.</p>
+        <div class="metric" id="m-print">&nbsp;</div>
       </a>
       <a class="card" href="/pack.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></div>
-        <div>
-          <h2>Pack &amp; Ship</h2>
-          <p>Scan units into a shipment for an order, then dispatch it to the customer.</p>
-        </div>
-      </a>
-      <a class="card" href="/stocktake.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><polyline points="9 14 11 16 15 12"></polyline></svg></div>
-        <div>
-          <h2>Stocktake</h2>
-          <p>Reconcile expected vs. observed units for a production batch.</p>
-        </div>
-      </a>
-      <a class="card" href="/returns.html">
-        <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></div>
-        <div>
-          <h2>Return Intake</h2>
-          <p>Scan units as they physically arrive back from a customer, then decide their fate.</p>
-        </div>
+        <div class="card-top"><span class="step-no">3</span><h2>Packing</h2></div>
+        <p>Scan every label into the parcel. Labelism shows anything missing.</p>
+        <div class="metric" id="m-pack">&nbsp;</div>
       </a>
     </nav>
+
+    <section class="section">
+      <h2 class="section-title">Other tools</h2>
+      <p class="section-sub">Used now and then, not in the daily flow.</p>
+      <nav class="cards">
+        <a class="card" href="/scan.html">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></div>
+          <div><h2>Unit Lookup</h2><p>Find a unit by code, see its status and history, record an action.</p></div>
+        </a>
+        <a class="card" href="/returns.html">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></div>
+          <div><h2>Returns</h2><p>Scan units as they arrive back from a customer, then decide what happens to them.</p></div>
+        </a>
+        <a class="card" href="/stocktake.html">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><polyline points="9 14 11 16 15 12"></polyline></svg></div>
+          <div><h2>Stocktake</h2><p>Compare expected and observed units for a production batch.</p></div>
+        </a>
+      </nav>
+    </section>
+
+    <section class="section">
+      <details class="more">
+        <summary>Manual setup tools</summary>
+        <p class="section-sub">The Orders page creates products, variants and labels for you. These pages are for setting things up by hand.</p>
+        <nav class="cards">
+          <a class="card" href="/product-setup.html"><div><h2>Product Setup</h2><p>Create a product, a variant and a production batch by hand.</p></div></a>
+          <a class="card" href="/receiving.html"><div><h2>Receiving</h2><p>Record units received, confirm them, then register them.</p></div></a>
+          <a class="card" href="/import.html"><div><h2>Import from Document</h2><p>Turn a job order or invoice into products and batches in one step.</p></div></a>
+        </nav>
+      </details>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">System totals</h2>
+      <div class="stats mb-0" id="stats">
+        <div class="stat"><div class="value">—</div><div class="label">Products</div></div>
+        <div class="stat"><div class="value">—</div><div class="label">Variants</div></div>
+        <div class="stat"><div class="value">—</div><div class="label">Production batches</div></div>
+        <div class="stat"><div class="value">—</div><div class="label">Units registered</div></div>
+        <div class="stat"><div class="value">—</div><div class="label">Units available</div></div>
+        <div class="stat"><div class="value">—</div><div class="label">Locations</div></div>
+      </div>
+    </section>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
-    fetch('/api/stats').then(r => r.json()).then(s => {
+    const plural = (n, one, many) => `<strong>${n}</strong> ${n === 1 ? one : many}`;
+
+    fetch('/api/stats').then((r) => r.json()).then((s) => {
       const values = [s.products, s.variants, s.batches, s.units, s.availableUnits, s.locations];
       document.querySelectorAll('#stats .value').forEach((el, i) => { el.textContent = values[i]; });
-      // Nothing tracked yet -- almost certainly a first-time setup, not an
-      // established operator, so show what the system is and what order
-      // to do things in instead of a wall of zeroes with no explanation.
+      // Nothing tracked yet: almost certainly a first-time setup, so say what to do.
       if (s.products === 0) document.getElementById('getting-started').hidden = false;
     });
+
+    // Live workload for the three steps, from the same list the Print & Attach
+    // page uses. Failing to load it must never break the page.
+    fetch('/api/print-orders').then((r) => r.json()).then((orders) => {
+      if (!Array.isArray(orders)) return;
+      const unprinted = orders.reduce((s, o) => s + Number(o.unprinted_units || 0), 0);
+      const notAttached = orders.reduce((s, o) => s + Math.max(0, Number(o.total_units || 0) - Number(o.unprinted_units || 0) - Number(o.attached_units || 0)), 0);
+      document.getElementById('m-orders').innerHTML = orders.length ? plural(orders.length, 'order', 'orders') + ' in the system' : 'No orders yet';
+      document.getElementById('m-print').innerHTML = `${plural(unprinted, 'label', 'labels')} to print &middot; ${plural(notAttached, 'label', 'labels')} to attach`;
+      document.getElementById('m-pack').innerHTML = 'Choose a print run to start';
+    }).catch(() => {});
   </script>
 </body>
 </html>

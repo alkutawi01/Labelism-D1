@@ -2,7 +2,7 @@
 <html lang="ms">
 <head>
   <meta charset="utf-8">
-  <title>Cetak &amp; Tampal — Labelism</title>
+  <title>Print &amp; Attach — Labelism</title>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -65,8 +65,12 @@
     }
     .label { border: 1px dashed var(--line); border-radius: 6px; padding: 10px; text-align: center; background: var(--surface); display: flex; flex-direction: column; align-items: center; }
     .label .lbl-face { border: 1px solid var(--line-strong); }
-    .label .status { font-size: 11px; color: var(--muted); margin-top: 6px; }
-    .label button { width: 100%; margin-top: 6px; padding: 6px; font-size: 12px; }
+    .label .status { margin-top: 6px; }
+    .more-actions { margin-top: 8px; text-align: left; width: 100%; }
+    .more-actions summary { cursor: pointer; font-size: var(--fs-xs); color: var(--muted); }
+    .reissue-confirm { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+    .scan-station { margin-top: var(--sp-5); padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+    .label button { margin-top: 6px; }
     .label.confirmed { border-style: solid; border-color: var(--ok); }
 
     /* Screen-only layout. Cards, buttons, tables and messages come from style.css. */
@@ -110,97 +114,104 @@
 <body>
   <div class="page">
   <header class="page-header no-print">
-    <h1>Cetak &amp; Tampal</h1>
-    <p class="muted">Pilih order, tick variasi yang nak dicetak dan isi kuantiti. Yang tak dipilih kekal belum dicetak dan boleh dicetak dalam cetakan seterusnya. Selepas cetak, tampal satu label pada setiap unit dan sahkan.</p>
+    <div>
+    <h1>Print &amp; Attach</h1>
+    <p class="muted">Choose an order, tick the variants you want to print and fill in the quantity. Anything you do not select stays unprinted and can go in the next print run. After printing, attach one label to each unit and confirm it.</p>
+    </div>
   </header>
 
+  <ol class="steps no-print" aria-label="Workflow">
+    <li class="is-done">Order</li><li class="is-current">Print</li><li class="is-current">Attach</li><li>Pack</li>
+  </ol>
+
   <div class="section no-print">
-    <h2 class="section-title">Pilih order</h2>
-    <div class="picker-row" style="margin-top:10px;">
+    <h2 class="section-title">Choose an order</h2>
+    <div class="picker-row mt-3">
       <div class="field">
-        <label for="order-search">Cari</label>
-        <input type="search" id="order-search" placeholder="Nama customer atau no. tempahan…" autocomplete="off">
+        <label for="order-search">Search</label>
+        <input type="search" id="order-search" placeholder="Customer name or order reference…" autocomplete="off">
       </div>
       <div class="field">
         <label for="order-select">Order</label>
-        <select id="order-select"><option value="">Memuatkan…</option></select>
+        <select id="order-select"><option value="">Loading…</option></select>
       </div>
     </div>
-    <label class="check-line"><input type="checkbox" id="show-all-orders"> Tunjuk juga order yang semua labelnya sudah dicetak</label>
+    <label class="check-line"><input type="checkbox" id="show-all-orders"> Also show orders whose labels are all printed</label>
   </div>
 
   <section id="print-panel" class="section no-print" hidden>
-    <h2 class="section-title">Pilih untuk dicetak</h2>
+    <h2 class="section-title">Choose what to print</h2>
     <div class="section-sub" id="print-order-info"></div>
     <table class="data-table print-table">
       <thead id="print-head"></thead>
       <tbody id="print-rows"></tbody>
     </table>
     <div class="print-actions">
-      <button type="button" id="run-print-btn" class="btn-primary btn-lg">Cetak</button>
+      <button type="button" id="run-print-btn" class="btn-primary btn-lg">Print</button>
       <span id="print-selected-info" class="muted"></span>
-      <button type="button" class="link-btn" id="select-all-btn">Pilih semua</button>
-      <button type="button" class="link-btn" id="select-none-btn">Kosongkan</button>
+      <button type="button" class="link-btn" id="select-all-btn">Select all</button>
+      <button type="button" class="link-btn" id="select-none-btn">Clear</button>
     </div>
     <div id="print-message"></div>
   </section>
 
   <section id="runs-section" class="section no-print" hidden>
-    <h2 class="section-title">Cetakan yang sudah dicetak</h2>
+    <h2 class="section-title">Print runs already made</h2>
     <div class="run-picker" id="run-picker"></div>
   </section>
 
   <section id="batch-summary" class="section no-print" hidden>
-    <h2 class="section-title" style="margin-bottom:12px;">Cetakan dipilih</h2>
+    <h2 class="section-title mb-3">Selected print run</h2>
     <div class="summary-grid">
-      <div class="stat wide"><div class="lbl">Tempahan · Customer</div><div class="value" id="summary-order">—</div></div>
-      <div class="stat wide"><div class="lbl">Kandungan cetakan</div><div class="value" id="summary-product">—</div></div>
-      <div class="stat"><div class="lbl">Label dicetak</div><div class="value" id="summary-generated">0</div></div>
-      <div class="stat"><div class="lbl">Sudah ditampal</div><div class="value" id="summary-attached">0</div></div>
-      <div class="stat"><div class="lbl">Belum ditampal</div><div class="value" id="summary-pending">0</div></div>
+      <div class="stat wide"><div class="lbl">Order · Customer</div><div class="value" id="summary-order">—</div></div>
+      <div class="stat wide"><div class="lbl">Print run contents</div><div class="value" id="summary-product">—</div></div>
+      <div class="stat"><div class="lbl">Labels printed</div><div class="value" id="summary-generated">0</div></div>
+      <div class="stat"><div class="lbl">Attached</div><div class="value" id="summary-attached">0</div></div>
+      <div class="stat"><div class="lbl">Not attached</div><div class="value" id="summary-pending">0</div></div>
     </div>
 
     <div class="print-row">
-      <button id="print-btn" class="btn-secondary">Cetak semula cetakan ini</button>
-      <button id="cancel-run-btn" class="btn-danger btn-sm" type="button" title="Guna jika label tidak keluar dari printer">Batalkan cetakan ini</button>
+      <button id="print-btn" class="btn-secondary">Reprint this print run</button>
+      <button id="cancel-run-btn" class="btn-danger btn-sm" type="button" title="Use this if the labels did not come out of the printer">Cancel this print run</button>
       <strong id="print-count"></strong>
     </div>
 
     <details class="settings">
-      <summary>Tetapan Cetakan</summary>
-      <label>Saiz label fizikal dalam printer
+      <summary>Print settings</summary>
+      <label>Physical label size loaded in the printer
         <select id="size-select">
           <option value="40x30">40mm × 30mm (thermal)</option>
           <option value="50x30">50mm × 30mm (thermal)</option>
           <option value="60x40" selected>60mm × 40mm (thermal)</option>
-          <option value="a4">Kertas A4 — banyak label setiap halaman</option>
+          <option value="a4">A4 paper: many labels per page</option>
         </select>
       </label>
     </details>
 
-    <section class="scan-station" style="margin-top:20px;padding-top:18px;border-top:1px solid var(--line);">
-      <h2 class="section-title">Scan label yang telah ditampal</h2>
-      <p class="section-sub" style="margin-bottom:0;">Imbas QR pada unit fizikal untuk cari dan sahkan labelnya dengan cepat. Atau klik "Sahkan Sudah Ditampal" terus pada label di bawah.</p>
+    <section class="scan-station">
+      <h2 class="section-title">Scan attached labels</h2>
+      <p class="section-sub mb-0">Scan the QR code on the physical unit to find it and confirm its label quickly. Or click "Confirm attached" directly on a label below.</p>
       <form id="main-scan-form">
-        <input id="main-scan-input" autocomplete="off" placeholder="Imbas QR di sini…" required>
-        <button type="submit" class="btn-primary">Semak label</button>
+        <input id="main-scan-input" autocomplete="off" placeholder="Scan the QR code here…" required>
+        <button type="submit" class="btn-primary">Check label</button>
       </form>
       <div id="main-scan-feedback" aria-live="polite"></div>
     </section>
 
     <div id="completion" class="completion" hidden>
       <strong id="completion-text"></strong><br>
-      <a class="button btn-primary" id="completion-link" href="/pack.html">Terus ke Packing</a>
+      <a class="button btn-primary" id="completion-link" href="/pack.html">Go to Packing</a>
     </div>
   </section>
 
-  <p class="muted no-print" id="unit-count-summary" style="margin-top:4px"></p>
-  <div class="no-print" id="pending-attachment" style="margin-top:8px"></div>
+  <p class="muted no-print mt-2" id="unit-count-summary"></p>
+  <div class="no-print mt-2" id="pending-attachment"></div>
 
-  <div id="pagination" class="no-print" style="margin-top:14px;display:flex;gap:10px;align-items:center"></div>
+  <div id="pagination" class="no-print cluster mt-4"></div>
   <div id="grid" class="label-grid"></div>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     const orderSelect = document.getElementById('order-select');
@@ -288,12 +299,12 @@
       });
       if (!list.length) {
         orderSelect.innerHTML = q
-          ? '<option value="">Tiada order sepadan dengan carian</option>'
-          : '<option value="">Tiada order yang menunggu cetakan</option>';
+          ? '<option value="">No orders match your search</option>'
+          : '<option value="">No orders are waiting to be printed</option>';
         return;
       }
       orderSelect.innerHTML = list.map((o) => {
-        const state = o.unprinted_units > 0 ? `${o.unprinted_units} belum dicetak` : 'semua sudah dicetak';
+        const state = o.unprinted_units > 0 ? `${o.unprinted_units} not printed` : 'all printed';
         return `<option value="${o.id}">${esc(o.customer_name)} · ${esc(o.order_reference)} · ${state}</option>`;
       }).join('');
       if (preferId && list.some((o) => o.id === preferId)) orderSelect.value = preferId;
@@ -361,7 +372,7 @@
     // up to what is left (0 = do not print this row). Works the same for 4
     // labels or 1000.
     function qtyControl(row, value) {
-      const label = `Kuantiti untuk ${esc(row.variant_label)}`;
+      const label = `Quantity for ${esc(row.variant_label)}`;
       return `<input type="number" min="0" max="${row.unprinted}" step="1" value="${value}" data-qty="${row.batch_id}" aria-label="${label}">`;
     }
 
@@ -373,14 +384,14 @@
         `${overview.order.customer_name} · ${overview.order.order_reference}`;
 
       document.getElementById('print-head').innerHTML = `<tr>
-        <th></th><th>Produk</th><th>Variasi</th>${hasGroups ? '<th>Kumpulan</th>' : ''}
-        <th class="num">Order</th><th class="num">Sudah dicetak</th><th class="num">Baki</th><th class="num">Cetak sekarang</th></tr>`;
+        <th></th><th>Product</th><th>Variant</th>${hasGroups ? '<th>Group</th>' : ''}
+        <th class="num">Ordered</th><th class="num">Printed</th><th class="num">Left</th><th class="num">Print now</th></tr>`;
 
       document.getElementById('print-rows').innerHTML = rows.map((r) => {
         const done = r.unprinted === 0;
         const sel = selection.get(r.batch_id);
         return `<tr class="${done ? 'done' : ''}" data-row="${r.batch_id}">
-          <td><input type="checkbox" data-check="${r.batch_id}" ${done ? 'disabled' : ''} ${sel && sel.checked ? 'checked' : ''} aria-label="Pilih ${esc(r.variant_label)}"></td>
+          <td><input type="checkbox" data-check="${r.batch_id}" ${done ? 'disabled' : ''} ${sel && sel.checked ? 'checked' : ''} aria-label="Select ${esc(r.variant_label)}"></td>
           <td>${esc(r.product_name)}</td>
           <td class="variant-cell">${esc(r.variant_label)}</td>
           ${hasGroups ? `<td>${esc(r.group_label || '')}</td>` : ''}
@@ -440,10 +451,10 @@
       const btn = document.getElementById('run-print-btn');
       const left = overview.rows.reduce((sum, r) => sum + r.unprinted, 0);
       btn.disabled = n < 1;
-      btn.textContent = n > 0 ? `Cetak ${n} label (Cetakan ${nextRunNumber()})` : 'Cetak';
+      btn.textContent = n > 0 ? `Print ${n} label${n === 1 ? '' : 's'} (print run ${nextRunNumber()})` : 'Print';
       document.getElementById('print-selected-info').textContent = left === 0
-        ? 'Semua label order ini sudah dicetak.'
-        : `${n} daripada ${left} label belum dicetak dipilih.`;
+        ? 'All labels of this order have been printed.'
+        : `${n} of ${left} unprinted labels selected.`;
       document.getElementById('select-all-btn').hidden = left === 0;
       document.getElementById('select-none-btn').hidden = left === 0;
     }
@@ -471,14 +482,14 @@
           body: JSON.stringify({ selections, actor: actorName() }),
         }).then((r) => r.json());
         if (res.error) throw new Error(res.error);
-        // Refresh counts (the picker's "belum dicetak" and this table's Baki),
+        // Refresh counts (the picker's "not printed" count and this table's "Left" column),
         // open the new batch, then hand its labels to the browser print dialog.
         ordersList = await fetch('/api/print-orders').then((r) => r.json());
         renderOrderOptions(overview.order.id);
         await loadOrder(overview.order.id, res.id);
         setTimeout(() => window.print(), 400);
       } catch (err) {
-        msg.innerHTML = `<div class="msg error" style="margin-top:12px">${esc(err.message)}</div>`;
+        msg.innerHTML = `<div class="msg error mt-3">${esc(err.message)}</div>`;
         btn.disabled = false;
       }
     });
@@ -491,7 +502,7 @@
       if (!overview.runs.length) { section.hidden = true; return; }
       section.hidden = false;
       document.getElementById('run-picker').innerHTML = overview.runs.map((r) =>
-        `<button type="button" class="secondary" data-run="${r.id}">Cetakan ${r.run_number} · ${r.label_count} label · ${r.attached_count}/${r.label_count} ditampal</button>`
+        `<button type="button" class="btn-secondary btn-sm" data-run="${r.id}">Print run ${r.run_number} · ${r.label_count} labels · ${r.attached_count}/${r.label_count} attached</button>`
       ).join('');
       document.querySelectorAll('[data-run]').forEach((b) => b.addEventListener('click', () => openRun(b.dataset.run)));
     }
@@ -538,30 +549,30 @@
       });
 
       document.getElementById('batch-summary').hidden = false;
-      document.getElementById('summary-order').textContent = `${currentRun.order_reference} · ${currentRun.customer_name} · Cetakan ${currentRun.run_number}`;
+      document.getElementById('summary-order').textContent = `${currentRun.order_reference} · ${currentRun.customer_name} · Print run ${currentRun.run_number}`;
       document.getElementById('summary-product').textContent = [...parts].map(([k, n]) => `${k} ×${n}`).join(' · ');
       document.getElementById('summary-generated').textContent = units.length;
       document.getElementById('summary-attached').textContent = confirmedCount;
       document.getElementById('summary-pending').textContent = pendingCount;
       const reprintBtn = document.getElementById('print-btn');
-      reprintBtn.textContent = `Cetak Semula Cetakan ${currentRun.run_number}`;
+      reprintBtn.textContent = `Reprint print run ${currentRun.run_number}`;
       reprintBtn.disabled = pendingCount === 0;
       const cancelBtn = document.getElementById('cancel-run-btn');
       cancelBtn.disabled = confirmedCount > 0;
       cancelBtn.title = confirmedCount > 0
-        ? 'Tidak boleh dibatalkan kerana sudah ada label yang ditampal.'
-        : 'Guna jika label tidak keluar dari printer. Label akan kembali ke "belum dicetak".';
+        ? 'Cannot be cancelled because some labels are already attached.'
+        : 'Use this if the labels did not come out of the printer. They go back to "not printed".';
       document.getElementById('print-count').textContent = pendingCount === 0
-        ? 'Semua label dalam cetakan ini sudah ditampal, tiada apa nak dicetak semula.'
+        ? 'All labels in this print run are attached; there is nothing to reprint.'
         : confirmedCount > 0
-        ? `Anda akan mencetak ${pendingCount} label yang belum ditampal (${confirmedCount} yang sudah ditampal tidak dicetak semula).`
-        : `Anda akan mencetak ${pendingCount} label.`;
+        ? `You are about to print ${pendingCount} labels that are not attached yet (the ${confirmedCount} attached ones are not reprinted).`
+        : `You are about to print ${pendingCount} label${pendingCount === 1 ? '' : 's'}.`;
       document.getElementById('unit-count-summary').textContent = units.length
-        ? `${pendingCount} daripada ${units.length} label masih perlu ditampal dan disahkan.`
-        : 'Cetakan ini belum mempunyai label.';
+        ? `${pendingCount} of ${units.length} labels still need to be attached and confirmed.`
+        : 'This print run has no labels yet.';
       const completion = document.getElementById('completion');
       completion.hidden = !units.length || pendingCount !== 0;
-      document.getElementById('completion-text').textContent = `Semua ${units.length} label dalam Cetakan ${currentRun.run_number} telah ditampal dan disahkan.`;
+      document.getElementById('completion-text').textContent = `All ${units.length} labels in print run ${currentRun.run_number} are attached and confirmed.`;
       document.getElementById('completion-link').href = `/pack.html?runId=${currentRun.id}`;
 
       // Name the codes still waiting to be attached, with a jump-to-card
@@ -570,7 +581,7 @@
       const pendingEl = document.getElementById('pending-attachment');
       const pending = units.filter((u) => !u.label_confirmed_at);
       pendingEl.innerHTML = pending.length
-        ? `<div class="msg error"><strong>${pending.length} label belum ditampal:</strong> ${pending.map((u) => `<button type="button" data-jump="${u.id}" style="padding:1px 7px;font-size:12px;margin:2px 3px 0 0">${esc(u.variant_label)} ${esc(u.human_code)}</button>`).join('')}</div>`
+        ? `<div class="msg warn"><strong>${pending.length} label${pending.length === 1 ? '' : 's'} not attached:</strong> ${pending.map((u) => `<button type="button" class="btn-secondary btn-sm" data-jump="${u.id}">${esc(u.variant_label)} ${esc(u.human_code)}</button>`).join('')}</div>`
         : '';
       pendingEl.querySelectorAll('button[data-jump]').forEach((btn) => {
         btn.addEventListener('click', () => jumpToUnit(btn.dataset.jump));
@@ -588,28 +599,28 @@
               <div class="qr" id="qr-${u.id}"></div>
               <div class="lbl-text">
                 <div class="lbl-clamp1 lbl-var">${esc(u.variant_label)}</div>
-                <div class="lbl-code">UNIT ${esc(u.human_code)}</div>
+                <div class="lbl-code">ID ${esc(u.human_code)}</div>
                 <div class="lbl-clamp2"><strong>${esc(currentRun.customer_name)}</strong> · ${esc(currentRun.order_reference)}</div>
-                <div class="${u.group_label ? 'lbl-clamp2' : 'lbl-clamp1'}">Cetakan ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
+                <div class="${u.group_label ? 'lbl-clamp2' : 'lbl-clamp1'}">Print run ${currentRun.run_number}${u.group_label ? ' · ' + esc(u.group_label) : ''}</div>
                 <div class="lbl-clamp1">${esc(u.product_name)}</div>
               </div>
             </div>
           </div>
-          <div class="status no-print">${u.label_confirmed_at ? 'Sudah Ditampal' : 'Belum Ditampal'}</div>
+          <div class="status no-print">${u.label_confirmed_at ? '<span class="pill ok">Attached</span>' : '<span class="pill warn">Not attached</span>'}</div>
           ${u.label_confirmed_at ? `
-            <button class="no-print" disabled>Disahkan</button>
+            <button class="no-print btn-sm btn-block btn-secondary" disabled>Confirmed</button>
           ` : `
-            <button class="no-print" data-id="${u.id}" data-action="confirm">Sahkan Sudah Ditampal</button>
+            <button class="no-print btn-sm btn-block" data-id="${u.id}" data-action="confirm">Confirm attached</button>
           `}
           ${!u.label_confirmed_at ? `
-            <details class="no-print" style="margin-top:7px;text-align:left"><summary style="cursor:pointer;font-size:11px">Tindakan Lanjutan</summary>
-            <button class="secondary" data-id="${u.id}" data-action="reissue">Cetak Semula / Ganti Label Rosak</button>
-            <div class="no-print reissue-confirm" id="reissue-confirm-${u.id}" hidden style="margin-top:6px">
-              <div class="muted" style="font-size:11px;margin-bottom:4px">
-                QR lama akan dibatalkan secara kekal. Gunakan hanya jika label hilang atau rosak sebelum ditampal.
+            <details class="no-print more-actions"><summary>More actions</summary>
+            <button class="btn-secondary btn-sm btn-block" data-id="${u.id}" data-action="reissue">Replace a lost or damaged label</button>
+            <div class="no-print reissue-confirm" id="reissue-confirm-${u.id}" hidden>
+              <div class="muted small">
+                The old QR code will be cancelled permanently. Use this only if the label was lost or damaged before it was attached.
               </div>
-              <button class="no-print" data-id="${u.id}" data-action="reissue-confirm">Ya, Ganti Label</button>
-              <button class="no-print secondary" data-id="${u.id}" data-action="reissue-cancel">Batal</button>
+              <button class="no-print btn-danger btn-sm" data-id="${u.id}" data-action="reissue-confirm">Yes, replace it</button>
+              <button class="no-print btn-secondary btn-sm" data-id="${u.id}" data-action="reissue-cancel">Cancel</button>
             </div>
             </details>
           ` : ''}
@@ -633,8 +644,7 @@
           await refreshRun();
         });
       });
-      // Inline confirm, not window.confirm() -- a native dialog looks out of
-      // place here and cannot be driven by automated browser testing at all.
+      // Inline confirm: the replacement is per label, so the confirmation sits on the label itself.
       grid.querySelectorAll('button[data-action="reissue"]').forEach((btn) => {
         btn.addEventListener('click', () => { document.getElementById(`reissue-confirm-${btn.dataset.id}`).hidden = false; });
       });
@@ -671,7 +681,7 @@
     }
 
     function showScanFeedback(kind, html) {
-      document.getElementById('main-scan-feedback').innerHTML = `<div class="msg ${kind}" style="margin-top:12px">${html}</div>`;
+      document.getElementById('main-scan-feedback').innerHTML = `<div class="msg ${kind} mt-3">${html}</div>`;
     }
 
     async function confirmScannedUnit(unitId) {
@@ -682,12 +692,12 @@
       });
       const result = await response.json();
       if (!response.ok || result.error) {
-        showScanFeedback('error', esc(result.error || 'Label tidak dapat disahkan.'));
+        showScanFeedback('error', esc(result.error || 'The label could not be confirmed.'));
         return;
       }
       const unit = currentUnits.find((u) => u.id === unitId);
       await refreshRun();
-      showScanFeedback('ok', `Unit <strong>${esc(unit?.human_code || '')}</strong> sudah disahkan ditampal.`);
+      showScanFeedback('ok', `ID <strong>${esc(unit?.human_code || '')}</strong> is now confirmed as attached.`);
       const input = document.getElementById('main-scan-input');
       input.value = '';
       input.focus();
@@ -700,18 +710,18 @@
       const code = scannedCode(raw);
       const matches = currentUnits.filter((u) => u.internal_token === code || u.human_code === code);
       if (!matches.length) {
-        showScanFeedback('error', 'Label ini bukan daripada cetakan yang sedang dipilih. Kiraan tidak diubah.');
+        showScanFeedback('error', 'This label is not from the selected print run. Nothing was changed.');
         input.select();
         return;
       }
       if (matches.length > 1) {
-        showScanFeedback('error', 'Kod ini sama untuk beberapa variasi dalam cetakan ini. Sila scan QR penuh.');
+        showScanFeedback('error', 'This code is shared by several variants in this print run. Scan the full QR code.');
         input.select();
         return;
       }
       const unit = matches[0];
       if (unit.label_confirmed_at) {
-        showScanFeedback('ok', `Unit <strong>${esc(unit.human_code)}</strong> sudah pernah disahkan ditampal.`);
+        showScanFeedback('ok', `ID <strong>${esc(unit.human_code)}</strong> was already confirmed as attached.`);
         input.value = '';
         input.focus();
         return;
@@ -725,19 +735,19 @@
       const result = await response.json();
       if (!response.ok || result.error || !result.verified) {
         const message = result.reason === 'mismatch'
-          ? 'Label yang discan tidak sepadan dengan unit ini.'
+          ? 'The scanned label does not match this unit.'
           : result.reason === 'ambiguous'
-          ? 'Kod ini tidak unik. Sila scan QR penuh.'
-          : result.error || 'Label tidak dikenali.';
+          ? 'This code is not unique. Scan the full QR code.'
+          : result.error || 'Label not recognised.';
         showScanFeedback('error', esc(message));
         input.select();
         return;
       }
 
-      const recipient = unit.recipient_name ? ` · Teks label: ${esc(unit.recipient_name)}` : '';
+      const recipient = unit.recipient_name ? ` · Label text: ${esc(unit.recipient_name)}` : '';
       showScanFeedback(
         'ok',
-        `Scan betul: <strong>Unit ${esc(unit.human_code)}</strong> · ${esc(unit.product_name)} · ${esc(unit.variant_label)}${recipient}<br><button type="button" id="main-confirm-btn" style="margin-top:8px">Sahkan Sudah Ditampal</button>`
+        `Correct scan: <strong>ID ${esc(unit.human_code)}</strong> · ${esc(unit.product_name)} · ${esc(unit.variant_label)}${recipient}<br><button type="button" id="main-confirm-btn" class="btn-sm mt-2">Confirm attached</button>`
       );
       document.getElementById('main-confirm-btn').addEventListener('click', () => confirmScannedUnit(unit.id));
     });
@@ -762,9 +772,9 @@
       const pagination = document.getElementById('pagination');
       if (cards.length <= PAGE_SIZE) { pagination.innerHTML = ''; return; }
       pagination.innerHTML = `
-        <button type="button" class="secondary" id="page-prev" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Sebelumnya</button>
-        <span class="muted">Halaman ${currentPage} daripada ${totalPages} &middot; ${cards.length} unit (papar ${start + 1}-${Math.min(end, cards.length)}; cetakan merangkumi semua ${cards.length})</span>
-        <button type="button" class="secondary" id="page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Seterusnya &rarr;</button>
+        <button type="button" class="btn-secondary btn-sm" id="page-prev" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Previous</button>
+        <span class="muted">Page ${currentPage} of ${totalPages} &middot; ${cards.length} labels (showing ${start + 1}-${Math.min(end, cards.length)}; printing includes all ${cards.length})</span>
+        <button type="button" class="btn-secondary btn-sm" id="page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
       `;
       document.getElementById('page-prev')?.addEventListener('click', () => { currentPage--; applyPagination(); window.scrollTo(0, 0); });
       document.getElementById('page-next')?.addEventListener('click', () => { currentPage++; applyPagination(); window.scrollTo(0, 0); });
@@ -781,10 +791,14 @@
     document.getElementById('print-btn').addEventListener('click', () => window.print());
     document.getElementById('cancel-run-btn').addEventListener('click', async () => {
       if (!currentRun) return;
-      const ok = confirm(`Batalkan Cetakan ${currentRun.run_number}? Semua labelnya kembali ke "belum dicetak" dan boleh dicetak dalam cetakan baru. Guna ini hanya jika label tidak keluar dari printer atau belum ditampal.`);
+      const ok = await UI.confirm({
+        title: `Cancel print run ${currentRun.run_number}?`,
+        message: 'All its labels go back to "not printed" and can be printed in a new print run. Use this only if the labels did not come out of the printer or have not been attached yet.',
+        confirmLabel: 'Cancel print run', cancelLabel: 'Keep it', tone: 'danger',
+      });
       if (!ok) return;
       const res = await fetch(`/api/print-runs/${currentRun.id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.json());
-      if (res.error) { alert(res.error); return; }
+      if (res.error) { UI.toast(res.error, 'error'); return; }
       await loadOrder(orderSelect.value);
     });
     applyPageSize();

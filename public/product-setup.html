@@ -86,6 +86,7 @@
   </table>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     const form = document.getElementById('form');
@@ -269,7 +270,7 @@
         }).then(r => r.json());
 
         result.innerHTML = `<div class="msg ok">Production batch created${orderLineId ? ' and linked to the order line' : ''} -- ${generated.created || 0} label${generated.created === 1 ? '' : 's'} generated for the ${batch.plannedQuantity ?? data.plannedQuantity} unit(s) ordered.<br>
-          Go to <a href="/label.html?batchId=${batch.id}">Print Labels</a> to print and hand them to production.
+          Go to <a href="/label.html?batchId=${batch.id}">Print & Attach</a> to print and hand them to production.
           ${orderLineId ? '<br>Creating a batch for a <em>different</em> line on this order (e.g. another size)? Go back to <a href="/orders.html">Orders</a> and click Product Setup from that line -- reusing this page will link it to the same line again.' : ''}</div>`;
         form.reset();
         updateProductModeUI();

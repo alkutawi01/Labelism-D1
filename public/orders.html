@@ -2,7 +2,7 @@
 <html lang="ms">
 <head>
   <meta charset="utf-8">
-  <title>Tempahan &amp; Label — Labelism</title>
+  <title>Orders — Labelism</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
   <style>
@@ -13,6 +13,7 @@
     .ai-helper textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: var(--surface-2); width: 100%; }
     .field > label, .group-head label, .variants-head label { display: block; }
     label .muted { font-weight: 400; }
+    .fw-600 { font-weight: 600; }
     .ai-step { margin: 14px 0 8px; font-weight: 600; font-size: 14px; }
 
     .product-group { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
@@ -62,143 +63,150 @@
 <body>
   <div class="page">
     <header class="page-header">
-      <h1>Tempahan &amp; Label</h1>
-      <p class="muted">Masukkan tempahan. Setiap 1 unit menjana 1 label. Yang nak dicetak dipilih di halaman Cetak &amp; Tampal.</p>
+      <div>
+      <h1>Orders</h1>
+      <p class="muted">Enter an order. Every unit ordered generates one label. You choose what to print on the Print &amp; Attach page.</p>
+      </div>
     </header>
+
+    <ol class="steps no-print" aria-label="Workflow">
+      <li class="is-current">Order</li><li>Print</li><li>Attach</li><li>Pack</li>
+    </ol>
 
     <!-- The AI is a helper for the form below, not a second way to create orders. -->
     <details class="section ai-helper" id="ai-helper">
-      <summary>Ada dokumen order (invois / Job Order)? Guna AI untuk isi borang di bawah</summary>
-      <p class="muted" style="margin:0 0 4px;">AI hanya membantu mengisi borang. Semak dan betulkan di borang sebelum sahkan.</p>
-      <div class="ai-step">1. Salin prompt ini dan berikan kepada AI bersama dokumen order.</div>
-      <textarea id="ai-prompt" rows="9" readonly>Sila hasilkan JSON tempahan dengan format berikut:
+      <summary>Have an order document (invoice / Job Order)? Use AI to fill in the form below</summary>
+      <p class="muted mb-0">AI only helps fill in the form. Check and correct the form before you confirm.</p>
+      <div class="ai-step">1. Copy this prompt and give it to the AI together with the order document.</div>
+      <textarea id="ai-prompt" rows="9" readonly>Produce a JSON order in the following format:
 {
-  "documentType": "Jenis dokumen (cth: Job Order, Invois, Sebut Harga)",
-  "customerName": "Nama Pelanggan",
-  "orderReference": "No. Rujukan/Invoice/JO",
+  "documentType": "Type of document (e.g. Job Order, Invoice, Quotation)",
+  "customerName": "Customer name",
+  "orderReference": "Reference / invoice / JO number",
   "orderDate": "YYYY-MM-DD",
   "dueDate": "YYYY-MM-DD",
   "totalOrder": 23,
-  "notes": "Maklumat penting lain dalam dokumen",
-  "warnings": ["Kejanggalan atau perkara yang tidak pasti"],
+  "notes": "Other important information in the document",
+  "warnings": ["Anything odd or uncertain"],
   "products": [
     {
-      "name": "Nama Produk",
-      "dimensions": ["Saiz"],
+      "name": "Product name",
+      "dimensions": ["Size"],
       "variants": [
-        { "label": "Saiz M", "quantity": 10, "unitNames": ["Ahmad", "Ali", ...] }
+        { "label": "Size M", "quantity": 10, "unitNames": ["Ahmad", "Ali", ...] }
       ]
     }
   ]
 }
 
-Jika tempahan perlu dipecahkan ikut kumpulan (contoh: satu pelanggan untuk banyak sekolah/cawangan, setiap kumpulan perlu label berasingan), guna "batches" dengan "batchLabel" sebagai nama kumpulan:
-        { "label": "Saiz M", "quantity": 100, "batches": [
-            { "quantity": 10, "batchLabel": "SK Sekolah A", "unitNames": ["Ahmad", ...] },
-            { "quantity": 10, "batchLabel": "SK Sekolah B", "unitNames": ["Chong", ...] }
+If the order must be split by group (for example one customer with many schools or branches, each needing its own labels), use "batches" with "batchLabel" as the group name:
+        { "label": "Size M", "quantity": 100, "batches": [
+            { "quantity": 10, "batchLabel": "SK School A", "unitNames": ["Ahmad", ...] },
+            { "quantity": 10, "batchLabel": "SK School B", "unitNames": ["Chong", ...] }
         ] }
-Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan variant itu.
+The quantities of all batches must add up to the variant's total quantity, or be less than it.
 
-Peraturan penting:
-- Salin maklumat yang ada dalam dokumen: jenis dokumen ("documentType"), tarikh order ("orderDate"), tarikh siap/hantar ("dueDate") dan jumlah keseluruhan yang tertulis ("totalOrder"). Jika tiada dalam dokumen, biarkan "" (atau null untuk totalOrder). Jangan reka.
-- Semua tarikh dalam format YYYY-MM-DD. Dokumen Malaysia guna hari/bulan/tahun, jadi 5/9/2026 ialah 2026-09-05.
-- "notes": ringkaskan maklumat penting lain dalam dokumen (cth: salesperson, cawangan, jenis kerja, bahan, warna, nota khas).
-- "totalOrder" ialah jumlah unit yang tertulis dalam dokumen. Jika satu fail ada beberapa Job Order/halaman, tambah "Total Order" setiap satu.
-- "warnings": senaraikan setiap kejanggalan atau perkara yang tidak pasti sebagai ayat pendek yang jelas (apa, di mana, kenapa). Contoh: nama yang mungkin tersalah gabung atau pecah kerana teks terputus baris, bilangan nama kurang atau lebih daripada kuantiti, jumlah tidak sepadan, tulisan tidak jelas, nombor rujukan tiada, atau beberapa dokumen berbeza dalam satu fail. Jika benar-benar tiada, letak []. Lebih baik memberi amaran daripada menyembunyikan keraguan.
-- SEMAK JUMLAH SEBELUM MENJAWAB: tambah semua "quantity" dalam semua variants. Jumlahnya mesti sama dengan "totalOrder". Jika tidak sama, semak semula dokumen dan betulkan dahulu.
-- Bilangan teks dalam "unitNames" tidak boleh melebihi "quantity". Jika kurang daripada quantity, biarkan begitu. Jangan reka.
-- Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
-- "unitNames" ialah TEKS PADA BAJU/LABEL untuk setiap baju, seperti yang ditulis dalam dokumen: boleh nama orang (contoh nama pelajar: Amin, Ahmad, Ali), jenama, atau apa sahaja. Ia bukan nama pelanggan. Salin tepat seperti dalam dokumen. Jika dokumen tidak menulis apa-apa untuk baju itu, biarkan kosong. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti sama ada satu atau dua nama, kekalkan seperti tertulis dan nyatakan dalam "notes".</textarea>
-      <div style="margin:8px 0 4px;"><button type="button" class="btn-secondary btn-sm" onclick="copyAiPrompt()">Salin prompt</button></div>
-      <div class="ai-step">2. Tampal jawapan (JSON) daripada AI di sini.</div>
+Important rules:
+- Copy what the document says: the document type ("documentType"), the order date ("orderDate"), the due/delivery date ("dueDate") and the total written on it ("totalOrder"). If something is not in the document, leave "" (or null for totalOrder). Do not invent anything.
+- Write all dates as YYYY-MM-DD. Malaysian documents use day/month/year, so 5/9/2026 is 2026-09-05.
+- "notes": summarise other important information in the document (for example salesperson, branch, type of job, material, colour, special notes).
+- "totalOrder" is the number of units written in the document. If one file contains several Job Orders or pages, add up the "Total Order" of each.
+- "warnings": list every oddity or uncertainty as a short, clear sentence (what, where, why). Examples: a name that may have been merged or split because the text broke across lines, fewer or more names than the quantity, totals that do not match, unclear handwriting, a missing reference number, or several different documents in one file. If there really are none, use []. It is better to warn than to hide a doubt.
+- CHECK THE TOTAL BEFORE ANSWERING: add up every "quantity" across all variants. The sum must equal "totalOrder". If it does not, re-read the document and correct it first.
+- "unitNames" is the LABEL TEXT for each garment, exactly as the document writes it: it can be a person's name (for example a student: Amin, Ahmad, Ali), a brand, or anything else. It is not the customer name. Copy it exactly. If the document writes nothing for a garment, leave it empty. Do not merge two names into one or split one name into two. If you are unsure whether it is one or two, keep it as written and mention it in "notes".
+- The number of items in "unitNames" must not exceed "quantity". If there are fewer, leave it that way. Do not invent any.
+- If the document has no reference / invoice / JO number, leave "orderReference" as "" (empty). Do not invent a number.</textarea>
+      <div class="mt-2"><button type="button" class="btn-secondary btn-sm" onclick="copyAiPrompt()">Copy prompt</button></div>
+      <div class="ai-step">2. Paste the AI answer (JSON) here.</div>
       <textarea id="ai-text-input" rows="6" placeholder='{ "customerName": "...", "orderReference": "...", "products": [ ... ] }'></textarea>
-      <div style="margin-top:12px;"><button type="button" class="btn-primary" onclick="fillFormFromAi()">Isi borang daripada output AI</button></div>
-      <div id="ai-fill-result" style="margin-top:12px;"></div>
+      <div class="mt-3"><button type="button" class="btn-primary" onclick="fillFormFromAi()">Fill in the form from the AI output</button></div>
+      <div id="ai-fill-result" class="mt-3"></div>
     </details>
 
     <div id="order-alerts"></div>
 
     <form id="order-with-labels-form" class="wide">
       <div class="section">
-        <div class="section-head"><h2 class="section-title">Pelanggan &amp; invois</h2></div>
+        <div class="section-head"><h2 class="section-title">Customer &amp; invoice</h2></div>
         <div class="grid-2">
           <div class="field">
-            <label for="cust-select">Pelanggan</label>
+            <label for="cust-select">Customer</label>
             <div class="customer-row">
-              <select id="cust-select" name="customerId"><option value="">Memuatkan…</option></select>
-              <div id="new-cust-div" hidden><input id="new-cust-name" placeholder="Nama pelanggan baru (cth: Sekolah Seri Indah)"></div>
-              <button type="button" class="btn-secondary" id="btn-toggle-cust">+ Pelanggan baru</button>
+              <select id="cust-select" name="customerId"><option value="">Loading…</option></select>
+              <div id="new-cust-div" hidden><input id="new-cust-name" placeholder="New customer name (e.g. Sekolah Seri Indah)"></div>
+              <button type="button" class="btn-secondary" id="btn-toggle-cust">+ New customer</button>
             </div>
           </div>
           <div class="field">
-            <label for="order-ref">No. rujukan order / invois</label>
-            <input id="order-ref" name="orderReference" placeholder="Kosong = dijana automatik">
+            <label for="order-ref">Order / invoice reference</label>
+            <input id="order-ref" name="orderReference" placeholder="Leave empty to generate automatically">
           </div>
           <div class="field">
-            <label for="order-date">Tarikh order <span class="muted">(pilihan)</span></label>
+            <label for="order-date">Order date <span class="muted">(optional)</span></label>
             <input id="order-date" name="orderDate" type="date">
           </div>
           <div class="field">
-            <label for="due-date">Tarikh siap / hantar <span class="muted">(pilihan)</span></label>
+            <label for="due-date">Due / delivery date <span class="muted">(optional)</span></label>
             <input id="due-date" name="dueDate" type="date">
           </div>
         </div>
-        <div class="field" style="margin-top:14px;">
-          <label for="order-notes">Nota <span class="muted">(pilihan)</span></label>
-          <textarea id="order-notes" name="orderNotes" rows="2" placeholder="Nota tentang tempahan ini"></textarea>
+        <div class="field mt-4">
+          <label for="order-notes">Notes <span class="muted">(optional)</span></label>
+          <textarea id="order-notes" name="orderNotes" rows="2" placeholder="Notes about this order"></textarea>
         </div>
       </div>
 
       <div class="section">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Item tempahan</h2>
-            <p class="section-sub">Taip nama produk sekali, kemudian tambah setiap saiz dengan kuantitinya. Teks pada label (nama, jenama, dll.; jika ada) di bawah setiap saiz.</p>
+            <h2 class="section-title">Order items</h2>
+            <p class="section-sub">Type the product name once, then add each size with its quantity. Label text (a name, a brand, anything; if any) goes under each size.</p>
           </div>
         </div>
         <div id="items-container"></div>
-        <button type="button" class="btn-secondary" onclick="addGroup()">+ Tambah produk</button>
+        <button type="button" class="btn-secondary" onclick="addGroup()">+ Add product</button>
       </div>
 
       <div id="form-result"></div>
       <div class="submit-bar">
-        <div class="totals" id="order-totals">Belum ada item</div>
-        <button type="submit" class="btn-primary btn-lg">Sahkan tempahan &amp; jana label</button>
+        <div class="totals" id="order-totals">No items yet</div>
+        <button type="submit" class="btn-primary btn-lg">Confirm order &amp; generate labels</button>
       </div>
     </form>
 
-    <div id="summary-section" class="section" style="margin-top:18px;" hidden>
-      <h2 class="section-title">Tempahan berjaya dicipta</h2>
-      <p class="section-sub">Semua label sudah dijana. Langkah seterusnya: pilih apa yang nak dicetak.</p>
+    <div id="summary-section" class="section mt-5" hidden>
+      <h2 class="section-title">Order created</h2>
+      <p class="section-sub">All labels have been generated. Next step: choose what to print.</p>
       <div class="result-stats">
-        <div class="stat"><div class="value" id="sum-ordered">0</div><div class="label">Ditempah</div></div>
-        <div class="stat"><div class="value" id="sum-generated">0</div><div class="label">Label dijana</div></div>
-        <div class="stat"><div class="value" id="sum-unprinted">0</div><div class="label">Belum dicetak</div></div>
+        <div class="stat"><div class="value" id="sum-ordered">0</div><div class="label">Ordered</div></div>
+        <div class="stat"><div class="value" id="sum-generated">0</div><div class="label">Labels generated</div></div>
+        <div class="stat"><div class="value" id="sum-unprinted">0</div><div class="label">Not printed</div></div>
       </div>
-      <a id="go-print-link" href="/label.html" class="button btn-lg">Terus ke Cetak &amp; Tampal</a>
+      <a id="go-print-link" href="/label.html" class="button btn-lg">Go to Print &amp; Attach</a>
     </div>
 
-    <div class="section" style="margin-top:28px;">
+    <div class="section mt-5">
       <div class="orders-toolbar">
-        <h2 class="section-title" style="margin:0;">Senarai tempahan</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <select id="orders-sort" aria-label="Susun senarai" style="width:auto;font-size:13px;padding:6px 10px;">
-            <option value="new">Terbaru dahulu</option>
-            <option value="due">Tarikh siap terdekat</option>
+        <h2 class="section-title mb-0">Order list</h2>
+        <div class="cluster">
+          <select id="orders-sort" aria-label="Sort orders">
+            <option value="new">Newest first</option>
+            <option value="due">Nearest due date</option>
           </select>
-          <button type="button" class="btn-secondary btn-sm" id="btn-toggle-orders" hidden>Papar semua</button>
+          <button type="button" class="btn-secondary btn-sm" id="btn-toggle-orders" hidden>Show all</button>
         </div>
       </div>
-      <p class="muted" id="orders-empty">Belum ada tempahan.</p>
+      <p class="muted" id="orders-empty">No orders yet.</p>
       <table class="data-table" id="orders-table" hidden>
         <thead>
-          <tr><th>Pelanggan</th><th>Rujukan</th><th>Tarikh siap</th><th>Item</th><th>Status label</th><th></th></tr>
+          <tr><th>Customer</th><th>Reference</th><th>Due date</th><th>Items</th><th>Label status</th><th></th></tr>
         </thead>
         <tbody id="orders-body"></tbody>
       </table>
     </div>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     let isNewCustomer = false;
@@ -211,10 +219,10 @@ Peraturan penting:
       if (!iso) return '<span class="muted">—</span>';
       const [y, m, d] = iso.slice(0, 10).split('-');
       const days = Math.round((new Date(iso.slice(0, 10)) - new Date(new Date().toISOString().slice(0, 10))) / 86400000);
-      const note = days < 0 ? `<span class="pill bad">lewat ${-days} hari</span>`
-        : days === 0 ? '<span class="pill warn">hari ini</span>'
-        : days <= 7 ? `<span class="pill warn">${days} hari lagi</span>`
-        : `<span class="muted" style="font-size:12px;">${days} hari lagi</span>`;
+      const note = days < 0 ? `<span class="pill bad">${-days} day${-days === 1 ? '' : 's'} overdue</span>`
+        : days === 0 ? '<span class="pill warn">today</span>'
+        : days <= 7 ? `<span class="pill warn">${days} day${days === 1 ? '' : 's'} left</span>`
+        : `<span class="muted small">${days} days left</span>`;
       return `<div>${d}/${m}/${y}</div><div style="margin-top:4px;">${note}</div>`;
     }
 
@@ -222,7 +230,7 @@ Peraturan penting:
       isNewCustomer = isNew;
       document.getElementById('cust-select').hidden = isNewCustomer;
       document.getElementById('new-cust-div').hidden = !isNewCustomer;
-      document.getElementById('btn-toggle-cust').textContent = isNewCustomer ? 'Pilih sedia ada' : '+ Pelanggan baru';
+      document.getElementById('btn-toggle-cust').textContent = isNewCustomer ? 'Pick an existing one' : '+ New customer';
     }
     document.getElementById('btn-toggle-cust').addEventListener('click', () => setCustomerMode(!isNewCustomer));
 
@@ -252,7 +260,7 @@ Peraturan penting:
       const select = document.getElementById('cust-select');
       select.innerHTML = rows.length
         ? rows.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
-        : '<option value="">Tiada pelanggan lagi -- cipta baru</option>';
+        : '<option value="">No customers yet: create one</option>';
     }
 
     // Live total under the form, next to the submit button.
@@ -265,8 +273,8 @@ Peraturan penting:
         if (q > 0) { units += q; rows += 1; }
       }));
       document.getElementById('order-totals').innerHTML = units
-        ? `<strong>${units}</strong> unit &middot; ${rows} baris &middot; ${groups.length} produk`
-        : 'Belum ada item';
+        ? `<strong>${units}</strong> unit${units === 1 ? '' : 's'} &middot; ${rows} line${rows === 1 ? '' : 's'} &middot; ${groups.length} product${groups.length === 1 ? '' : 's'}`
+        : 'No items yet';
     }
     document.getElementById('order-with-labels-form').addEventListener('input', updateTotals);
     new MutationObserver(updateTotals).observe(document.getElementById('items-container'), { childList: true, subtree: true });
@@ -275,7 +283,7 @@ Peraturan penting:
     // Order form: one block per product, with a row per variation (size).
     // The product name is typed once. Recipient names sit under each
     // variation. Nothing here decides what gets printed: every label is
-    // created with the order, and printing is chosen later on Cetak & Tampal.
+    // created with the order, and printing is chosen later on Print & Attach.
     // A variation can also carry recipient groups (e.g. one per school) from AI
     // output; they show as editable sub-rows so everything the AI produced is
     // visible and correctable before anything is created.
@@ -287,16 +295,16 @@ Peraturan penting:
       group.innerHTML = `
         <div class="group-head">
           <div>
-            <label>Produk</label>
-            <textarea rows="1" data-group="productName" placeholder="cth: Jersi Home 2026" aria-label="Produk"></textarea>
+            <label>Product</label>
+            <textarea rows="1" data-group="productName" placeholder="e.g. Home Jersey 2026" aria-label="Product"></textarea>
           </div>
           <div>
-            <button type="button" class="btn-danger btn-sm" data-group-action="remove">Buang produk</button>
+            <button type="button" class="btn-danger btn-sm" data-group-action="remove">Remove product</button>
           </div>
         </div>
-        <div class="variants-head muted"><label>Variasi</label><label>Kuantiti</label><span></span></div>
+        <div class="variants-head muted"><label>Variant</label><label>Quantity</label><span></span></div>
         <div data-group="variantList"></div>
-        <button type="button" class="btn-secondary btn-sm" data-group-action="add-variant">+ Tambah saiz / variasi</button>
+        <button type="button" class="btn-secondary btn-sm" data-group-action="add-variant">+ Add size / variant</button>
       `;
       container.appendChild(group);
       const productInput = group.querySelector('[data-group=productName]');
@@ -316,22 +324,22 @@ Peraturan penting:
       div.className = 'variant-row';
       div.innerHTML = `
         <div>
-          <span class="cell-label">Variasi</span>
-          <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" aria-label="Variasi">
+          <span class="cell-label">Variant</span>
+          <input type="text" data-field="variantLabel" placeholder="e.g. Size M" aria-label="Variant">
         </div>
         <div>
-          <span class="cell-label">Kuantiti</span>
-          <input type="number" min="1" data-field="quantity" placeholder="cth: 10" aria-label="Kuantiti">
+          <span class="cell-label">Quantity</span>
+          <input type="number" min="1" data-field="quantity" placeholder="e.g. 10" aria-label="Quantity">
         </div>
         <div>
-          <button type="button" class="btn-danger btn-sm" data-row-action="remove" style="width:100%;">Buang</button>
+          <button type="button" class="btn-danger btn-sm" data-row-action="remove" style="width:100%;">Remove</button>
         </div>
         <div class="names-cell">
           <div class="names-head">
-            <span>Teks pada label (nama, jenama, dll.; jika ada) · asingkan dengan koma atau baris baru</span>
+            <span>Label text (a name, a brand, anything; if any) · separate with commas or new lines</span>
             <span class="names-count" data-field="namesCount"></span>
           </div>
-          <textarea data-field="unitNames" rows="2" placeholder="cth: Amin, Ahmad, Ali  atau  Jenama X" aria-label="Teks pada label"></textarea>
+          <textarea data-field="unitNames" rows="2" placeholder="e.g. Amin, Ahmad, Ali  or  Brand X" aria-label="Label text"></textarea>
         </div>
         <div class="batch-subrows" hidden>
           <div class="group-note" data-field="groupNote"></div>
@@ -350,7 +358,7 @@ Peraturan penting:
 
       function showCount(inputEl, countEl, limit) {
         const n = parseNames(inputEl.value).length;
-        countEl.textContent = n ? `${n} teks / ${limit} unit` : '';
+        countEl.textContent = n ? `${n} text${n === 1 ? '' : 's'} / ${limit} unit${limit === 1 ? '' : 's'}` : '';
         countEl.classList.toggle('over', n > limit);
       }
 
@@ -364,8 +372,8 @@ Peraturan penting:
         if (subs.length) {
           const rest = qty - sum;
           groupNote.textContent = rest < 0
-            ? `Kumpulan (daripada AI): ${sum} unit, melebihi kuantiti ${qty}. Betulkan sebelum sahkan.`
-            : `Kumpulan (daripada AI): ${sum} daripada ${qty} unit.${rest > 0 ? ` ${rest} unit lagi tanpa kumpulan.` : ''} Boleh diubah atau dibuang.`;
+            ? `Groups (from the AI): ${sum} units, more than the quantity ${qty}. Fix this before confirming.`
+            : `Groups (from the AI): ${sum} of ${qty} units.${rest > 0 ? ` ${rest} more units have no group.` : ''} You can edit or remove them.`;
           groupNote.classList.toggle('bad', rest < 0);
         }
         showCount(namesInput, namesCount, qty);
@@ -375,13 +383,13 @@ Peraturan penting:
         const s = document.createElement('div');
         s.className = 'batch-subrow';
         s.innerHTML = `
-          <div><input type="text" data-sub="name" placeholder="Nama kumpulan (cth: SK Sekolah A)" aria-label="Nama kumpulan"></div>
-          <div><input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" aria-label="Kuantiti kumpulan"></div>
+          <div><input type="text" data-sub="name" placeholder="Group name (e.g. SK School A)" aria-label="Group name"></div>
+          <div><input type="number" min="1" data-sub="quantity" placeholder="Quantity" aria-label="Group quantity"></div>
           <div>
-            <textarea data-sub="names" rows="2" placeholder="Teks pada label untuk kumpulan ini" aria-label="Teks pada label untuk kumpulan"></textarea>
+            <textarea data-sub="names" rows="2" placeholder="Label text for this group" aria-label="Label text for the group"></textarea>
             <div class="names-count" data-sub="count"></div>
           </div>
-          <button type="button" class="btn-danger btn-sm" aria-label="Buang kumpulan" style="height:40px;">✕</button>
+          <button type="button" class="btn-danger btn-sm" aria-label="Remove group" style="height:40px;">✕</button>
         `;
         const subQty = s.querySelector('[data-sub=quantity]');
         const subNames = s.querySelector('[data-sub=names]');
@@ -416,16 +424,16 @@ Peraturan penting:
 
     // The AI is a helper for THIS form, not a second way to create orders:
     // it only fills the fields below. Nothing is created until staff review
-    // the filled form and press the same "Sahkan Tempahan" button.
+    // the filled form and press the same "Confirm order" button.
     function fillFormFromAi() {
       const out = document.getElementById('ai-fill-result');
       try {
         const text = document.getElementById('ai-text-input').value.trim();
-        if (!text) throw new Error('Sila tampal JSON daripada AI dahulu.');
+        if (!text) throw new Error('Paste the JSON from the AI first.');
         let manifest;
-        try { manifest = JSON.parse(text); } catch { throw new Error('JSON tidak sah. Sila semak format yang AI berikan.'); }
+        try { manifest = JSON.parse(text); } catch { throw new Error('That is not valid JSON. Check the format the AI gave you.'); }
         if (!manifest || !Array.isArray(manifest.products) || !manifest.products.length) {
-          throw new Error('JSON tiada senarai "products".');
+          throw new Error('The JSON has no "products" list.');
         }
 
         const products = manifest.products.map((p) => ({
@@ -438,7 +446,7 @@ Peraturan penting:
           })),
         }));
         const rows = products.flatMap((p) => p.variants);
-        if (!rows.length) throw new Error('JSON tiada sebarang variasi/kuantiti.');
+        if (!rows.length) throw new Error('The JSON has no variants or quantities.');
 
         // Customer: reuse an existing one on an exact (case-insensitive) name
         // match, otherwise fill in as a new customer. Either way it is shown
@@ -451,11 +459,11 @@ Peraturan penting:
           if (match) {
             select.value = match.value;
             setCustomerMode(false);
-            customerNote = ` Pelanggan sedia ada dipilih: ${match.textContent}.`;
+            customerNote = ` Existing customer selected: ${match.textContent}.`;
           } else {
             setCustomerMode(true);
             document.getElementById('new-cust-name').value = customerName;
-            customerNote = ` Pelanggan baru: ${customerName}.`;
+            customerNote = ` New customer: ${customerName}.`;
           }
         }
         document.querySelector('[name=orderReference]').value = manifest.orderReference ? String(manifest.orderReference).trim() : '';
@@ -484,16 +492,16 @@ Peraturan penting:
         const issues = [];
         let totalOk = '';
         if (!Number.isFinite(stated)) {
-          issues.push(`Dokumen tidak menyatakan jumlah, jadi jumlah ${totalQty} unit tidak dapat disemak.`);
+          issues.push(`The document does not state a total, so the ${totalQty} units cannot be cross-checked.`);
         } else if (stated === totalQty) {
-          totalOk = ` Jumlah sepadan dengan dokumen (${stated}).`;
+          totalOk = ` The total matches the document (${stated}).`;
         } else {
-          issues.unshift(`<strong>Jumlah tidak sepadan:</strong> dokumen ${stated} unit, jumlah baris ${totalQty} unit. Semak semula kuantiti.`);
+          issues.unshift(`<strong>The total does not match:</strong> the document says ${stated} units but the lines add up to ${totalQty}. Check the quantities again.`);
         }
 
         // Rows where only some units have a name (e.g. 12 names for 16 units).
         rows.filter((r) => r.unitNames.length && r.unitNames.length < r.quantity).forEach((r) => {
-          issues.push(`Teks label kurang daripada kuantiti: ${esc(r.variantLabel)} (${r.unitNames.length} teks / ${r.quantity} unit).`);
+          issues.push(`Fewer label texts than the quantity: ${esc(r.variantLabel)} (${r.unitNames.length} texts / ${r.quantity} units).`);
         });
 
         // Anomalies the AI itself flagged (ambiguous name splits, unclear
@@ -504,8 +512,8 @@ Peraturan penting:
 
         document.getElementById('order-alerts').innerHTML = `
           <div class="review-panel${issues.length ? ' needs-review' : ''}">
-            <div class="review-head">Borang telah diisi: ${products.length} produk, ${rows.length} baris, ${totalQty} unit.${totalOk}${esc(customerNote)}</div>
-            <div class="review-sub">${issues.length ? `Semak ${issues.length} perkara di bawah, betulkan dalam borang, kemudian sahkan.` : 'Semak borang di bawah, kemudian sahkan.'}</div>
+            <div class="review-head">Form filled in: ${products.length} product${products.length === 1 ? '' : 's'}, ${rows.length} line${rows.length === 1 ? '' : 's'}, ${totalQty} units.${totalOk}${esc(customerNote)}</div>
+            <div class="review-sub">${issues.length ? `Check the ${issues.length} item${issues.length === 1 ? '' : 's'} below, correct them in the form, then confirm.` : 'Check the form below, then confirm.'}</div>
             ${issues.length ? `<ul class="review-list">${issues.map((i) => `<li>${i}</li>`).join('')}</ul>` : ''}
           </div>`;
         out.innerHTML = '';
@@ -535,9 +543,9 @@ Peraturan penting:
       const printed = p.total_units - p.unprinted_units;
       const parts = [];
       parts.push(p.unprinted_units === 0
-        ? '<span class="pill ok">Semua dicetak</span>'
-        : `<span class="pill warn">${p.unprinted_units} belum dicetak</span>`);
-      if (printed > 0) parts.push(`<div class="muted" style="font-size:12px;margin-top:4px;">${p.attached_units}/${printed} ditampal</div>`);
+        ? '<span class="pill ok">All printed</span>'
+        : `<span class="pill warn">${p.unprinted_units} not printed</span>`);
+      if (printed > 0) parts.push(`<div class="muted small mt-2">${p.attached_units}/${printed} attached</div>`);
       return parts.join('');
     }
 
@@ -553,25 +561,25 @@ Peraturan penting:
         : allOrders;
       const shown = showAllOrders ? sorted : sorted.slice(0, ORDERS_PREVIEW);
       toggle.hidden = allOrders.length <= ORDERS_PREVIEW;
-      toggle.textContent = showAllOrders ? 'Papar ringkas' : `Papar semua (${allOrders.length})`;
+      toggle.textContent = showAllOrders ? 'Show less' : `Show all (${allOrders.length})`;
 
       const body = document.getElementById('orders-body');
       body.innerHTML = shown.map((o) => {
         const units = o.lines.reduce((s, l) => s + Number(l.quantity_ordered || 0), 0);
         const lines = o.lines.slice(0, 3).map((l) =>
           `<div><strong>${esc(l.product_name || l.description || '')}</strong> ${esc(l.variant_label || '')} &times; ${l.quantity_ordered}</div>`).join('');
-        const more = o.lines.length > 3 ? `<div>+${o.lines.length - 3} baris lagi</div>` : '';
+        const more = o.lines.length > 3 ? `<div>+${o.lines.length - 3} more lines</div>` : '';
         return `
         <tr>
           <td><strong>${esc(o.customer_name)}</strong></td>
           <td>${esc(o.order_reference)}</td>
           <td>${dueCell(o.due_date)}</td>
-          <td class="order-lines"><div><strong>${units} unit</strong> &middot; ${o.lines.length} baris</div>${lines}${more}</td>
+          <td class="order-lines"><div><strong>${units} unit${units === 1 ? '' : 's'}</strong> &middot; ${o.lines.length} line${o.lines.length === 1 ? '' : 's'}</div>${lines}${more}</td>
           <td>${statusCell(o.print)}</td>
           <td>
             <div class="order-actions">
-              <a href="/label.html?orderId=${o.id}" class="button btn-sm">Cetak &amp; Tampal</a>
-              <button type="button" class="btn-secondary btn-sm" data-reconcile="${o.id}">Butiran</button>
+              <a href="/label.html?orderId=${o.id}" class="button btn-sm">Print &amp; Attach</a>
+              <button type="button" class="btn-secondary btn-sm" data-reconcile="${o.id}">Progress</button>
             </div>
           </td>
         </tr>
@@ -598,7 +606,7 @@ Peraturan penting:
     // Per-line progress: labels made -> attached -> packed -> dispatched.
     async function renderReconciliation(orderId) {
       const cell = document.getElementById(`reconcile-${orderId}`);
-      cell.innerHTML = '<span class="muted">Memuatkan…</span>';
+      cell.innerHTML = '<span class="muted">Loading…</span>';
       const data = await fetch(`/api/orders/${orderId}/reconciliation`).then((r) => r.json());
       if (data.error) { cell.innerHTML = `<div class="msg error">${esc(data.error)}</div>`; return; }
 
@@ -611,20 +619,20 @@ Peraturan penting:
         } else if (l.units_generated < l.quantity_ordered) {
           const remaining = l.quantity_ordered - l.units_generated;
           genBadge = `<span class="pill warn">${l.units_generated}/${l.quantity_ordered}</span>
-            <button type="button" class="btn-secondary btn-sm" data-add-batch="${l.order_line_id}" data-remaining="${remaining}">+ Jana ${remaining} lagi</button>`;
+            <button type="button" class="btn-secondary btn-sm" data-add-batch="${l.order_line_id}" data-remaining="${remaining}">+ Generate ${remaining} more</button>`;
         } else {
-          genBadge = `<span class="pill bad">${l.units_generated}/${l.quantity_ordered} tidak sepadan</span>`;
+          genBadge = `<span class="pill bad">${l.units_generated}/${l.quantity_ordered} mismatch</span>`;
         }
 
         const stage = (done, total, doneText) => {
-          if (l.units_generated === 0) return '<span class="muted">Belum ada label</span>';
+          if (l.units_generated === 0) return '<span class="muted">No labels yet</span>';
           if (total > 0 && done >= total) return `<span class="pill ok">${done}/${total}${doneText ? ' ' + doneText : ''}</span>`;
           return done > 0 ? `<span class="pill warn">${done}/${total}</span>` : `<span class="muted">0/${total}</span>`;
         };
         const attach = stage(l.units_attached, l.units_generated, '');
         const pack = l.shipment_planned > 0
           ? stage(l.units_packed, l.shipment_planned, '')
-          : (l.units_packed > 0 ? `<span class="muted">${l.units_packed} dipek</span>` : '<span class="muted">Belum dipek</span>');
+          : (l.units_packed > 0 ? `<span class="muted">${l.units_packed} packed</span>` : '<span class="muted">Not packed</span>');
         const disp = stage(l.units_dispatched, l.units_generated, '');
         const ret = l.units_returned > 0 ? `<span class="pill warn">${l.units_returned}</span>` : '<span class="muted">0</span>';
         const withCust = l.units_dispatched > 0 ? `${l.units_with_customer}` : '<span class="muted">0</span>';
@@ -643,10 +651,10 @@ Peraturan penting:
 
       cell.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>Item</th><th class="num">Ditempah</th><th>Label dijana</th><th>Ditampal</th><th>Dipek</th><th>Dihantar</th><th>Dipulang</th><th>Di tangan pelanggan</th></tr></thead>
+          <thead><tr><th>Item</th><th class="num">Ordered</th><th>Labels generated</th><th>Attached</th><th>Packed</th><th>Dispatched</th><th>Returned</th><th>With customer</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
-          <tfoot><tr style="font-weight:600">
-            <td>Jumlah</td><td class="num">${data.totals.ordered}</td><td>${data.totals.generated}</td>
+          <tfoot><tr class="fw-600">
+            <td>Total</td><td class="num">${data.totals.ordered}</td><td>${data.totals.generated}</td>
             <td>${data.totals.attached}</td><td>${data.totals.packed}</td><td>${data.totals.dispatched}</td>
             <td>${data.totals.returned}</td><td>${data.totals.with_customer}</td>
           </tr></tfoot>
@@ -656,11 +664,15 @@ Peraturan penting:
         btn.addEventListener('click', async () => {
           const lineId = btn.dataset.addBatch;
           const remaining = Number(btn.dataset.remaining);
-          const qtyStr = prompt(`Berapa unit untuk dijana sekarang? (baki: ${remaining})`, String(remaining));
-          if (!qtyStr) return;
-          const qty = parseInt(qtyStr, 10);
+          const qtyStr = await UI.prompt({
+            title: 'Generate more labels',
+            message: `How many labels should be generated now? (${remaining} still to generate)`,
+            label: 'Quantity', value: String(remaining), confirmLabel: 'Generate',
+          });
+          if (qtyStr === null || qtyStr === '') return;
+          const qty = Number(qtyStr);
           if (!Number.isInteger(qty) || qty < 1 || qty > remaining) {
-            alert(`Kuantiti mesti nombor bulat antara 1 dan ${remaining}.`);
+            UI.toast(`The quantity must be a whole number between 1 and ${remaining}.`, 'error');
             return;
           }
           const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
@@ -669,7 +681,7 @@ Peraturan penting:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ quantity: qty, actor }),
           }).then((r) => r.json());
-          if (res.error) { alert(res.error); return; }
+          if (res.error) { UI.toast(res.error, 'error'); return; }
           renderReconciliation(orderId);
         });
       });
@@ -678,16 +690,16 @@ Peraturan penting:
     document.getElementById('order-with-labels-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const resDiv = document.getElementById('form-result');
-      resDiv.innerHTML = '<div class="msg info">Mencipta tempahan dan menjana label…</div>';
+      resDiv.innerHTML = '<div class="msg info">Creating the order and generating labels…</div>';
       try {
         let customerId = document.getElementById('cust-select').value;
         let customerName = null;
         if (isNewCustomer) {
           customerName = document.getElementById('new-cust-name').value.trim();
-          if (!customerName) throw new Error('Nama pelanggan baru diperlukan.');
+          if (!customerName) throw new Error('Enter the new customer name.');
           customerId = null;
         } else if (!customerId) {
-          throw new Error('Sila pilih pelanggan sedia ada.');
+          throw new Error('Choose an existing customer, or create a new one.');
         }
 
         const formData = new FormData(e.target);
@@ -712,16 +724,16 @@ Peraturan penting:
             // A variation row nobody touched is ignored (whatever the product
             // name says); a half-filled one is an error, never silently dropped.
             if (!variantLabel && !quantity && !unitNames.length && !subrows.length) return;
-            if (!productName) throw new Error('Nama produk belum diisi.');
-            if (!variantLabel) throw new Error(`Variasi belum diisi untuk "${productName}".`);
+            if (!productName) throw new Error('Enter the product name.');
+            if (!variantLabel) throw new Error(`Enter the variant for "${productName}".`);
             if (!Number.isInteger(quantity) || quantity < 1) {
-              throw new Error(`Kuantiti belum diisi untuk "${productName} ${variantLabel}".`);
+              throw new Error(`Enter the quantity for "${productName} ${variantLabel}".`);
             }
             const what = `"${productName} ${variantLabel}"`;
 
             if (!subrows.length) {
               if (unitNames.length > quantity) {
-                throw new Error(`${what} ada ${unitNames.length} teks label tetapi kuantitinya hanya ${quantity}.`);
+                throw new Error(`${what} has ${unitNames.length} label texts but the quantity is only ${quantity}.`);
               }
               items.push({ productName, variantLabel, quantity, unitNames, batches: null });
               return;
@@ -732,28 +744,28 @@ Peraturan penting:
             const batches = subrows.map((s, i) => {
               const bq = Number(s.querySelector('[data-sub=quantity]').value);
               if (!Number.isInteger(bq) || bq < 1) {
-                throw new Error(`Kuantiti kumpulan ${i + 1} untuk ${what} mesti nombor bulat sekurang-kurangnya 1.`);
+                throw new Error(`The quantity of group ${i + 1} for ${what} must be a whole number of at least 1.`);
               }
               const bn = s.querySelector('[data-sub=name]').value.trim();
               if (bn) {
                 const key = bn.replace(/\s+/g, ' ').toLowerCase();
-                if (seen.has(key)) throw new Error(`Nama kumpulan "${bn}" digunakan dua kali untuk ${what}.`);
+                if (seen.has(key)) throw new Error(`The group name "${bn}" is used twice for ${what}.`);
                 seen.add(key);
               }
               const names = parseNames(s.querySelector('[data-sub=names]').value);
               if (names.length > bq) {
-                throw new Error(`Kumpulan ${bn || i + 1} (${what}) ada ${names.length} teks label tetapi kuantitinya hanya ${bq}.`);
+                throw new Error(`Group ${bn || i + 1} (${what}) has ${names.length} label texts but the quantity is only ${bq}.`);
               }
               sum += bq;
               return { quantity: bq, ...(bn ? { batchLabel: bn } : {}), ...(names.length ? { unitNames: names } : {}) };
             });
-            if (sum > quantity) throw new Error(`Jumlah kumpulan (${sum}) melebihi kuantiti (${quantity}) untuk ${what}.`);
+            if (sum > quantity) throw new Error(`The groups add up to ${sum}, more than the quantity ${quantity} for ${what}.`);
             if (sum < quantity) batches.push({ quantity: quantity - sum });
             items.push({ productName, variantLabel, quantity, unitNames: [], batches });
           });
         });
 
-        if (!items.length) throw new Error('Sila isi sekurang-kurangnya satu produk dengan variasi dan kuantiti.');
+        if (!items.length) throw new Error('Add at least one product with a variant and a quantity.');
 
         const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
         const send = (acknowledgeWarnings) => fetch('/api/orders/create-with-labels', {
@@ -775,14 +787,18 @@ Peraturan penting:
         // Ambiguous spellings (e.g. XL and X-L in one order): nothing has been
         // created yet, so ask, and only go ahead if the person says they differ.
         if (res.requiresAcknowledgement) {
-          const go = confirm(res.warnings.join('\n\n') + '\n\nTeruskan tempahan ini seperti yang ditaip?');
-          if (!go) { resDiv.innerHTML = '<div class="msg info">Tempahan belum dibuat. Semak perkara di atas dalam borang, kemudian sahkan semula.</div>'; return; }
+          const go = await UI.confirm({
+            title: 'Check before creating the order',
+            message: res.warnings.join('\n\n') + '\n\nCreate the order exactly as typed?',
+            confirmLabel: 'Create the order', cancelLabel: 'Go back and check',
+          });
+          if (!go) { resDiv.innerHTML = '<div class="msg info">The order has not been created. Check the items above in the form, then confirm again.</div>'; return; }
           res = await send(true);
         }
 
         if (res.error) throw new Error(res.error);
 
-        resDiv.innerHTML = `<div class="msg ok">Tempahan "${esc(res.orderReference)}" berjaya dicipta!</div>`;
+        resDiv.innerHTML = `<div class="msg ok">Order "${esc(res.orderReference)}" created.</div>`;
 
         const totalOrdered = res.lines.reduce((s, l) => s + l.quantity, 0);
         const totalGenerated = res.lines.reduce((s, l) => s + l.batches.reduce((bs, b) => bs + b.createdUnits, 0), 0);
@@ -805,6 +821,7 @@ Peraturan penting:
         document.getElementById('summary-section').scrollIntoView({ behavior: 'smooth' });
       } catch (err) {
         resDiv.innerHTML = `<div class="msg error">${esc(err.message)}</div>`;
+        resDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     });
 
@@ -813,8 +830,9 @@ Peraturan penting:
     function copyAiPrompt() {
       const promptText = document.getElementById('ai-prompt');
       promptText.select();
-      document.execCommand('copy');
-      alert('Prompt telah disalin ke clipboard!');
+      const done = () => UI.toast('Prompt copied to the clipboard.', 'ok');
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(promptText.value).then(done, () => { document.execCommand('copy'); done(); });
+      else { document.execCommand('copy'); done(); }
     }
 
     addGroup();

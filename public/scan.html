@@ -2,26 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Unit Lookup / Scan — Labelism</title>
+  <title>Unit Lookup — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="page">
   <header class="page-header">
-    <h1>Unit Lookup / Scan</h1>
-    <p class="muted">Type a unit code (e.g. 000001) or scan its QR.</p>
+    <h1>Unit Lookup</h1>
+    <p class="muted">Scan a label to see the unit's status and history, and to record an action.</p>
   </header>
 
-  <form id="lookup-form">
-    <label>Unit code
-      <input name="code" autofocus required placeholder="000001">
-    </label>
-    <button type="submit">Look up</button>
-  </form>
+  <section class="section">
+    <form id="lookup-form" class="wide">
+      <label for="scan-code">Scan the QR code on the label</label>
+      <input id="scan-code" name="code" class="scan-input" autofocus required autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" placeholder="Scan the QR code here…">
+      <button type="submit" class="btn-primary btn-lg">Look up</button>
+    </form>
+    <details class="mt-4">
+      <summary>No scanner? Enter an ID by hand instead</summary>
+      <form id="manual-form" class="mt-3">
+        <label for="manual-id">ID
+          <input id="manual-id" name="id" autocomplete="off" placeholder="e.g. 000001">
+        </label>
+        <span class="field-hint">IDs repeat across print runs. If more than one unit has this ID, you will be asked to pick the right one.</span>
+        <button type="submit" class="btn-secondary">Look up ID</button>
+      </form>
+    </details>
+  </section>
 
   <div id="result"></div>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     const form = document.getElementById('lookup-form');
@@ -32,8 +45,8 @@
       currentUnit = unit;
       result.innerHTML = `
         <div class="unit-card">
-          <div class="code">${unit.humanCode}</div>
-          <p class="muted">${unit.product} · ${unit.variant} · ${unit.batchLabel || 'Batch ' + unit.batchNumber}</p>
+          <div class="code">ID ${unit.humanCode}</div>
+          <p class="muted">${unit.product} · ${unit.variant} · ${unit.batchLabel || 'Production batch ' + unit.batchNumber}</p>
           ${unit.orderReference ? `<p class="muted">Order ${unit.orderReference}${unit.customerName ? ` · ${unit.customerName}` : ''}</p>` : ''}
           <span class="badge">${unit.disposition || '—'}</span>
           ${unit.condition ? `<span class="badge">${unit.condition}</span>` : ''}
@@ -97,12 +110,12 @@
       } else if (action === 'reissue-after-attach') {
         // Priority 5B: unlike the other guided actions above, this one
         // permanently kills the current QR (same irreversible weight as
-        // Print Labels' "Lost -- Reissue" for a pre-attachment unit), so it
+        // Print & Attach' "Lost -- Reissue" for a pre-attachment unit), so it
         // gets its own inline confirm step instead of firing immediately.
         actionResult.innerHTML = `
-          <div style="margin-top:10px;max-width:360px">
-            <p class="muted" style="font-size:12px">This permanently invalidates the current QR and requires production to re-attach and re-scan a new label. Only use this if the attached label is damaged, faded, or lost.</p>
-            <div style="display:flex;gap:8px">
+          <div class="mt-3 narrow">
+            <p class="muted small">This permanently invalidates the current QR and requires production to re-attach and re-scan a new label. Only use this if the attached label is damaged, faded, or lost.</p>
+            <div class="cluster">
               <button id="reissue-after-attach-confirm">Yes, issue a replacement label</button>
               <button id="reissue-after-attach-cancel" class="secondary">Cancel</button>
             </div>
@@ -119,7 +132,7 @@
           }
           const fresh = await fetch(`/api/units/lookup/${reissueRes.internalToken}`).then(r => r.json());
           render(fresh);
-          document.getElementById('action-result').innerHTML = `<div class="msg ok">New label issued -- the old QR no longer works. Print the new label from Print Labels, attach it, then scan to re-confirm.</div>`;
+          document.getElementById('action-result').innerHTML = `<div class="msg ok">New label issued -- the old QR no longer works. Print the new label from Print & Attach, attach it, then scan to re-confirm.</div>`;
         });
         return;
       } else if (action === 'transfer') {
@@ -128,11 +141,11 @@
         // digital rehearsal) cannot be driven by automated browser testing
         // at all, since it auto-dismisses.
         actionResult.innerHTML = `
-          <form id="transfer-form" style="margin-top:10px;max-width:320px">
+          <form id="transfer-form" class="mt-3 narrow">
             <label>New location
               <input name="locationName" required placeholder="e.g. Main Warehouse, Distributor A">
             </label>
-            <div style="display:flex;gap:8px">
+            <div class="cluster">
               <button type="submit">Confirm Transfer</button>
               <button type="button" id="transfer-cancel" class="secondary">Cancel</button>
             </div>
@@ -184,11 +197,11 @@
 
     function renderAmbiguous(candidates) {
       result.innerHTML = `
-        <p class="muted">This code matches more than one unit (the same copy number exists in different batches). Which one did you mean?</p>
+        <p class="muted">This ID matches more than one unit (the same ID exists in different print runs). Which one did you mean?</p>
         ${candidates.map(c => `
           <div class="unit-card">
-            <div class="code">${c.humanCode}</div>
-            <p class="muted">${c.product} · ${c.variant} · ${c.batchLabel || 'Batch ' + c.batchNumber}</p>
+            <div class="code">ID ${c.humanCode}</div>
+            <p class="muted">${c.product} · ${c.variant} · ${c.batchLabel || 'Production batch ' + c.batchNumber}</p>
             <button data-token="${c.internalToken}">Select this one</button>
           </div>
         `).join('')}
@@ -199,7 +212,7 @@
     }
 
     async function lookup(code) {
-      result.innerHTML = `<p class="muted">Looking up ${code}…</p>`;
+      result.innerHTML = '<p class="muted">Looking up…</p>';
       let res;
       try {
         const httpRes = await fetch(`/api/units/lookup/${encodeURIComponent(code)}`);
@@ -219,10 +232,22 @@
       render(res);
     }
 
+    // A scanner types the whole QR address (.../scan.html?code=TOKEN); use the code inside it.
+    function scannedCode(raw) {
+      const value = String(raw || '').trim();
+      try { return new URL(value).searchParams.get('code') || value; } catch { return value; }
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const code = new FormData(form).get('code').trim();
-      lookup(code);
+      const code = scannedCode(new FormData(form).get('code'));
+      if (code) lookup(code);
+      form.reset();
+    });
+    document.getElementById('manual-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = new FormData(e.target).get('id').trim();
+      if (id) lookup(id);
     });
 
     const presetCode = new URLSearchParams(location.search).get('code');

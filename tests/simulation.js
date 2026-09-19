@@ -95,7 +95,7 @@ const s1 = await api(`/api/print-runs/${run1.id}/packing/start`, { method: 'POST
 check('Cetakan 1 menjangka 8 label sahaja', s1.body.planned === 8, json(s1.body));
 const scan = (runId, u) => api(`/api/print-runs/${runId}/packing/scan`, { method: 'POST', body: { code: u.internal_token } });
 const wrong = await scan(run1.id, run2.units[0]);
-check('label Cetakan 2 ditolak dalam Cetakan 1 (sebut "Cetakan 2")', wrong.status >= 400 && /Cetakan 2/.test(wrong.body.error || ''), json(wrong.body));
+check('label Cetakan 2 ditolak dalam Cetakan 1 (sebut "Cetakan 2")', wrong.status >= 400 && /print run 2/.test(wrong.body.error || ''), json(wrong.body));
 let scanned = 0;
 for (const u of run1.units.slice(0, 7)) if ((await scan(run1.id, u)).status === 201) scanned++;
 check('7 daripada 8 label discan', scanned === 7, `${scanned}`);

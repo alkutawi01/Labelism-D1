@@ -2,7 +2,7 @@
 //
 // Izzat's workflow: an order creates every label up front (1 unit ordered =
 // 1 label generated). At the print step staff tick which variations to print
-// and how many of each; that selection is recorded as "Cetakan N" of the order.
+// and how many of each; that selection is recorded as "Print run N" of the order.
 // Whatever is not selected stays unprinted for a later batch. Packing then
 // works against ONE batch and only expects the labels printed in it, so
 // printing part of an order no longer makes packing think the rest is missing.
@@ -97,7 +97,7 @@ export async function getPrintOverview(db, orderId) {
 // the caller fetches its labels with getPrintRun() to render and print them.
 export async function createPrintRun(db, orderId, { selections, actor }) {
   if (!Array.isArray(selections) || !selections.length) {
-    throw new ValidationError('Pilih sekurang-kurangnya satu baris untuk dicetak.');
+    throw new ValidationError('Select at least one row to print.');
   }
   const order = await db.prepare('SELECT id FROM orders WHERE id = ?').bind(orderId).first();
   if (!order) return { notFound: true };
@@ -106,7 +106,7 @@ export async function createPrintRun(db, orderId, { selections, actor }) {
   for (const s of selections) {
     const quantity = Number(s.quantity);
     if (!s.batchId || !Number.isInteger(quantity) || quantity < 1) {
-      throw new ValidationError('Kuantiti untuk dicetak mesti nombor bulat sekurang-kurangnya 1.');
+      throw new ValidationError('The quantity to print must be a whole number of at least 1.');
     }
     wanted.set(s.batchId, (wanted.get(s.batchId) || 0) + quantity);
   }
@@ -126,10 +126,10 @@ export async function createPrintRun(db, orderId, { selections, actor }) {
       )
       .bind(batchId, orderId)
       .first();
-    if (!row) throw new ValidationError('Baris yang dipilih bukan sebahagian daripada tempahan ini.');
+    if (!row) throw new ValidationError('The selected row does not belong to this order.');
     if (quantity > row.unprinted) {
       throw new ValidationError(
-        `${row.product_name} · ${row.variant_label}: hanya ${row.unprinted} label belum dicetak, tidak boleh cetak ${quantity}.`
+        `${row.product_name} · ${row.variant_label}: only ${row.unprinted} labels are unprinted, so ${quantity} cannot be printed.`
       );
     }
     statements.push(
@@ -260,10 +260,10 @@ export async function startRunPacking(db, runId) {
     .bind(runId)
     .all();
   if (!lines.length) {
-    throw new ValidationError('Semua label dalam cetakan ini sudah discan untuk packing.');
+    throw new ValidationError('All labels in this print run have already been scanned for packing.');
   }
 
-  const reference = `Packing ${status.run.order_reference} · Cetakan ${status.run.run_number}`;
+  const reference = `Packing ${status.run.order_reference} · Print run ${status.run.run_number}`;
   const statements = [];
   for (const line of lines) {
     const existing = await db
@@ -299,12 +299,12 @@ export async function startRunPacking(db, runId) {
 export async function scanRunPacking(db, runId, { code, actor }) {
   const status = await getRunPacking(db, runId);
   if (!status) return { notFound: true };
-  if (!code || !String(code).trim()) throw new ValidationError('Kod label diperlukan.');
+  if (!code || !String(code).trim()) throw new ValidationError('A label code is required.');
   const trimmed = String(code).trim();
 
   const { results: matches } = await db
     .prepare(
-      `SELECT u.*, pb.order_line_id, p.name AS product_name, v.variant_label
+      `SELECT u.*, pb.order_line_id, pb.batch_label AS group_label, p.name AS product_name, v.variant_label
        FROM units u
        JOIN production_batches pb ON pb.id = u.batch_id
        JOIN variants v ON v.id = pb.variant_id
@@ -313,21 +313,21 @@ export async function scanRunPacking(db, runId, { code, actor }) {
     )
     .bind(trimmed)
     .all();
-  if (!matches.length) throw new ValidationError('Label ini tidak dikenali.');
+  if (!matches.length) throw new ValidationError('This label is not recognised.');
 
   const inRun = matches.filter((m) => m.print_run_id === runId);
   let unit;
   if (inRun.length === 1) {
     unit = inRun[0];
   } else if (inRun.length > 1) {
-    throw new ValidationError(`Kod "${trimmed}" sepadan dengan lebih daripada satu unit. Scan QR, bukan taip kod.`);
+    throw new ValidationError(`The code "${trimmed}" matches more than one unit. Scan the QR code instead of typing the code.`);
   } else {
     unit = matches[0];
   }
 
   if (unit.print_run_id !== runId) {
     if (!unit.print_run_id) {
-      throw new ValidationError(`Unit ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) belum dicetak dalam mana-mana cetakan.`);
+      throw new ValidationError(`ID ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) has not been printed in any print run yet.`);
     }
     const other = await db
       .prepare(
@@ -338,9 +338,9 @@ export async function scanRunPacking(db, runId, { code, actor }) {
       .bind(unit.print_run_id)
       .first();
     if (other && other.order_id !== status.run.order_id) {
-      throw new ValidationError(`Label ini milik tempahan "${other.order_reference}" (${other.customer_name}), bukan tempahan ini.`);
+      throw new ValidationError(`This label belongs to order "${other.order_reference}" (${other.customer_name}), not this order.`);
     }
-    throw new ValidationError(`Label ini dalam Cetakan ${other ? other.run_number : '?'}, bukan Cetakan ${status.run.run_number}.`);
+    throw new ValidationError(`This label is in print run ${other ? other.run_number : '?'}, not print run ${status.run.run_number}.`);
   }
 
   const shipment = await db
@@ -356,17 +356,17 @@ export async function scanRunPacking(db, runId, { code, actor }) {
       .bind(unit.id, runId)
       .first();
     if (already) {
-      return { unitId: unit.id, humanCode: unit.human_code, product: `${unit.product_name} · ${unit.variant_label}`, alreadyScanned: true, status };
+      return { unitId: unit.id, humanCode: unit.human_code, product: `${unit.product_name} · ${unit.variant_label}`, labelText: unit.recipient_name ?? null, groupLabel: unit.group_label ?? null, alreadyScanned: true, status };
     }
-    throw new ValidationError('Tiada sesi packing yang terbuka. Tekan "Mula Scan Packing" dahulu.');
+    throw new ValidationError('No packing session is open. Press "Start packing" first.');
   }
 
   if (!unit.label_confirmed_at) {
-    throw new ValidationError(`Unit ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) belum disahkan ditampal. Sahkan di Cetak & Tampal dahulu.`);
+    throw new ValidationError(`ID ${unit.human_code} (${unit.product_name} · ${unit.variant_label}) has not been confirmed as attached yet. Confirm it on Print & Attach first.`);
   }
 
   const result = await scanUnitIntoShipment(db, shipment.id, { code: unit.internal_token, actor });
-  return { ...result, status: await getRunPacking(db, runId) };
+  return { ...result, labelText: unit.recipient_name ?? null, groupLabel: unit.group_label ?? null, status: await getRunPacking(db, runId) };
 }
 
 // Ends the packing session for the run. Names every label in the batch that
@@ -376,7 +376,7 @@ export async function scanRunPacking(db, runId, { code, actor }) {
 export async function closeRunPacking(db, runId) {
   const before = await getRunPacking(db, runId);
   if (!before) return { notFound: true };
-  if (!before.openShipments) throw new ValidationError('Tiada sesi packing yang terbuka untuk cetakan ini.');
+  if (!before.openShipments) throw new ValidationError('No packing session is open for this print run.');
 
   await db
     .prepare("UPDATE shipments SET status = 'CLOSED', closed_at = datetime('now') WHERE print_run_id = ? AND status = 'OPEN'")
@@ -385,7 +385,7 @@ export async function closeRunPacking(db, runId) {
 
   const { results: missingUnits } = await db
     .prepare(
-      `SELECT u.human_code, v.variant_label, pb.batch_label AS group_label,
+      `SELECT u.human_code, u.recipient_name AS label_text, v.variant_label, pb.batch_label AS group_label,
               CASE WHEN u.label_confirmed_at IS NOT NULL THEN 1 ELSE 0 END AS attached
        FROM units u
        JOIN production_batches pb ON pb.id = u.batch_id
@@ -422,12 +422,12 @@ export async function cancelPrintRun(db, runId) {
     .first();
   if (attached.n > 0) {
     throw new ValidationError(
-      `Cetakan ${run.run_number} tidak boleh dibatalkan kerana ${attached.n} label sudah ditampal. Guna "Cetak semula" untuk yang belum ditampal.`
+      `Print run ${run.run_number} cannot be cancelled because ${attached.n} label(s) are already attached. Use "Reprint" for the ones not yet attached.`
     );
   }
   const packing = await db.prepare('SELECT COUNT(*) AS n FROM shipments WHERE print_run_id = ?').bind(runId).first();
   if (packing.n > 0) {
-    throw new ValidationError(`Cetakan ${run.run_number} tidak boleh dibatalkan kerana sesi packing sudah bermula.`);
+    throw new ValidationError(`Print run ${run.run_number} cannot be cancelled because packing has already started.`);
   }
 
   const { n } = await db.prepare('SELECT COUNT(*) AS n FROM units WHERE print_run_id = ?').bind(runId).first();

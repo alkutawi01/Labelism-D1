@@ -45,14 +45,15 @@
     </form>
     <div id="scan-result"></div>
 
-    <h2 style="margin-top:20px">Units in this intake</h2>
+    <h2 class="mt-4">Units in this intake</h2>
     <div id="units-list" class="muted">None yet.</div>
 
-    <button id="close-btn" class="secondary" style="margin-top:16px">Close Intake</button>
+    <button id="close-btn" class="btn-secondary mt-4">Close Intake</button>
     <div id="close-result"></div>
   </fieldset>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     let currentIntakeId = null;
@@ -81,10 +82,10 @@
       // theirs to act on -- not a task-assignment system, just naming
       // what happens next.
       el.innerHTML = rows.map((r) => `
-        <div style="margin:4px 0">
+        <div class="mt-2">
           <span>${r.reference}${r.customer_name ? ` (${r.customer_name})` : ''} -- ${r.status}, ${r.scanned_count} scanned, ${r.pending_qc_count} awaiting QC${r.pending_qc_count > 0 ? ' <span class="muted">(needs a QC decision: Resellable / Damaged / Reject)</span>' : ''}</span>
-          ${r.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${r.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
-          ${r.status === 'CLOSED' && r.pending_qc_count > 0 ? ` <button type="button" class="secondary" data-review="${r.id}" style="padding:2px 8px;font-size:12px">Review / QC</button>` : ''}
+          ${r.status === 'OPEN' ? ` <button type="button" class="btn-secondary btn-sm" data-resume="${r.id}">Resume</button>` : ''}
+          ${r.status === 'CLOSED' && r.pending_qc_count > 0 ? ` <button type="button" class="btn-secondary btn-sm" data-review="${r.id}">Review / QC</button>` : ''}
         </div>
       `).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
@@ -162,12 +163,12 @@
       const el = document.getElementById('units-list');
       if (!intake.units.length) { el.innerHTML = 'None yet.'; return; }
       el.innerHTML = intake.units.map((u) => `
-        <div style="margin:4px 0">
+        <div class="mt-2">
           <span>${u.human_code}${u.expected ? '' : ' <span class="badge">unexpected</span>'}${u.customer_mismatch ? ' <span class="badge">wrong customer</span>' : ''}${u.active_shipment_conflict ? ` <span class="badge">still in Shipment "${u.active_shipment_conflict}"</span>` : ''} --
           ${u.qc_outcome ? `QC: ${u.qc_outcome}` : `
-            <button type="button" data-qc="${u.unit_id}" data-outcome="AVAILABLE" style="padding:2px 8px;font-size:12px">Resellable</button>
-            <button type="button" data-qc="${u.unit_id}" data-outcome="DAMAGED" style="padding:2px 8px;font-size:12px" class="secondary">Damaged</button>
-            <button type="button" data-qc="${u.unit_id}" data-outcome="REJECTED" style="padding:2px 8px;font-size:12px" class="secondary">Reject/Discard</button>
+            <button type="button" data-qc="${u.unit_id}" data-outcome="AVAILABLE" class="btn-sm">Resellable</button>
+            <button type="button" data-qc="${u.unit_id}" data-outcome="DAMAGED" class="btn-secondary btn-sm">Damaged</button>
+            <button type="button" data-qc="${u.unit_id}" data-outcome="REJECTED" class="btn-secondary btn-sm">Reject/Discard</button>
           `}</span>
         </div>
       `).join('');

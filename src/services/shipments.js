@@ -42,7 +42,7 @@ export async function getOutstandingForLine(db, orderLineId, excludeShipmentId =
 }
 
 function overPlanMessage(planned, o) {
-  return `Planned ${planned} melebihi baki tertunggak ${Math.max(o.outstanding, 0)} untuk baris order ini (ditempah ${o.target}, sudah dirancang/dipek/dihantar ${o.committed}). Naikkan kuantiti order melalui pindaan dahulu jika memang perlu.`;
+  return `Planned ${planned} exceeds the outstanding balance of ${Math.max(o.outstanding, 0)} for this order line (ordered ${o.target}, already planned/packed/dispatched ${o.committed}). Increase the order quantity through an amendment first if that is intended.`;
 }
 
 export async function assertPlannedWithinOutstanding(db, orderLineId, plannedQuantity, excludeShipmentId = '') {
@@ -104,7 +104,7 @@ async function canUnitFulfillShipment(db, unit, shipment) {
   // A shipment made for a print run (batch) only takes labels printed in that
   // run -- otherwise packing Batch 2 could quietly consume a Batch 1 unit.
   if (shipment.print_run_id && unit.print_run_id !== shipment.print_run_id) {
-    return { ok: false, reason: 'Unit ini bukan dalam batch cetakan untuk sesi packing ini.' };
+    return { ok: false, reason: 'This unit is not in the print run for this packing session.' };
   }
   // Core Production Simulation Priority 6 (F6-001), Director-approved
   // 2026-09-14: confirmed live that a unit whose label was NEVER confirmed
@@ -117,7 +117,7 @@ async function canUnitFulfillShipment(db, unit, shipment) {
   if (!unit.label_confirmed_at) {
     return {
       ok: false,
-      reason: `Unit ${unit.human_code}'s label has not been confirmed attached yet -- attach and confirm it on Print Labels before packing.`,
+      reason: `ID ${unit.human_code}'s label has not been confirmed attached yet -- attach and confirm it on Print & Attach before packing.`,
     };
   }
   return { ok: true };

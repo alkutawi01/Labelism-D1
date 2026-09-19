@@ -2,59 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Log In — Labelism</title>
+  <title>Sign in — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
-  <style>
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .auth-card {
-      width: 100%;
-      max-width: 320px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 32px 28px;
-    }
-    .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
-  </style>
 </head>
 <body>
-  <div class="auth-card">
-    <div class="auth-brand">
-      <span class="topbar-mark">L</span>
-      <strong>Labelism</strong>
+  <main class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="topbar-mark" aria-hidden="true">L</span>
+        <strong>Labelism</strong>
+      </div>
+      <h1>Sign in</h1>
+      <p class="muted">Use your own account, so the system knows who did what.</p>
+
+      <form id="form" class="mt-4">
+        <label>Name
+          <input name="name" type="text" required autofocus autocomplete="username" autocapitalize="off">
+        </label>
+        <label>Password
+          <input name="password" type="password" required autocomplete="current-password">
+        </label>
+        <button type="submit" class="btn-primary btn-block btn-lg">Sign in</button>
+      </form>
+
+      <div id="result" aria-live="polite"></div>
     </div>
-    <p class="muted" style="margin-top:-14px">Log masuk dengan akaun anda sendiri.</p>
+  </main>
 
-    <form id="form">
-      <label>Nama
-        <input name="name" type="text" required autofocus autocomplete="username">
-      </label>
-      <label>Kata Laluan
-        <input name="password" type="password" required autocomplete="current-password">
-      </label>
-      <button type="submit">Log In</button>
-    </form>
-
-    <div id="result"></div>
-  </div>
-
+  <script src="/ui.js"></script>
   <script>
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const result = document.getElementById('result');
       result.innerHTML = '';
       const data = new FormData(e.target);
-      const name = data.get('name');
-      const password = data.get('password');
-      const res = await fetch('/api/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password }),
-      }).then(r => r.json());
-      if (res.error) {
-        result.innerHTML = `<div class="msg error">${res.error}</div>`;
-        return;
+      const button = e.target.querySelector('button[type=submit]');
+      try {
+        const res = await UI.busy(button, () => fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: data.get('name'), password: data.get('password') }),
+        }).then((r) => r.json()));
+        if (res.error) { result.innerHTML = `<div class="msg error">${UI.esc(res.error)}</div>`; return; }
+        location.href = '/';
+      } catch {
+        result.innerHTML = '<div class="msg error">Could not reach the server. Check the connection and try again.</div>';
       }
-      location.href = '/';
     });
   </script>
 </body>

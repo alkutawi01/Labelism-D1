@@ -55,7 +55,7 @@ export async function routeApi(request, env, session) {
       await bootstrapAdminIfEmpty(env.DB, env);
       const staff = await verifyStaffLogin(env.DB, name, password);
       if (!staff) {
-        return Response.json({ error: 'Nama atau kata laluan salah.' }, { status: 401 });
+        return Response.json({ error: 'Incorrect name or password.' }, { status: 401 });
       }
       const cookie = await setSessionCookieHeader(staff, env);
       return Response.json(
@@ -73,20 +73,20 @@ export async function routeApi(request, env, session) {
     }
 
     if (pathname === '/api/staff' && method === 'GET') {
-      if (!session?.isAdmin) return forbidden('Admin sahaja.');
+      if (!session?.isAdmin) return forbidden('Admins only.');
       const { results } = await env.DB
         .prepare('SELECT id, name, is_admin AS isAdmin, active FROM staff_accounts ORDER BY created_at')
         .all();
       return ok(results);
     }
     if (pathname === '/api/staff' && method === 'POST') {
-      if (!session?.isAdmin) return forbidden('Admin sahaja.');
+      if (!session?.isAdmin) return forbidden('Admins only.');
       const b = await body(request, session);
       const name = (b.name || '').trim();
       const password = b.password || '';
-      if (!name) return Response.json({ error: 'Nama staf diperlukan.' }, { status: 400 });
+      if (!name) return Response.json({ error: 'Staff name is required.' }, { status: 400 });
       if (!password || password.length < 6) {
-        return Response.json({ error: 'Kata laluan mesti sekurang-kurangnya 6 aksara.' }, { status: 400 });
+        return Response.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
       }
       const passwordHash = await hashPassword(password);
       try {
@@ -98,7 +98,7 @@ export async function routeApi(request, env, session) {
           .run();
       } catch (err) {
         if (String(err.message || '').includes('UNIQUE')) {
-          return Response.json({ error: `Nama staf "${name}" sudah wujud.` }, { status: 409 });
+          return Response.json({ error: `A staff account named "${name}" already exists.` }, { status: 409 });
         }
         throw err;
       }

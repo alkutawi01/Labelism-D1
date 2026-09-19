@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Design system — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Guide-only layout. */
+    .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); }
+    .swatch { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+    .swatch .chip { height: 44px; }
+    .swatch .meta { padding: 8px 10px; font-size: var(--fs-xs); }
+    .swatch code { display: block; color: var(--muted); }
+    .demo { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+    .type-row { display: flex; align-items: baseline; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .type-row code { flex: none; width: 170px; color: var(--muted); }
+    .space-row { display: flex; align-items: center; gap: var(--sp-3); padding: 4px 0; }
+    .space-row .bar { height: 12px; background: var(--brand); border-radius: 3px; }
+    .toc { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+    .rule { border-left: 3px solid var(--brand); padding: 4px 0 4px var(--sp-3); margin: var(--sp-2) 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Design system</span>
+        <h1>Labelism design system</h1>
+        <p class="muted">Every screen in Labelism is built from what is on this page. If you need something that is not here, add it here first, then use it. The full rules are in <code>docs/design-system.md</code>.</p>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Sections">
+      <a class="btn btn-secondary btn-sm" href="#color">Colour</a>
+      <a class="btn btn-secondary btn-sm" href="#type">Type</a>
+      <a class="btn btn-secondary btn-sm" href="#space">Space &amp; shape</a>
+      <a class="btn btn-secondary btn-sm" href="#buttons">Buttons</a>
+      <a class="btn btn-secondary btn-sm" href="#forms">Forms</a>
+      <a class="btn btn-secondary btn-sm" href="#feedback">Feedback</a>
+      <a class="btn btn-secondary btn-sm" href="#data">Data</a>
+      <a class="btn btn-secondary btn-sm" href="#flow">Workflow</a>
+      <a class="btn btn-secondary btn-sm" href="#voice">Voice</a>
+    </nav>
+
+    <section class="section" id="color">
+      <h2 class="section-title">Colour</h2>
+      <p class="section-sub">Tokens only. Light and dark themes switch automatically with the device setting.</p>
+      <div class="swatches" id="swatches"></div>
+      <div class="rule mt-4"><strong>Tone means one thing.</strong> <span class="text-ok">ok</span> = done or safe, <span class="text-warn">warn</span> = check this, <span class="text-bad">bad</span> = failed or blocking, <strong>info</strong> = for your information. Brand blue is for actions and selection, never for status.</div>
+    </section>
+
+    <section class="section" id="type">
+      <h2 class="section-title">Type</h2>
+      <p class="section-sub">One family (system UI). Sentence case everywhere: "Print &amp; Attach", not "PRINT &amp; ATTACH".</p>
+      <div class="type-row"><code>--fs-2xl 30px</code><span style="font-size:var(--fs-2xl);font-weight:700">Big number 128</span></div>
+      <div class="type-row"><code>--fs-xl 24px</code><span style="font-size:var(--fs-xl);font-weight:700">Page title</span></div>
+      <div class="type-row"><code>--fs-lg 18px</code><span style="font-size:var(--fs-lg);font-weight:700">Dialog or card title</span></div>
+      <div class="type-row"><code>--fs-md 15px</code><span style="font-size:var(--fs-md);font-weight:700">Section title</span></div>
+      <div class="type-row"><code>--fs-base 14px</code><span>Body text and controls. The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><code>--fs-sm 13px</code><span class="muted" style="font-size:var(--fs-sm)">Secondary text, hints, dense tables.</span></div>
+      <div class="type-row"><code>--fs-xs 11.5px</code><span class="muted" style="font-size:var(--fs-xs)">Pills, table headers. Never for anything a person must read to act.</span></div>
+    </section>
+
+    <section class="section" id="space">
+      <h2 class="section-title">Space and shape</h2>
+      <p class="section-sub">A 4px grid. Radii: 6px controls, 10px cards, 14px dialogs, pill for status.</p>
+      <div id="space-rows"></div>
+    </section>
+
+    <section class="section" id="buttons">
+      <h2 class="section-title">Buttons</h2>
+      <p class="section-sub">One primary action per area. Everything else is secondary. Destructive actions are red and always confirm.</p>
+      <div class="demo">
+        <button type="button" class="btn-primary">Primary</button>
+        <button type="button" class="btn-secondary">Secondary</button>
+        <button type="button" class="btn-ghost">Ghost</button>
+        <button type="button" class="btn-danger">Danger</button>
+        <button type="button" class="btn-danger-solid">Danger (solid)</button>
+        <button type="button" disabled>Disabled</button>
+        <a class="button" href="#buttons">Link as button</a>
+        <button type="button" class="link-btn">Text link button</button>
+      </div>
+      <div class="demo mt-3">
+        <button type="button" class="btn-primary btn-lg">Large</button>
+        <button type="button" class="btn-primary">Default</button>
+        <button type="button" class="btn-primary btn-sm">Small</button>
+        <button type="button" class="btn-primary" id="demo-busy">Shows a spinner</button>
+      </div>
+    </section>
+
+    <section class="section" id="forms">
+      <h2 class="section-title">Forms</h2>
+      <p class="section-sub">Every control has a visible label. Hints explain, errors say what to do.</p>
+      <div class="grid-2">
+        <div class="field"><label for="d1">Text input</label><input id="d1" placeholder="e.g. Sekolah Menengah Kota"><span class="field-hint">A hint sits under the field.</span></div>
+        <div class="field"><label for="d2">Select</label><select id="d2"><option>Size M</option><option>Size L</option></select></div>
+        <div class="field"><label for="d3">With an error</label><input id="d3" aria-invalid="true" value="12x"><span class="field-error">Enter a whole number.</span></div>
+        <div class="field"><label for="d4">Disabled</label><input id="d4" value="Cannot edit" disabled></div>
+        <div class="field"><label for="d5">Text area</label><textarea id="d5" rows="2" placeholder="Notes"></textarea></div>
+        <div class="field"><label class="inline"><input type="checkbox" checked> A checkbox</label><label class="inline"><input type="radio" name="r" checked> A radio</label></div>
+      </div>
+    </section>
+
+    <section class="section" id="feedback">
+      <h2 class="section-title">Feedback</h2>
+      <p class="section-sub">Inline messages for what is on the page, a toast for a passing confirmation, a dialog only when a decision is needed. Never the browser's own alert or confirm.</p>
+      <div class="stack">
+        <div class="msg ok"><strong>Done.</strong> Order created.</div>
+        <div class="msg info">Creating the order and generating labels…</div>
+        <div class="msg warn"><strong>Check this.</strong> 3 labels are not attached yet.</div>
+        <div class="msg error"><strong>Could not save.</strong> The quantity must be a whole number.</div>
+      </div>
+      <div class="demo mt-4">
+        <span class="pill ok">Attached</span><span class="pill warn">3 not printed</span><span class="pill bad">2 days overdue</span><span class="pill">Admin</span><span class="pill neutral">Inactive</span>
+      </div>
+      <div class="demo mt-4">
+        <button type="button" class="btn-secondary" id="demo-toast">Show a toast</button>
+        <button type="button" class="btn-secondary" id="demo-confirm">Show a confirm dialog</button>
+        <button type="button" class="btn-secondary" id="demo-danger">Show a danger dialog</button>
+        <button type="button" class="btn-secondary" id="demo-prompt">Show a prompt dialog</button>
+      </div>
+      <div class="review-panel needs-review mt-4">
+        <div class="review-head">Form filled in: 2 products, 3 lines, 22 units.</div>
+        <div class="review-sub">Check the 2 items below, correct them in the form, then confirm.</div>
+        <ul class="review-list"><li>The total does not match: the document says 23 units but the lines add up to 22.</li><li>Fewer label texts than the quantity: Size M (3 texts / 10 units).</li></ul>
+      </div>
+    </section>
+
+    <section class="section" id="data">
+      <h2 class="section-title">Data</h2>
+      <div class="stats">
+        <div class="stat"><div class="value">128</div><div class="label">Units</div></div>
+        <div class="stat is-ok"><div class="value">120</div><div class="label">Scanned</div></div>
+        <div class="stat is-warn"><div class="value">8</div><div class="label">Still missing</div></div>
+        <div class="stat is-bad"><div class="value">2</div><div class="label">Overdue</div></div>
+      </div>
+      <div class="progress mb-4"><span style="width:72%"></span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Product</th><th>Variant</th><th class="num">Expected</th><th class="num">Scanned</th><th class="num">Missing</th></tr></thead>
+          <tbody>
+            <tr><td>Home Jersey</td><td><strong>Size M</strong> <span class="pill neutral">SK School A</span></td><td class="num">10</td><td class="num">10</td><td class="num"><span class="pill ok">Complete</span></td></tr>
+            <tr><td>Home Jersey</td><td><strong>Size L</strong></td><td class="num">8</td><td class="num">5</td><td class="num"><strong class="text-bad">3</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cards mt-4">
+        <a class="card" href="#data"><div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle></svg></div><div><h2>Card link</h2><p>A whole card that goes somewhere.</p></div></a>
+      </div>
+      <div class="empty"><div class="empty-title">Nothing here yet</div>An empty state says what is missing and what to do next.</div>
+    </section>
+
+    <section class="section" id="flow">
+      <h2 class="section-title">Workflow steps</h2>
+      <p class="section-sub">The same four steps head the three daily pages, with the current one highlighted.</p>
+      <ol class="steps"><li class="is-done">Order</li><li class="is-current">Print</li><li class="is-current">Attach</li><li>Pack</li></ol>
+    </section>
+
+    <section class="section" id="voice">
+      <h2 class="section-title">Voice and words</h2>
+      <p class="section-sub">English only. Short, plain, in the order people do things.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Use</th><th>Means</th><th>Do not use</th></tr></thead>
+          <tbody>
+            <tr><td>Order</td><td>What the customer asked for</td><td>Job, request</td></tr>
+            <tr><td>Variant</td><td>A size or version of a product</td><td>Variation, SKU</td></tr>
+            <tr><td>Label text</td><td>The name, brand or other text printed on the garment and its label</td><td>Recipient name</td></tr>
+            <tr><td>Group</td><td>A school or branch inside one customer's order</td><td>Batch (that word is for production batches)</td></tr>
+            <tr><td>Print run</td><td>One press of Print: a set of labels printed together</td><td>Batch, cetakan</td></tr>
+            <tr><td>ID</td><td>The short number on a label (e.g. 000001). It repeats across print runs; the QR code is what identifies a unit for certain</td><td>Unit number, unit code, serial</td></tr>
+            <tr><td>Attach / Attached</td><td>The label is stuck on the garment and confirmed</td><td>Stick, paste</td></tr>
+            <tr><td>Pack / Packed</td><td>The label was scanned into a parcel</td><td>Scan-out</td></tr>
+            <tr><td>Dispatch / Dispatched</td><td>The parcel has left</td><td>Ship, send</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="/ui.js"></script>
+  <script src="/nav.js"></script>
+  <script>
+    const tokens = [
+      ['Surface', '--surface'], ['Surface 2', '--surface-2'], ['Background', '--bg'], ['Ink', '--ink'], ['Muted', '--muted'], ['Line', '--line'],
+      ['Brand', '--brand'], ['Brand soft', '--brand-soft'], ['OK', '--ok'], ['OK soft', '--ok-soft'], ['Warn', '--warn'], ['Warn soft', '--warn-soft'],
+      ['Bad', '--bad'], ['Bad soft', '--bad-soft'], ['Sidebar', '--navy'],
+    ];
+    document.getElementById('swatches').innerHTML = tokens.map(([n, v]) =>
+      `<div class="swatch"><div class="chip" style="background:var(${v})"></div><div class="meta"><strong>${n}</strong><code>${v}</code></div></div>`).join('');
+    document.getElementById('space-rows').innerHTML = [1, 2, 3, 4, 5, 6, 8, 10].map((n) => {
+      const px = getComputedStyle(document.documentElement).getPropertyValue(`--sp-${n}`).trim();
+      return `<div class="space-row"><code style="width:90px">--sp-${n}</code><div class="bar" style="width:${px}"></div><span class="muted">${px}</span></div>`;
+    }).join('');
+
+    document.getElementById('demo-busy').addEventListener('click', (e) => UI.busy(e.currentTarget, new Promise((r) => setTimeout(r, 1500))));
+    document.getElementById('demo-toast').addEventListener('click', () => UI.toast('Prompt copied to the clipboard.', 'ok'));
+    document.getElementById('demo-confirm').addEventListener('click', () => UI.confirm({ title: 'Check before creating the order', message: 'Product "Jersey": variant "XL" looks very similar to "X-L".\n\nCreate the order exactly as typed?', confirmLabel: 'Create the order', cancelLabel: 'Go back and check' }));
+    document.getElementById('demo-danger').addEventListener('click', () => UI.confirm({ title: 'Cancel print run 2?', message: 'All its labels go back to "not printed".', confirmLabel: 'Cancel print run', cancelLabel: 'Keep it', tone: 'danger' }));
+    document.getElementById('demo-prompt').addEventListener('click', () => UI.prompt({ title: 'Generate more labels', message: '4 labels are still to generate.', label: 'Quantity', value: '4', confirmLabel: 'Generate' }));
+  </script>
+</body>
+</html>

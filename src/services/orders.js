@@ -368,7 +368,7 @@ async function checkVariantSpellings(db, items) {
   };
   for (const item of items) {
     if (item.variantId || !item.productName || !item.variantLabel) continue;
-    note(item.productName, item.variantLabel, 'tempahan ini');
+    note(item.productName, item.variantLabel, 'this order');
   }
   for (const [pKey, entry] of byProduct) {
     const { results } = await db
@@ -380,7 +380,7 @@ async function checkVariantSpellings(db, items) {
       .all();
     for (const r of results) {
       const existing = cleanLabelText(r.variant_label);
-      if (!entry.spellings.has(existing)) entry.spellings.set(existing, 'sedia ada');
+      if (!entry.spellings.has(existing)) entry.spellings.set(existing, 'existing');
     }
   }
 
@@ -391,14 +391,14 @@ async function checkVariantSpellings(db, items) {
       for (let j = i + 1; j < labels.length; j++) {
         const a = labels[i];
         const b = labels[j];
-        if (spellings.get(a) === 'sedia ada' && spellings.get(b) === 'sedia ada') continue; // not this order's doing
+        if (spellings.get(a) === 'existing' && spellings.get(b) === 'existing') continue; // not this order's doing
         if (labelKey(a) === labelKey(b)) {
           throw new ValidationError(
-            `Produk "${name}": variasi "${a}" dan "${b}" sama kecuali huruf besar/kecil. Guna satu ejaan sahaja.`
+            `Product "${name}": variants "${a}" and "${b}" differ only by letter case. Use a single spelling.`
           );
         }
         if (looseKey(a) === looseKey(b)) {
-          warnings.push(`Produk "${name}": variasi "${a}" hampir sama dengan "${b}". Pastikan ia memang saiz yang berbeza.`);
+          warnings.push(`Product "${name}": variant "${a}" looks very similar to "${b}". Make sure they really are different sizes.`);
         }
       }
     }
@@ -423,7 +423,7 @@ function checkDuplicateNames(items) {
     const total = [...seen.values()].reduce((s, v) => s + v.n, 0);
     if (total < 2 || seen.size / total < 0.6) return; // mostly repeats (e.g. one brand on every garment): normal
     for (const { name, n } of seen.values()) {
-      if (n > 1) warnings.push(`${where}: teks "${name}" muncul ${n} kali. Pastikan memang sengaja berulang.`);
+      if (n > 1) warnings.push(`${where}: label text "${name}" appears ${n} times. Make sure the repeat is intended.`);
     }
   };
   for (const item of items) {
@@ -471,7 +471,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
     // the item is split into batches (batch-level names are checked below).
     if (Array.isArray(item.unitNames) && item.unitNames.length > quantity) {
       throw new ValidationError(
-        `items[${iIdx}]: ${item.unitNames.length} teks label tetapi kuantiti hanya ${quantity}.`
+        `items[${iIdx}]: ${item.unitNames.length} label texts but the quantity is only ${quantity}.`
       );
     }
 
@@ -499,7 +499,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
           const seen = groupKeys;
           if (seen.has(key)) {
             throw new ValidationError(
-              `items[${iIdx}]: kumpulan "${cleanLabelText(b.batchLabel)}" sama dengan "${seen.get(key)}" (huruf besar/kecil atau ruang berbeza sahaja). Gabungkan menjadi satu kumpulan.`
+              `items[${iIdx}]: group "${cleanLabelText(b.batchLabel)}" is the same as "${seen.get(key)}" (only letter case or spacing differs). Merge them into one group.`
             );
           }
           seen.set(key, cleanLabelText(b.batchLabel));
@@ -525,7 +525,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
       // any that fall beyond the batches' total would be silently dropped.
       if (Array.isArray(item.unitNames) && item.unitNames.length > batchSum) {
         throw new ValidationError(
-          `items[${iIdx}]: ${item.unitNames.length} teks label tetapi kumpulan hanya menjana ${batchSum} unit.`
+          `items[${iIdx}]: ${item.unitNames.length} label texts but the groups only generate ${batchSum} units.`
         );
       }
     }
@@ -533,7 +533,7 @@ export async function createOrderWithLabels(db, { customerId, customerName, orde
 
   const spellingWarnings = [...(await checkVariantSpellings(db, items)), ...checkDuplicateNames(items)];
   if (spellingWarnings.length && acknowledgeWarnings !== true) {
-    throw new ConfirmationRequired('Ada perkara yang perlu disahkan sebelum tempahan dibuat.', spellingWarnings);
+    throw new ConfirmationRequired('Some things need your confirmation before the order is created.', spellingWarnings);
   }
 
   // ── Handle Customer (Preflight read only) ──

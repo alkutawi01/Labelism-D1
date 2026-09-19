@@ -85,7 +85,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     .first();
   if (openElsewhere) {
     throw new ValidationError(
-      `Unit ${unit.human_code} sudah berada dalam pemulangan terbuka "${openElsewhere.reference}". Selesaikan atau tutup pemulangan itu dahulu.`
+      `ID ${unit.human_code} is already in the open return "${openElsewhere.reference}". Finish or close that return first.`
     );
   }
 
@@ -167,7 +167,7 @@ export async function scanUnitIntoReturnIntake(db, returnIntakeId, { code, actor
     .bind(returnIntakeId, unit.id, actor ?? null, expected ? 1 : 0, customerMismatch ? 1 : 0, activeShipmentConflict)
     .run();
   if (!guarded.meta || guarded.meta.changes === 0) {
-    throw new ValidationError(`Unit ${unit.human_code} baru sahaja dimasukkan ke pemulangan terbuka lain. Selesaikan pemulangan itu dahulu.`);
+    throw new ValidationError(`ID ${unit.human_code} was just added to another open return. Finish that return first.`);
   }
   try {
     await db.batch(statements);
@@ -219,7 +219,7 @@ export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, acto
     .first();
   if (newer) {
     throw new ValidationError(
-      `Unit ini sudah diterima semula dalam pemulangan "${newer.reference}". Keputusan QC mesti dibuat di sana, bukan di pemulangan lama.`
+      `This unit has since been received again in return "${newer.reference}". Make the QC decision there, not in the older return.`
     );
   }
 
@@ -230,7 +230,7 @@ export async function decideReturnQc(db, returnIntakeId, unitId, { outcome, acto
   const isChange = !!row.qc_outcome;
   if (isChange && !String(reason || '').trim()) {
     throw new ValidationError(
-      `Unit ini sudah diputuskan "${row.qc_outcome}". Untuk menukar kepada "${outcome}", nyatakan sebab (reason).`
+      `This unit was already decided "${row.qc_outcome}". To change it to "${outcome}", give a reason.`
     );
   }
 

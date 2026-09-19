@@ -755,7 +755,7 @@ await run('Test 16 – Packing works against one batch and only expects the labe
 
   // A label from Batch 2 is rejected inside Batch 1 and changes nothing.
   const wrongBatch = await scan(run1.id, run2Attached[0]);
-  assert(wrongBatch.status >= 400 && /Cetakan 2/.test(wrongBatch.body.error), `Wrong-batch scan: ${JSON.stringify(wrongBatch.body)}`);
+  assert(wrongBatch.status >= 400 && /print run 2/.test(wrongBatch.body.error), `Wrong-batch scan: ${JSON.stringify(wrongBatch.body)}`);
 
   // A label from a different order is rejected and names that order.
   const foreign = await makeOrder('T16X', [{ productName: product, variantLabel: 'Saiz M', quantity: 1, batches: null }]);
@@ -811,7 +811,7 @@ await run('Test 17 – A print run whose labels never came out can be cancelled,
   const labels = (await api(`/api/print-runs/${r2.body.id}`)).body;
   await attachUnit(labels.units[0]);
   const c2 = await api(`/api/print-runs/${r2.body.id}/cancel`, { method: 'POST', body: {} });
-  assert(c2.status >= 400 && /ditampal/.test(c2.body.error), `Cancel with attached label must be refused: ${JSON.stringify(c2.body)}`);
+  assert(c2.status >= 400 && /attached/.test(c2.body.error), `Cancel with attached label must be refused: ${JSON.stringify(c2.body)}`);
 });
 
 await run('Test 18 – The server rejects more recipient names than units (no silent dropping)', async () => {
@@ -822,7 +822,7 @@ await run('Test 18 – The server rejects more recipient names than units (no si
   const P = `T18-Product-${ts}`;
 
   const flat = await order([{ productName: P, variantLabel: 'M', quantity: 3, unitNames: ['A', 'B', 'C', 'D', 'E'], batches: null }]);
-  assert(flat.status === 400 && /teks/.test(flat.body.error), `5 names / 3 units must be rejected: ${flat.status} ${JSON.stringify(flat.body)}`);
+  assert(flat.status === 400 && /label texts/.test(flat.body.error), `5 names / 3 units must be rejected: ${flat.status} ${JSON.stringify(flat.body)}`);
 
   const perBatch = await order([{ productName: P, variantLabel: 'M', quantity: 4, unitNames: [], batches: [{ quantity: 2, batchLabel: 'A', unitNames: ['1', '2', '3'] }, { quantity: 2 }] }]);
   assert(perBatch.status === 400, `3 names in a 2-unit batch must be rejected: ${perBatch.status}`);
@@ -873,7 +873,7 @@ await run('Test 19 – A unit sits in one active return intake and has one QC de
   const same = await qc(i1.id, units[0], { outcome: 'AVAILABLE' });
   assert(same.status === 200 && same.body.unchanged === true, 'same decision again should be a no-op');
   const noReason = await qc(i1.id, units[0], { outcome: 'DAMAGED' });
-  assert(noReason.status === 400 && /sebab/.test(noReason.body.error), `Change without reason must be refused: ${JSON.stringify(noReason.body)}`);
+  assert(noReason.status === 400 && /reason/.test(noReason.body.error), `Change without reason must be refused: ${JSON.stringify(noReason.body)}`);
   const changed = await qc(i1.id, units[0], { outcome: 'DAMAGED', reason: 'jahitan koyak dijumpai kemudian' });
   assert(changed.status === 200 && changed.body.changedFrom === 'AVAILABLE', `Change with reason: ${JSON.stringify(changed.body)}`);
   const lk = await api(`/api/units/lookup/${units[0].internal_token}`);
@@ -906,7 +906,7 @@ await run('Test 20 – A dispatched unit cannot have its label reissued; undispa
 
   const before = (await api(`/api/units/lookup/${units[0].internal_token}`)).body;
   const r = await api(`/api/units/${units[0].id}/reissue-label-after-attachment`, { method: 'POST', body: { actor: 'test' } });
-  assert(r.status === 400 && /dihantar/.test(r.body.error), `Reissue after dispatch must be refused: ${r.status} ${JSON.stringify(r.body)}`);
+  assert(r.status === 400 && /dispatched/.test(r.body.error), `Reissue after dispatch must be refused: ${r.status} ${JSON.stringify(r.body)}`);
   const r2 = await api(`/api/units/${units[0].id}/reissue-label`, { method: 'POST', body: { actor: 'test' } });
   assert(r2.status === 400, 'Plain reissue after dispatch must also be refused');
 
@@ -960,7 +960,7 @@ await run('Test 22 – Variation spelling guard: refuse case-only duplicates, as
 
   // Case-only: refused, nothing created.
   const caseOnly = await order(['XL', 'xl']);
-  assert(caseOnly.status === 400 && /huruf besar/.test(caseOnly.body.error), `XL vs xl must be refused: ${JSON.stringify(caseOnly.body)}`);
+  assert(caseOnly.status === 400 && /letter case/.test(caseOnly.body.error), `XL vs xl must be refused: ${JSON.stringify(caseOnly.body)}`);
 
   // Near-duplicate: asks first (409, nothing created)...
   const asked = await order(['XL', 'X-L']);
@@ -1043,7 +1043,7 @@ await run('Test 24 – Only known event types can be posted by hand; system even
 
   for (const bad of ['ORDER_AMENDED_VOID', 'OVERPRODUCED', 'UNIT_DISPATCHED', 'LABEL_REISSUED', 'RETURN_RECEIVED', 'UNIT_REGISTERED', 'unit_sold']) {
     const r = await post({ eventType: bad });
-    assert(r.status === 400 && /dibenarkan/.test(r.body.error), `"${bad}" must be refused: ${r.status} ${JSON.stringify(r.body)}`);
+    assert(r.status === 400 && /not allowed/.test(r.body.error), `"${bad}" must be refused: ${r.status} ${JSON.stringify(r.body)}`);
   }
   assert((await post({ eventType: 'DAMAGE_OBSERVED', disposition: 'VOID' })).status === 400, 'Unknown disposition must be refused');
   assert((await post({ eventType: 'DAMAGE_OBSERVED', condition: 'HAUNTED' })).status === 400, 'Unknown condition must be refused');

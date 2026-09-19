@@ -74,7 +74,7 @@ async function dispatchRun(runId) {
   const shipments = [];
   for (const l of lines.body.lines) {
     const s = await api(`/api/order-lines/${l.order_line_id}/shipments`);
-    for (const sh of s.body || []) if (sh.print_run_id === runId || sh.reference?.includes(`Cetakan ${run.run_number}`)) shipments.push(sh);
+    for (const sh of s.body || []) if (sh.print_run_id === runId || sh.reference?.includes(`Print run ${run.run_number}`)) shipments.push(sh);
   }
   const outs = [];
   for (const sh of shipments) if (sh.status === 'CLOSED') outs.push(await api(`/api/shipments/${sh.id}/dispatch`, { method: 'POST', body: { locationName: 'Customer', actor: 'sim' } }));
@@ -97,7 +97,7 @@ sessions[1] = async () => {
   ];
   // Case-only duplicates (XL / xl) must be refused outright.
   const caseOnly = await mk('S1', items);
-  if (caseOnly.fail && caseOnly.fail.status === 400 && /huruf besar/.test(err(caseOnly.fail))) ok('XL / xl dalam satu order ditolak: ' + err(caseOnly.fail).slice(0, 100));
+  if (caseOnly.fail && caseOnly.fail.status === 400 && /letter case/.test(err(caseOnly.fail))) ok('XL / xl dalam satu order ditolak: ' + err(caseOnly.fail).slice(0, 100));
   else temuan('TINGGI', 'XL dan xl diterima sebagai variasi berbeza', j(caseOnly.fail || 'dicipta'));
 
   // Punctuation-only difference (XL / X-L) must ask, then keep both as typed.

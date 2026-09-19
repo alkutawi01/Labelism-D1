@@ -62,7 +62,7 @@ export function buildUnitStatementsForBatch(db, batchId, plannedQuantity, existi
   // Silently dropping the extra names would hide a data-entry mistake.
   if (Array.isArray(unitNames) && unitNames.length > Math.max(toCreate, 0)) {
     throw new ValidationError(
-      `Ada ${unitNames.length} teks label tetapi hanya ${Math.max(toCreate, 0)} unit akan dijana. Semak senarai.`
+      `There are ${unitNames.length} label texts but only ${Math.max(toCreate, 0)} units will be generated. Check the list.`
     );
   }
   if (toCreate <= 0) return { createdUnits: [], statements: [] };

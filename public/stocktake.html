@@ -45,10 +45,10 @@
         <select id="batch-select"><option value="">Loading…</option></select>
       </label>
     </div>
-    <button id="open-btn" style="margin-top:10px">Open Stocktake Session</button>
+    <button id="open-btn" class="mt-3">Open Stocktake Session</button>
   </div>
 
-  <div id="session" style="display:none">
+  <div id="session" hidden>
     <div class="counts">
       <div class="count-tile"><div class="n" id="c-expected">0</div><div class="label">Expected</div></div>
       <div class="count-tile"><div class="n" id="c-ok">0</div><div class="label">Observed OK</div></div>
@@ -63,19 +63,20 @@
     </form>
     <div id="scan-result"></div>
 
-    <h2 style="margin-top:24px">Not Observed</h2>
+    <h2 class="mt-5">Not Observed</h2>
     <p class="muted">These were expected but not scanned yet. Confirm missing only when you're sure — this is a deliberate action, not automatic.</p>
     <div id="not-observed-list" class="code-list"></div>
 
-    <h2 style="margin-top:24px">Unexpected</h2>
+    <h2 class="mt-5">Unexpected</h2>
     <p class="muted">Scanned, but not part of this batch's expected set.</p>
     <div id="unexpected-list" class="code-list"></div>
 
-    <button id="close-btn" class="secondary" style="margin-top:24px">Close Session</button>
+    <button id="close-btn" class="btn-secondary mt-5">Close Session</button>
     <div id="close-result"></div>
   </div>
   </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     let sessionId = null;
@@ -146,10 +147,10 @@
           ? `Location: ${s.location_name}`
           : `Batch: ${s.product_name} · ${s.variant_label} · ${s.batch_number}`;
         return `
-        <div style="margin:4px 0">
+        <div class="mt-2">
           <span>${scope} -- ${s.status}, ${s.scanned_count}/${s.expected_count} observed${unresolvedClosed(s) ? ` <span class="muted">(${s.expected_count - s.scanned_count} never confirmed missing)</span>` : ''}</span>
-          ${s.status === 'OPEN' ? ` <button type="button" class="secondary" data-resume="${s.id}" style="padding:2px 8px;font-size:12px">Resume</button>` : ''}
-          ${unresolvedClosed(s) ? ` <button type="button" class="secondary" data-review="${s.id}" style="padding:2px 8px;font-size:12px">Review</button>` : ''}
+          ${s.status === 'OPEN' ? ` <button type="button" class="btn-secondary btn-sm" data-resume="${s.id}">Resume</button>` : ''}
+          ${unresolvedClosed(s) ? ` <button type="button" class="btn-secondary btn-sm" data-review="${s.id}">Review</button>` : ''}
         </div>`;
       }).join('');
       el.querySelectorAll('button[data-resume]').forEach((btn) => {
@@ -162,8 +163,8 @@
 
     async function resumeSession(id, allowScanning) {
       sessionId = id;
-      document.getElementById('setup').style.display = 'none';
-      document.getElementById('session').style.display = 'block';
+      document.getElementById('setup').hidden = true;
+      document.getElementById('session').hidden = false;
       // A closed session can't accept new scans (scanStocktakeUnit enforces
       // that server-side) and is already closed -- hide both controls in
       // review mode, keep the Not Observed list and its Confirm Missing
@@ -185,10 +186,10 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, actor: (window.LabelismActor && window.LabelismActor.get()) || 'unknown' }),
       }).then(r => r.json());
-      if (res.error) { alert(res.error); return; }
+      if (res.error) { UI.toast(res.error, 'error'); return; }
       sessionId = res.id;
-      document.getElementById('setup').style.display = 'none';
-      document.getElementById('session').style.display = 'block';
+      document.getElementById('setup').hidden = true;
+      document.getElementById('session').hidden = false;
       await refresh();
       loadExistingSessions();
     });
@@ -202,7 +203,7 @@
       document.getElementById('not-observed-list').innerHTML = s.notObserved.map(u => `
         <span class="code-chip">${u.humanCode} ${
           u.missingConfirmed
-            ? '<span class="badge" style="font-size:11px">Missing confirmed</span>'
+            ? '<span class="badge warn">Missing confirmed</span>'
             : `<button data-confirm-missing="${u.id}">Confirm Missing</button>`
         }</span>
       `).join('') || '<span class="muted">None</span>';
@@ -251,8 +252,8 @@
         ? `<div class="msg error">${res.error}</div>`
         : `<div class="msg ok">Session closed.</div>`;
       if (!res.error) {
-        document.getElementById('session').style.display = 'none';
-        document.getElementById('setup').style.display = 'block';
+        document.getElementById('session').hidden = true;
+        document.getElementById('setup').hidden = false;
         loadExistingSessions();
       }
     });

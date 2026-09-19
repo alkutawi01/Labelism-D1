@@ -2,51 +2,57 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Urus Staf — Labelism</title>
+  <title>Staff — Labelism</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="page" style="max-width:600px">
-  <header class="page-header">
-    <h1>Urus Staf</h1>
-    <p class="muted">Setiap staf log masuk dengan akaun sendiri, supaya sistem tahu siapa buat apa.</p>
-  </header>
+  <div class="page" style="max-width: 720px;">
+    <header class="page-header">
+      <div>
+        <h1>Staff</h1>
+        <p class="muted">Every staff member signs in with their own account, so the system knows who did what.</p>
+      </div>
+    </header>
 
-  <div id="not-admin" class="msg error" hidden>Akses ditolak -- halaman ini untuk admin sahaja.</div>
+    <div id="not-admin" class="msg error" hidden>Access denied. This page is for admins only.</div>
 
-  <div id="admin-area" hidden>
-    <fieldset>
-      <legend>Tambah Staf Baru</legend>
-      <form id="add-staff-form">
-        <label>Nama
-          <input name="name" required placeholder="cth: Ali">
-        </label>
-        <label>Kata Laluan
-          <input name="password" type="password" required minlength="6" placeholder="Sekurang-kurangnya 6 aksara">
-        </label>
-        <label class="inline">
-          <input type="checkbox" name="isAdmin">
-          Jadikan admin (boleh urus staf lain)
-        </label>
-        <button type="submit">Tambah Staf</button>
-      </form>
-      <div id="add-result"></div>
-    </fieldset>
+    <div id="admin-area" hidden>
+      <section class="section">
+        <h2 class="section-title">Add a staff member</h2>
+        <form id="add-staff-form" class="mt-3">
+          <label>Name
+            <input name="name" required placeholder="e.g. Ali" autocomplete="off">
+          </label>
+          <label>Password
+            <input name="password" type="password" required minlength="6" placeholder="At least 6 characters" autocomplete="new-password">
+          </label>
+          <label class="inline">
+            <input type="checkbox" name="isAdmin">
+            Make this person an admin (can manage other staff)
+          </label>
+          <button type="submit" class="btn-primary">Add staff member</button>
+        </form>
+        <div id="add-result" aria-live="polite"></div>
+      </section>
 
-    <fieldset>
-      <legend>Senarai Staf</legend>
-      <table>
-        <thead><tr><th>Nama</th><th>Admin</th><th>Status</th></tr></thead>
-        <tbody id="staff-body"></tbody>
-      </table>
-    </fieldset>
+      <section class="section">
+        <h2 class="section-title">Staff list</h2>
+        <div class="table-wrap">
+          <table class="data-table mt-3">
+            <thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead>
+            <tbody id="staff-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </div>
-  </div>
 
+  <script src="/ui.js"></script>
   <script src="/nav.js"></script>
   <script>
     async function init() {
-      const session = await fetch('/api/session').then(r => r.json());
+      const session = await fetch('/api/session').then((r) => r.json());
       if (!session.isAdmin) {
         document.getElementById('not-admin').hidden = false;
         return;
@@ -61,9 +67,9 @@
       const rows = await res.json();
       document.getElementById('staff-body').innerHTML = rows.map((s) => `
         <tr>
-          <td>${s.name}</td>
-          <td>${s.isAdmin ? 'Ya' : '—'}</td>
-          <td>${s.active ? 'Aktif' : 'Tidak aktif'}</td>
+          <td><strong>${UI.esc(s.name)}</strong></td>
+          <td>${s.isAdmin ? '<span class="pill">Admin</span>' : '<span class="muted">Staff</span>'}</td>
+          <td>${s.active ? '<span class="pill ok">Active</span>' : '<span class="pill neutral">Inactive</span>'}</td>
         </tr>
       `).join('');
     }
@@ -72,15 +78,15 @@
       e.preventDefault();
       const resDiv = document.getElementById('add-result');
       const data = Object.fromEntries(new FormData(e.target));
-      const res = await fetch('/api/staff', {
+      const res = await UI.busy(e.target.querySelector('button[type=submit]'), () => fetch('/api/staff', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: data.name, password: data.password, isAdmin: !!data.isAdmin }),
-      }).then(r => r.json());
+      }).then((r) => r.json()));
       if (res.error) {
-        resDiv.innerHTML = `<div class="msg error">${res.error}</div>`;
+        resDiv.innerHTML = `<div class="msg error">${UI.esc(res.error)}</div>`;
         return;
       }
-      resDiv.innerHTML = `<div class="msg ok">Staf "${res.name}" berjaya ditambah. Kongsikan nama dan kata laluan kepadanya.</div>`;
+      resDiv.innerHTML = `<div class="msg ok">Staff member "${UI.esc(res.name)}" added. Share the name and password with them.</div>`;
       e.target.reset();
       loadStaff();
     });
