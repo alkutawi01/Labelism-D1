@@ -12,6 +12,8 @@ Status: **DRAF UNTUK SEMAKAN. Tiada kod, tiada skema, tiada migrasi.** Lakaran j
 6. Dua konsep (Pindaan Obligasi + Unit Pengecualian), sempadan tiga lintasan, VOID + pengganti untuk saiz: **dikekalkan**.
 7. **Fasa 0 (peraturan shipment) diluluskan untuk dibina dahulu.** Fasa 1 hingga 4 belum, dan tidak boleh dibina serentak.
 
+8. **Satu medan teks label bagi setiap unit** (Izzat 19/9: setakat ini satu baju tidak pernah memerlukan dua perkara berasingan, contohnya nama dan jenama, pada label). Medan kedua hanya dipertimbangkan jika kes sebenar muncul; ia akan mengubah model data, tempahan, prompt AI dan susun atur label.
+
 Model dalam satu ayat: *order menentukan berapa baju wajib dibuat; setiap obligasi ada label; jika order berubah rekod lama tidak dipadam; jika realiti kilang tak sepadan dengan order, objek fizikal itu direkod sebagai pengecualian; hanya tindakan manusia boleh menyambungkan pengecualian kepada obligasi.*
 
 Sumber: sesi simulasi 1 hingga 10 (`tests/stress-sessions.js`) dan arahan Izzat 19/9. Empat temuan yang model ini mesti jawab: pindaan order tiada (S2, S3), baju terlebih tiada tempat (S6), salah saiz tak boleh dinyatakan (S10), dan shipment planned 103 untuk order 100 (S6).
