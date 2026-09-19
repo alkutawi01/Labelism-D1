@@ -267,19 +267,9 @@ export async function applyManifest(db, manifest, actor) {
     }
   }
 
-  let orderReference = manifest.orderReference;
-  if (!orderReference) {
-    const prefix = `TIADA-RUJUKAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
-    const { n } = await db
-      .prepare('SELECT COUNT(*) AS n FROM orders WHERE order_reference LIKE ?')
-      .bind(`${prefix}-%`)
-      .first();
-    orderReference = `${prefix}-${Number(n) + 1}`;
-  }
-
   const result = await createOrderWithLabels(db, {
     customerName: manifest.customerName,
-    orderReference,
+    orderReference: manifest.orderReference,
     items,
     actor: actor ?? 'system',
   });

@@ -334,8 +334,16 @@ async function nextBatchNumbers(db, variantId, count, inFlightCount = 0) {
 // All writes are in one db.batch(). Preflight reads only.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function createOrderWithLabels(db, { customerId, customerName, orderReference, orderDate, dueDate, notes, items, actor }) {
+  // A Job Order often has no JO/invoice number yet when it is first entered
+  // (a real Zaicorp JO had both blank), so a blank reference is allowed and
+  // gets a readable placeholder instead of blocking the order.
   if (!orderReference || !String(orderReference).trim()) {
-    throw new ValidationError('orderReference is required.');
+    const prefix = `TIADA-RUJUKAN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    const { n } = await db
+      .prepare('SELECT COUNT(*) AS n FROM orders WHERE order_reference LIKE ?')
+      .bind(`${prefix}-%`)
+      .first();
+    orderReference = `${prefix}-${Number(n) + 1}`;
   }
   if (!Array.isArray(items) || items.length === 0) {
     throw new ValidationError('At least one item is required in the order.');

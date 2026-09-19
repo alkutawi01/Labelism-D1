@@ -6,10 +6,6 @@
   <link rel="stylesheet" href="/style.css">
   <style>
     .page-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    .mode-tabs { display: flex; gap: 12px; margin-bottom: 24px; }
-    .mode-tab { padding: 14px 24px; border: 2px solid var(--border); background: #f8fafc; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 15px; color: #334155; transition: all 0.2s; }
-    .mode-tab:hover { background: #e2e8f0; border-color: #94a3b8; }
-    .mode-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
     .item-row { display: grid; grid-template-columns: 1.8fr 1.1fr 0.85fr 0.95fr 0.75fr 1.6fr auto; gap: 12px; align-items: start; margin-bottom: 12px; padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
     .item-row .baki-display { font-size:14px; padding:10px 0; font-weight:700; color: var(--navy); }
     .status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
@@ -20,13 +16,14 @@
     .summary-card { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 20px; text-align: center; }
     .summary-card h3 { margin: 0 0 8px 0; font-size: 14px; color: #64748b; }
     .summary-card .value { font-size: 32px; font-weight: 800; color: var(--navy); }
-    .batch-option { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-    .batch-option input[type="radio"] { width: 18px; height: 18px; }
-    .batch-option label { font-weight: 600; font-size: 14px; cursor: pointer; flex: 1; }
-    .ai-section { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-    .preview-table { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; }
-    .preview-table th, .preview-table td { border: 1px solid var(--border); padding: 12px; text-align: left; }
-    .preview-table th { background: #f1f5f9; font-weight: 700; }
+    .item-row .names-count { font-size:12px; margin-top:4px; color:#64748b; }
+    .item-row .names-count.over { color:#b91c1c; font-weight:700; }
+    .item-row .batch-subrows { grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 10px; }
+    .item-row .batch-subrows[hidden] { display: none; }
+    .item-row.has-batches .names-cell { visibility: hidden; }
+    .batch-subrow { display: grid; grid-template-columns: 1.4fr 0.7fr 3fr auto; gap: 10px; align-items: start; margin-bottom: 8px; }
+    .ai-helper { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 14px 20px; margin-bottom: 20px; }
+    .ai-helper summary { cursor: pointer; font-weight: 700; font-size: 15px; }
     .btn-primary { background: var(--navy); color: #fff; border: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
     .btn-primary:hover { opacity: 0.9; }
     .btn-secondary { background: #e2e8f0; color: #334155; border: 1px solid var(--border); padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; }
@@ -47,64 +44,12 @@
     <p class="muted" style="font-size: 16px;">Setiap 1 unit tempahan akan menghasilkan 1 label.</p>
   </header>
 
-  <div class="mode-tabs">
-    <button type="button" class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">Masukkan Manual</button>
-    <button type="button" class="mode-tab" id="tab-ai" onclick="switchMode('ai')">Tampal Output AI</button>
-  </div>
-
-  <!-- MOD A: BORANG MANUAL -->
-  <form id="order-with-labels-form">
-    <fieldset>
-      <legend>Maklumat Pelanggan &amp; Invois</legend>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div>
-          <label>Pelanggan
-            <select id="cust-select" name="customerId" style="font-size:14px; padding:12px;"><option value="">Loading…</option></select>
-          </label>
-          <div id="new-cust-div" style="margin-top:8px;" hidden>
-            <input id="new-cust-name" placeholder="Nama Pelanggan Baru (cth: Sekolah Seri Indah)" style="font-size:14px; padding:12px;">
-          </div>
-          <button type="button" class="btn-secondary" id="btn-toggle-cust" style="font-size:13px; margin-top:8px;">+ Pelanggan Baru</button>
-        </div>
-        <div>
-          <label>No. Rujukan Order / Invois
-            <input name="orderReference" required placeholder="e.g. INV-2026-001 / Job Order #12" style="font-size:14px; padding:12px;">
-          </label>
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top:12px;">
-        <label>Tarikh Order (Pilihan)
-          <input name="orderDate" type="date" style="font-size:14px; padding:12px;">
-        </label>
-        <label>Tarikh Siap / Delivery (Pilihan)
-          <input name="dueDate" type="date" style="font-size:14px; padding:12px;">
-        </label>
-      </div>
-      <label style="margin-top:12px; display:block;">Nota Catatan (Pilihan)
-        <input name="orderNotes" placeholder="Nota asas pesanan" style="font-size:14px; padding:12px;">
-      </label>
-    </fieldset>
-
-    <fieldset style="margin-top:20px;">
-      <legend>Item Tempahan</legend>
-      <p class="muted" style="font-size:14px; margin-bottom:16px;">Masukkan produk, variant, kuantiti dan nama penerima jika ada.</p>
-
-      <div id="items-container">
-        <!-- Item row template injected here -->
-      </div>
-      <button type="button" class="btn-secondary" onclick="addItemRow()" style="margin-top:12px; font-size:14px; padding:12px 20px;">+ Tambah Item</button>
-      <p class="muted" style="font-size:13px; margin-top:12px;">"Nak Dicetak Sekarang" default kepada kuantiti penuh (cetak semua sekali gus). Tukar nilai itu untuk cetak sebahagian dahulu -- baki boleh ditambah kemudian dari Senarai Tempahan.</p>
-    </fieldset>
-
-    <button type="submit" class="btn-primary" style="width:100%; margin-top:20px;">Sahkan Tempahan &amp; Jana Label</button>
-  </form>
-
-  <!-- MOD B: TAMPAL OUTPUT AI -->
-  <div id="ai-mode-container" hidden>
-    <div class="ai-section">
-      <h3 style="margin:0 0 12px 0; font-size:16px;">Langkah 1: Salin Prompt untuk AI</h3>
-      <p class="muted" style="font-size:14px; margin-bottom:12px;">Gunakan prompt ini dengan AI untuk menghasilkan JSON tempahan standard.</p>
-      <textarea id="ai-prompt" rows="12" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;">Sila hasilkan JSON tempahan dengan format berikut:
+  <!-- Pembantu AI: bukan laluan berasingan -- ia hanya mengisi borang tempahan di bawah. -->
+  <details class="ai-helper" id="ai-helper">
+    <summary>✨ Ada dokumen order (invois / Job Order)? Guna AI untuk isi borang di bawah</summary>
+    <p class="muted" style="font-size:14px; margin:12px 0;">AI hanya membantu mengisi borang. Semak dan betulkan di borang tempahan sebelum sahkan.</p>
+    <p style="margin:0 0 8px;"><strong>1.</strong> Salin prompt ini dan berikan kepada AI bersama dokumen order.</p>
+    <textarea id="ai-prompt" rows="8" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9;">Sila hasilkan JSON tempahan dengan format berikut:
 {
   "customerName": "Nama Pelanggan",
   "orderReference": "No. Rujukan/Invoice",
@@ -129,39 +74,58 @@ Jumlah kuantiti semua batch mesti sama atau kurang daripada quantity keseluruhan
 Peraturan penting:
 - Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
 - Salin nama penerima tepat seperti dalam dokumen. Jangan gabung dua nama menjadi satu, dan jangan pecahkan satu nama menjadi dua. Jika tidak pasti, kekalkan seperti tertulis.</textarea>
-      <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin-top:12px; font-size:14px; padding:12px 20px;">📋 Salin Prompt</button>
-    </div>
+    <button type="button" class="btn-secondary" onclick="copyAiPrompt()" style="margin:8px 0 16px;">📋 Salin Prompt</button>
+    <p style="margin:0 0 8px;"><strong>2.</strong> Tampal jawapan (JSON) daripada AI di sini.</p>
+    <textarea id="ai-text-input" rows="6" placeholder='{ "customerName": "...", "orderReference": "...", "products": [ ... ] }' style="font-family:monospace; font-size:13px; padding:12px;"></textarea>
+    <button type="button" class="btn-primary" onclick="fillFormFromAi()" style="margin-top:12px; font-size:14px; padding:12px 20px;">Isi Borang Daripada Output AI</button>
+    <div id="ai-fill-result" style="margin-top:12px;"></div>
+  </details>
 
-    <div class="ai-section">
-      <h3 style="margin:0 0 12px 0; font-size:16px;">Langkah 2: Tampal JSON Output AI</h3>
-      <p class="muted" style="font-size:14px; margin-bottom:12px;">Tampal JSON yang dihasilkan oleh AI di bawah.</p>
-      <textarea id="ai-text-input" rows="10" placeholder='Contoh:
-{
-  "customerName": "Sekolah SK Seri Indah",
-  "orderReference": "PO-2026-99",
-  "products": [
-    {
-      "name": "Jersi Home SK Seri Indah",
-      "dimensions": ["Saiz"],
-      "variants": [
-        { "label": "Saiz M", "quantity": 10, "unitNames": ["Ahmad", "Ali", "Abu"] }
-      ]
-    }
-  ]
-}' style="font-family:monospace; font-size:13px; padding:12px; border:1px solid var(--border); border-radius:6px; width:100%; box-sizing:border-box;"></textarea>
-      <div style="margin-top:16px; display:flex; gap:12px;">
-        <button type="button" class="btn-secondary" onclick="loadSampleAiText()" style="font-size:14px; padding:12px 20px;">Beban Contoh</button>
-        <button type="button" class="btn-primary" onclick="previewAiManifest()" style="font-size:14px; padding:12px 20px;">🔍 Semak Tempahan</button>
+  <form id="order-with-labels-form">
+    <fieldset>
+      <legend>Maklumat Pelanggan &amp; Invois</legend>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div>
+          <label>Pelanggan
+            <select id="cust-select" name="customerId" style="font-size:14px; padding:12px;"><option value="">Loading…</option></select>
+          </label>
+          <div id="new-cust-div" style="margin-top:8px;" hidden>
+            <input id="new-cust-name" placeholder="Nama Pelanggan Baru (cth: Sekolah Seri Indah)" style="font-size:14px; padding:12px;">
+          </div>
+          <button type="button" class="btn-secondary" id="btn-toggle-cust" style="font-size:13px; margin-top:8px;">+ Pelanggan Baru</button>
+        </div>
+        <div>
+          <label>No. Rujukan Order / Invois
+            <input name="orderReference" placeholder="cth: INV-2026-001 / JO #12 (kosong = dijana automatik)" style="font-size:14px; padding:12px;">
+          </label>
+        </div>
       </div>
-    </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top:12px;">
+        <label>Tarikh Order (Pilihan)
+          <input name="orderDate" type="date" style="font-size:14px; padding:12px;">
+        </label>
+        <label>Tarikh Siap / Delivery (Pilihan)
+          <input name="dueDate" type="date" style="font-size:14px; padding:12px;">
+        </label>
+      </div>
+      <label style="margin-top:12px; display:block;">Nota Catatan (Pilihan)
+        <input name="orderNotes" placeholder="Nota asas pesanan" style="font-size:14px; padding:12px;">
+      </label>
+    </fieldset>
 
-    <!-- Preview Section -->
-    <div id="ai-preview-section" hidden class="ai-section" style="background:#fff;">
-      <h3 style="margin:0 0 16px 0; font-size:16px;">Preview Tempahan</h3>
-      <div id="ai-preview-content"></div>
-      <button type="button" class="btn-primary" id="btn-confirm-ai" onclick="confirmAiManifest()" style="margin-top:16px; font-size:15px; padding:14px 28px; width:100%;" hidden>Sahkan &amp; Hasilkan Label</button>
-    </div>
-  </div>
+    <fieldset style="margin-top:20px;">
+      <legend>Item Tempahan</legend>
+      <p class="muted" style="font-size:14px; margin-bottom:16px;">Masukkan produk, variasi, kuantiti dan nama penerima jika ada. Asingkan nama dengan koma atau baris baru.</p>
+
+      <div id="items-container">
+        <!-- Item row template injected here -->
+      </div>
+      <button type="button" class="btn-secondary" onclick="addItemRow()" style="margin-top:12px; font-size:14px; padding:12px 20px;">+ Tambah Item</button>
+      <p class="muted" style="font-size:13px; margin-top:12px;">"Nak Dicetak Sekarang" default kepada kuantiti penuh (cetak semua sekali gus). Tukar nilai itu untuk cetak sebahagian dahulu -- baki boleh ditambah kemudian dari Senarai Tempahan.</p>
+    </fieldset>
+
+    <button type="submit" class="btn-primary" style="width:100%; margin-top:20px;">Sahkan Tempahan &amp; Jana Label</button>
+  </form>
 
   <!-- Summary Cards (shown after successful submission) -->
   <div id="summary-section" hidden>
@@ -215,19 +179,17 @@ Peraturan penting:
   <script>
     let isNewCustomer = false;
 
-    function switchMode(mode) {
-      document.getElementById('tab-manual').classList.toggle('active', mode === 'manual');
-      document.getElementById('tab-ai').classList.toggle('active', mode === 'ai');
-      document.getElementById('order-with-labels-form').hidden = mode !== 'manual';
-      document.getElementById('ai-mode-container').hidden = mode !== 'ai';
-    }
-
-    document.getElementById('btn-toggle-cust').addEventListener('click', () => {
-      isNewCustomer = !isNewCustomer;
+    function setCustomerMode(isNew) {
+      isNewCustomer = isNew;
       document.getElementById('cust-select').hidden = isNewCustomer;
       document.getElementById('new-cust-div').hidden = !isNewCustomer;
       document.getElementById('btn-toggle-cust').textContent = isNewCustomer ? 'Pilih Pelanggan Sedia Ada' : '+ Pelanggan Baru';
-    });
+    }
+    document.getElementById('btn-toggle-cust').addEventListener('click', () => setCustomerMode(!isNewCustomer));
+
+    function parseNames(text) {
+      return (text || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+    }
 
     async function loadCustomers() {
       const rows = await fetch('/api/customers').then(r => r.json());
@@ -237,16 +199,15 @@ Peraturan penting:
         : '<option value="">Tiada pelanggan lagi -- cipta baru</option>';
     }
 
-    // Izzat's correction (2026-09-17): the old design had ONE global "print
-    // all now / print partial X now" choice applied uniformly to every item
-    // row, which breaks the moment an order has more than one variant --
-    // there was no way to say "print 2 of the 5 size M, and 3 of the 5 size
-    // L" in one submission. "Nak Dicetak Sekarang" is now per row, defaults
-    // to the full ordered quantity (so leaving every row untouched = print
-    // everything at once, same as before), and Baki updates live.
-    function addItemRow() {
+    // One row = one product + variation + total quantity. "Nak Dicetak
+    // Sekarang" defaults to the full quantity (print everything at once);
+    // lower it to print some now and add the baki later. A row can also
+    // carry named batches (e.g. one per school) -- those come from AI output
+    // and show as editable sub-rows, so everything the AI produced is visible
+    // and correctable in this one form before anything is created.
+    function addItemRow(prefill = {}) {
       const container = document.getElementById('items-container');
-      const rowId = 'row-' + Date.now() + '-' + Math.random().toString(36).substr(2,4);
+      const rowId = 'row-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
       const div = document.createElement('div');
       div.className = 'item-row';
       div.id = rowId;
@@ -263,51 +224,183 @@ Peraturan penting:
         </div>
         <div>
           <label style="font-size:14px;">Kuantiti
-            <input type="number" min="1" data-field="quantity" value="10" required style="font-size:14px; padding:10px;">
+            <input type="number" min="1" data-field="quantity" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
           <label style="font-size:14px;">Nak Dicetak Sekarang
-            <input type="number" min="1" data-field="printNow" value="10" required style="font-size:14px; padding:10px;">
+            <input type="number" min="1" data-field="printNow" required style="font-size:14px; padding:10px;">
           </label>
         </div>
         <div>
           <label style="font-size:14px;">Baki</label>
           <div class="baki-display" data-field="bakiDisplay">0</div>
         </div>
-        <div>
+        <div class="names-cell">
           <label style="font-size:14px;">Nama Penerima (Pilihan)
-            <input type="text" data-field="unitNames" placeholder="cth: Ahmad, Ali, Abu" style="font-size:14px; padding:10px;">
+            <textarea data-field="unitNames" rows="3" placeholder="cth: Ahmad, Ali, Abu" style="font-size:14px; padding:10px;"></textarea>
           </label>
+          <div class="names-count" data-field="namesCount"></div>
         </div>
         <div>
           <button type="button" class="btn-secondary" onclick="document.getElementById('${rowId}').remove()" style="color:#dc2626; font-size:13px; padding:8px 12px;">✕ Buang</button>
         </div>
+        <div class="batch-subrows" hidden>
+          <div class="muted" style="font-size:13px; margin-bottom:8px;">Batch / kumpulan untuk baris ini (daripada AI). Boleh diubah atau dibuang.</div>
+          <div data-field="subrowList"></div>
+        </div>
       `;
       container.appendChild(div);
 
-      const qtyInput = div.querySelector('[data-field=quantity]');
-      const printNowInput = div.querySelector('[data-field=printNow]');
-      const bakiDisplay = div.querySelector('[data-field=bakiDisplay]');
-      function syncPrintNow() {
-        // Quantity changed -- keep "print now" from silently exceeding the
-        // new total (it defaults to matching quantity, i.e. "print all").
-        if (Number(printNowInput.value) > Number(qtyInput.value) || printNowInput.dataset.autofollow !== 'false') {
+      const q = (f) => div.querySelector(`[data-field=${f}]`);
+      const qtyInput = q('quantity');
+      const printNowInput = q('printNow');
+      const bakiDisplay = q('bakiDisplay');
+      const namesInput = q('unitNames');
+      const namesCount = q('namesCount');
+      const subrowsEl = div.querySelector('.batch-subrows');
+      const listEl = q('subrowList');
+
+      function showCount(inputEl, countEl, limit) {
+        const n = parseNames(inputEl.value).length;
+        countEl.textContent = n ? `${n} nama / ${limit} unit` : '';
+        countEl.classList.toggle('over', n > limit);
+      }
+
+      function refresh() {
+        const qty = Number(qtyInput.value) || 0;
+        const subs = listEl.querySelectorAll('.batch-subrow');
+        if (subs.length) {
+          let sum = 0;
+          subs.forEach((s) => { sum += Number(s.querySelector('[data-sub=quantity]').value) || 0; });
+          printNowInput.value = sum;
+          printNowInput.readOnly = true;
+        } else {
+          printNowInput.readOnly = false;
+        }
+        div.classList.toggle('has-batches', subs.length > 0);
+        subrowsEl.hidden = subs.length === 0;
+        bakiDisplay.textContent = Math.max(0, qty - (Number(printNowInput.value) || 0));
+        showCount(namesInput, namesCount, qty);
+      }
+
+      function addSubrow(sub = {}) {
+        const s = document.createElement('div');
+        s.className = 'batch-subrow';
+        s.innerHTML = `
+          <input type="text" data-sub="name" placeholder="Nama batch (cth: SK Sekolah A)" style="font-size:14px; padding:8px;">
+          <input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" style="font-size:14px; padding:8px;">
+          <div>
+            <textarea data-sub="names" rows="2" placeholder="Nama penerima batch ini" style="font-size:14px; padding:8px;"></textarea>
+            <div class="names-count" data-sub="count"></div>
+          </div>
+          <button type="button" class="btn-secondary" style="color:#dc2626; font-size:13px; padding:8px 12px;">✕</button>
+        `;
+        const subQty = s.querySelector('[data-sub=quantity]');
+        const subNames = s.querySelector('[data-sub=names]');
+        const subCount = s.querySelector('[data-sub=count]');
+        s.querySelector('[data-sub=name]').value = sub.batchNumber || '';
+        subQty.value = sub.quantity ?? '';
+        subNames.value = (sub.unitNames || []).join(', ');
+        const updateSub = () => {
+          showCount(subNames, subCount, Number(subQty.value) || 0);
+          refresh();
+        };
+        subQty.addEventListener('input', updateSub);
+        subNames.addEventListener('input', updateSub);
+        s.querySelector('button').addEventListener('click', () => {
+          s.remove();
+          if (!listEl.children.length) printNowInput.value = qtyInput.value;
+          refresh();
+        });
+        listEl.appendChild(s);
+        updateSub();
+      }
+
+      qtyInput.addEventListener('input', () => {
+        // Keep "print now" following the quantity until staff take control of
+        // it, and never let it exceed the total.
+        if (!listEl.children.length &&
+            (Number(printNowInput.value) > Number(qtyInput.value) || printNowInput.dataset.autofollow !== 'false')) {
           printNowInput.value = qtyInput.value;
         }
-        updateBaki();
-      }
-      function updateBaki() {
-        const qty = Number(qtyInput.value) || 0;
-        const printNow = Number(printNowInput.value) || 0;
-        bakiDisplay.textContent = Math.max(0, qty - printNow);
-      }
-      qtyInput.addEventListener('input', syncPrintNow);
-      printNowInput.addEventListener('input', () => {
-        printNowInput.dataset.autofollow = 'false'; // staff took manual control -- stop following quantity
-        updateBaki();
+        refresh();
       });
-      updateBaki();
+      printNowInput.addEventListener('input', () => {
+        printNowInput.dataset.autofollow = 'false';
+        refresh();
+      });
+      namesInput.addEventListener('input', refresh);
+
+      const startQty = prefill.quantity ?? 10;
+      q('productName').value = prefill.productName || '';
+      q('variantLabel').value = prefill.variantLabel || '';
+      qtyInput.value = startQty;
+      printNowInput.value = startQty;
+      namesInput.value = (prefill.unitNames || []).join(', ');
+      (prefill.batches || []).forEach((b) => addSubrow(b));
+      refresh();
+    }
+
+    // The AI is a helper for THIS form, not a second way to create orders:
+    // it only fills the fields below. Nothing is created until staff review
+    // the filled form and press the same "Sahkan Tempahan" button.
+    function fillFormFromAi() {
+      const out = document.getElementById('ai-fill-result');
+      try {
+        const text = document.getElementById('ai-text-input').value.trim();
+        if (!text) throw new Error('Sila tampal JSON daripada AI dahulu.');
+        let manifest;
+        try { manifest = JSON.parse(text); } catch { throw new Error('JSON tidak sah. Sila semak format yang AI berikan.'); }
+        if (!manifest || !Array.isArray(manifest.products) || !manifest.products.length) {
+          throw new Error('JSON tiada senarai "products".');
+        }
+
+        const rows = [];
+        manifest.products.forEach((p) => {
+          (p.variants || []).forEach((v) => {
+            const label = (v.label && String(v.label).trim())
+              || Object.values(v.attributes || {}).join(' / ');
+            rows.push({
+              productName: String(p.name || '').trim(),
+              variantLabel: label,
+              quantity: Number(v.quantity) || 1,
+              unitNames: (v.unitNames || []).map((n) => String(n).trim()).filter(Boolean),
+              batches: Array.isArray(v.batches) ? v.batches : [],
+            });
+          });
+        });
+        if (!rows.length) throw new Error('JSON tiada sebarang variasi/kuantiti.');
+
+        // Customer: reuse an existing one on an exact (case-insensitive) name
+        // match, otherwise fill in as a new customer. Either way it is shown
+        // in the form and can be changed before confirming.
+        const customerName = String(manifest.customerName || '').trim();
+        let customerNote = '';
+        if (customerName) {
+          const select = document.getElementById('cust-select');
+          const match = [...select.options].find((o) => o.value && o.textContent.trim().toLowerCase() === customerName.toLowerCase());
+          if (match) {
+            select.value = match.value;
+            setCustomerMode(false);
+            customerNote = ` Pelanggan sedia ada dipilih: ${match.textContent}.`;
+          } else {
+            setCustomerMode(true);
+            document.getElementById('new-cust-name').value = customerName;
+            customerNote = ` Pelanggan baru: ${customerName}.`;
+          }
+        }
+        document.querySelector('[name=orderReference]').value = manifest.orderReference ? String(manifest.orderReference).trim() : '';
+
+        document.getElementById('items-container').innerHTML = '';
+        rows.forEach((r) => addItemRow(r));
+
+        const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
+        out.innerHTML = `<div class="msg ok">✅ Borang telah diisi: ${rows.length} baris, ${totalQty} unit.${customerNote} Semak nama dan kuantiti di bawah, betulkan jika perlu, kemudian tekan "Sahkan Tempahan &amp; Jana Label".</div>`;
+        document.getElementById('order-with-labels-form').scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        out.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
+      }
     }
 
     async function loadOrders() {
@@ -472,28 +565,56 @@ Peraturan penting:
         const itemRows = document.querySelectorAll('.item-row');
         if (!itemRows.length) throw new Error('Sila tambah sekurang-kurangnya 1 item pakaian.');
 
-        // "Nak Dicetak Sekarang" is per item row (see addItemRow()) -- an
-        // order with 5 size M + 5 size L can print 2 M + 3 L now and the
-        // rest later, which a single order-wide batch quantity could never
-        // express. printNow === quantity (the default) means "print all of
-        // this line now", same as not phasing at all.
+        // Per row: "Nak Dicetak Sekarang" for simple phasing, OR named batches
+        // (sub-rows, e.g. one per school) for grouped orders. A row with
+        // sub-rows sends exactly those batches; otherwise it sends at most one
+        // phase (printNow) and the baki is added later from Senarai Tempahan.
         const items = [];
         itemRows.forEach((row) => {
           const productName = row.querySelector('[data-field=productName]').value.trim();
           const variantLabel = row.querySelector('[data-field=variantLabel]').value.trim();
           const quantity = Number(row.querySelector('[data-field=quantity]').value);
           const printNow = Number(row.querySelector('[data-field=printNow]').value);
-          const rawNames = row.querySelector('[data-field=unitNames]').value.trim();
-          const unitNames = rawNames ? rawNames.split(',').map(s => s.trim()).filter(Boolean) : [];
+          const unitNames = parseNames(row.querySelector('[data-field=unitNames]').value);
 
           if (!productName || !variantLabel || !quantity) return;
-          if (!printNow || printNow < 1) {
-            throw new Error(`"Nak Dicetak Sekarang" untuk "${productName} ${variantLabel}" mesti sekurang-kurangnya 1.`);
-          }
-          if (printNow > quantity) {
-            throw new Error(`"Nak Dicetak Sekarang" (${printNow}) melebihi kuantiti (${quantity}) untuk "${productName} ${variantLabel}".`);
+          const what = `"${productName} ${variantLabel}"`;
+
+          const subrows = [...row.querySelectorAll('.batch-subrow')];
+          if (subrows.length) {
+            let sum = 0;
+            const seen = new Set();
+            const batches = subrows.map((s, i) => {
+              const bq = Number(s.querySelector('[data-sub=quantity]').value);
+              if (!Number.isInteger(bq) || bq < 1) {
+                throw new Error(`Kuantiti batch ${i + 1} untuk ${what} mesti nombor bulat sekurang-kurangnya 1.`);
+              }
+              const bn = s.querySelector('[data-sub=name]').value.trim();
+              if (bn) {
+                if (seen.has(bn.toLowerCase())) throw new Error(`Nama batch "${bn}" digunakan dua kali untuk ${what}.`);
+                seen.add(bn.toLowerCase());
+              }
+              const names = parseNames(s.querySelector('[data-sub=names]').value);
+              if (names.length > bq) {
+                throw new Error(`Batch ${bn || i + 1} (${what}) ada ${names.length} nama tetapi kuantitinya hanya ${bq}.`);
+              }
+              sum += bq;
+              return { quantity: bq, ...(bn ? { batchNumber: bn } : {}), ...(names.length ? { unitNames: names } : {}) };
+            });
+            if (sum > quantity) throw new Error(`Jumlah batch (${sum}) melebihi kuantiti (${quantity}) untuk ${what}.`);
+            items.push({ productName, variantLabel, quantity, unitNames: [], batches });
+            return;
           }
 
+          if (unitNames.length > quantity) {
+            throw new Error(`${what} ada ${unitNames.length} nama tetapi kuantitinya hanya ${quantity}.`);
+          }
+          if (!printNow || printNow < 1) {
+            throw new Error(`"Nak Dicetak Sekarang" untuk ${what} mesti sekurang-kurangnya 1.`);
+          }
+          if (printNow > quantity) {
+            throw new Error(`"Nak Dicetak Sekarang" (${printNow}) melebihi kuantiti (${quantity}) untuk ${what}.`);
+          }
           const batches = printNow < quantity ? [{ quantity: printNow }] : null;
           items.push({ productName, variantLabel, quantity, unitNames, batches });
         });
@@ -534,10 +655,15 @@ Peraturan penting:
         document.getElementById('sum-batches').textContent = totalBatches + ' fasa';
         document.getElementById('summary-section').hidden = false;
 
+        e.target.reset();
+        setCustomerMode(false);
         document.getElementById('items-container').innerHTML = '';
         addItemRow();
-        loadCustomers();
+        document.getElementById('ai-text-input').value = '';
+        document.getElementById('ai-fill-result').innerHTML = '';
+        await loadCustomers();
         loadOrders();
+        document.getElementById('summary-section').scrollIntoView({ behavior: 'smooth' });
       } catch (err) {
         resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
       }
@@ -550,129 +676,6 @@ Peraturan penting:
       promptText.select();
       document.execCommand('copy');
       alert('Prompt telah disalin ke clipboard!');
-    }
-
-    // Preview AI manifest before applying
-    async function previewAiManifest() {
-      const resDiv = document.getElementById('form-result');
-      const previewSection = document.getElementById('ai-preview-section');
-      const previewContent = document.getElementById('ai-preview-content');
-      const confirmBtn = document.getElementById('btn-confirm-ai');
-      
-      previewSection.hidden = true;
-      confirmBtn.hidden = true;
-      
-      try {
-        const text = document.getElementById('ai-text-input').value.trim();
-        if (!text) throw new Error('Sila masukkan teks JSON manifest.');
-        
-        let manifest;
-        try {
-          manifest = JSON.parse(text);
-        } catch (e) {
-          throw new Error('JSON tidak sah. Sila semak format.');
-        }
-
-        // Call preview endpoint
-        const previewRes = await fetch('/api/import/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifest }),
-        }).then(r => r.json());
-        
-        if (previewRes.error) throw new Error(previewRes.error);
-
-        // Display preview
-        let html = '<table class="preview-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>';
-        html += `<tr><td><strong>Pelanggan</strong></td><td>${manifest.customerName || '-'}</td></tr>`;
-        html += `<tr><td><strong>No. Rujukan</strong></td><td><input id="ai-order-ref" value="${(manifest.orderReference || '').replace(/"/g, '&quot;')}" placeholder="Kosong = dijana automatik (dokumen tiada nombor)" style="font-size:14px;padding:8px"></td></tr>`;
-        
-        let totalQty = 0;
-        let itemsHtml = '';
-        if (manifest.products && manifest.products.length) {
-          manifest.products.forEach((p, idx) => {
-            if (p.variants && p.variants.length) {
-              p.variants.forEach((v) => {
-                totalQty += v.quantity || 0;
-                const namesSummary = (names) => !names || !names.length ? ''
-                  : names.length <= 6 ? ' (' + names.join(', ') + ')'
-                  : ` (${names.slice(0, 6).join(', ')}, +${names.length - 6} lagi)`;
-                itemsHtml += `<tr><td>${p.name} - ${v.label}</td><td>${v.quantity || 0} unit${namesSummary(v.unitNames)}</td></tr>`;
-                // Batches double as recipient groups (e.g. one batch per
-                // school) -- show the breakdown so Izzat can sanity-check a
-                // 100-school split BEFORE confirming, not after.
-                if (Array.isArray(v.batches) && v.batches.length) {
-                  v.batches.forEach((b, bIdx) => {
-                    const label = b.batchNumber ? b.batchNumber : `Batch ${bIdx + 1}`;
-                    itemsHtml += `<tr><td style="padding-left:24px;color:#64748b">↳ ${label}</td><td>${b.quantity} unit${namesSummary(b.unitNames)}</td></tr>`;
-                  });
-                  const batchSum = v.batches.reduce((s, b) => s + (b.quantity || 0), 0);
-                  if (batchSum < v.quantity) {
-                    itemsHtml += `<tr><td style="padding-left:24px;color:#92400e">↳ Baki belum dibatch</td><td>${v.quantity - batchSum} unit</td></tr>`;
-                  }
-                }
-              });
-            }
-          });
-        }
-        html += `<tr><td><strong>Jumlah Item</strong></td><td>${totalQty} unit</td></tr>`;
-        html += itemsHtml;
-        html += '</tbody></table>';
-        
-        previewContent.innerHTML = html;
-        previewSection.hidden = false;
-        confirmBtn.hidden = false;
-        
-        // Store manifest for confirmation
-        window._pendingManifest = manifest;
-        
-      } catch (err) {
-        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
-      }
-    }
-
-    // Confirm and apply AI manifest
-    async function confirmAiManifest() {
-      const resDiv = document.getElementById('form-result');
-      resDiv.innerHTML = '<span class="muted">Memproses &amp; mengesahkan JSON manifest secara atomik di server…</span>';
-      
-      try {
-        const manifest = window._pendingManifest;
-        if (!manifest) throw new Error('Tiada data untuk diproses. Sila buat preview dahulu.');
-        const refInput = document.getElementById('ai-order-ref');
-        if (refInput) manifest.orderReference = refInput.value.trim();
-        
-        const actor = window.LabelismActor ? window.LabelismActor.get() : 'izzat';
-
-        const applyRes = await fetch('/api/import/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifest, actor }),
-        }).then(r => r.json());
-        
-        if (applyRes.error) throw new Error(applyRes.error);
-
-        // Show summary cards
-        const totalOrdered = applyRes.lines.reduce((s, l) => s + l.quantity, 0);
-        const totalGenerated = applyRes.lines.reduce((s, l) => s + l.batches.reduce((bs, b) => bs + b.createdUnits, 0), 0);
-        const remaining = totalOrdered - totalGenerated;
-        const batches = applyRes.lines.reduce((s, l) => s + l.batches.length, 0);
-
-        document.getElementById('sum-ordered').textContent = totalOrdered;
-        document.getElementById('sum-generated').textContent = totalGenerated;
-        document.getElementById('sum-remaining').textContent = remaining;
-        document.getElementById('sum-batches').textContent = batches + ' fasa';
-        
-        document.getElementById('summary-section').hidden = false;
-        document.getElementById('ai-preview-section').hidden = true;
-        document.getElementById('ai-text-input').value = '';
-        window._pendingManifest = null;
-        
-        resDiv.innerHTML = `<div class="msg ok">✅ Tempahan berjaya dicipta! Label telah dijana.</div>`;
-        loadOrders();
-      } catch (err) {
-        resDiv.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
-      }
     }
 
     // Toggle orders view (collapsed/expanded)
@@ -688,29 +691,6 @@ Peraturan penting:
         wrapper.classList.add('orders-collapsed');
         btn.textContent = 'Lihat Semua';
       }
-    }
-
-    function loadSampleAiText() {
-      document.getElementById('ai-text-input').value = JSON.stringify({
-        customerName: "Sekolah SK Seri Indah",
-        orderReference: "PO-2026-99",
-        products: [
-          {
-            name: "Jersi Home SK Seri Indah",
-            dimensions: ["Saiz"],
-            variants: [
-              { label: "Saiz M", quantity: 10, unitNames: ["Ahmad", "Ali", "Abu", "Bakar", "Chai", "Danial", "Eason", "Fahmi", "Gani", "Hafiz"] },
-              { label: "Saiz L", quantity: 5 }
-            ]
-          }
-        ]
-      }, null, 2);
-    }
-
-    // Old function kept for compatibility (now uses preview flow)
-    async function submitAiManifest() {
-      // Deprecated - use previewAiManifest + confirmAiManifest instead
-      console.warn('submitAiManifest is deprecated. Use previewAiManifest first.');
     }
 
     addItemRow();
