@@ -314,18 +314,12 @@
       return overview.runs.reduce((m, r) => Math.max(m, r.run_number), 0) + 1;
     }
 
-    // Pick-list from the balance down to 0 (e.g. 4, 3, 2, 1, 0) so the amount
-    // is chosen, not typed. A row with hundreds of labels would make that list
-    // unusable, so those keep a typed number box.
-    const PICK_LIST_MAX = 60;
+    // A number box that can be typed into or stepped with the arrows, from 0
+    // up to what is left (0 = do not print this row). Works the same for 4
+    // labels or 1000.
     function qtyControl(row, value) {
       const label = `Kuantiti untuk ${esc(row.variant_label)}`;
-      if (row.unprinted > PICK_LIST_MAX) {
-        return `<input type="number" min="0" max="${row.unprinted}" value="${value}" data-qty="${row.batch_id}" aria-label="${label}">`;
-      }
-      let options = '';
-      for (let n = row.unprinted; n >= 0; n--) options += `<option value="${n}" ${n === value ? 'selected' : ''}>${n}</option>`;
-      return `<select data-qty="${row.batch_id}" aria-label="${label}">${options}</select>`;
+      return `<input type="number" min="0" max="${row.unprinted}" step="1" value="${value}" data-qty="${row.batch_id}" aria-label="${label}">`;
     }
 
     function renderPrintTable() {
