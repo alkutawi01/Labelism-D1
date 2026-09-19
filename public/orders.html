@@ -6,8 +6,6 @@
   <link rel="stylesheet" href="/style.css">
   <style>
     .page-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    .item-row { display: grid; grid-template-columns: 1.8fr 1.1fr 0.85fr 0.95fr 0.75fr 1.6fr auto; gap: 12px; align-items: start; margin-bottom: 12px; padding: 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
-    .item-row .baki-display { font-size:14px; padding:10px 0; font-weight:700; color: var(--navy); }
     .status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
     .badge-ok { background: #dcfce7; color: #166534; }
     .badge-partial { background: #fef3c7; color: #92400e; }
@@ -16,12 +14,32 @@
     .summary-card { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 20px; text-align: center; }
     .summary-card h3 { margin: 0 0 8px 0; font-size: 14px; color: #64748b; }
     .summary-card .value { font-size: 32px; font-weight: 800; color: var(--navy); }
-    .item-row .names-count { font-size:12px; margin-top:4px; color:#64748b; }
-    .item-row .names-count.over { color:#b91c1c; font-weight:700; }
-    .item-row .batch-subrows { grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 10px; }
-    .item-row .batch-subrows[hidden] { display: none; }
-    .item-row.has-batches .names-cell { visibility: hidden; }
-    .batch-subrow { display: grid; grid-template-columns: 1.4fr 0.7fr 3fr auto; gap: 10px; align-items: start; margin-bottom: 8px; }
+    /* style.css caps every <form> at 460px (right for the small forms on other
+       pages) -- that squeezed this whole order form into a third of the page. */
+    #order-with-labels-form { max-width: none; }
+    .items-head, .item-row { display: grid; grid-template-columns: minmax(0,4fr) minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.5fr) 84px; gap: 10px; align-items: start; }
+    .items-head { padding: 0 16px 6px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .03em; }
+    .item-row { margin-bottom: 12px; padding: 12px 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; }
+    .item-row .baki-display { font-size: 15px; padding: 10px 0; font-weight: 700; color: var(--navy); }
+    .item-row .cell-label { display: none; }
+    .item-row .names-cell, .item-row .batch-subrows { grid-column: 1 / -1; }
+    .item-row .names-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 12px; color: #64748b; }
+    .names-count { font-size: 12px; color: #64748b; }
+    .names-count.over { color: #b91c1c; font-weight: 700; }
+    #order-with-labels-form textarea { resize: vertical; overflow-y: auto; line-height: 1.4; }
+    .item-row.has-batches .names-cell { display: none; }
+    .item-row .batch-subrows { border-top: 1px dashed var(--border); padding-top: 10px; }
+    .batch-subrow { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,.8fr) minmax(0,5fr) 44px; gap: 10px; align-items: start; margin-bottom: 8px; }
+    #order-alerts .msg { margin-bottom: 10px; }
+    #order-alerts ul { margin: 6px 0 0 18px; padding: 0; }
+    @media (max-width: 760px) {
+      .items-head { display: none; }
+      .item-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .item-row > div:first-child { grid-column: 1 / -1; }
+      .item-row .cell-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: #64748b; }
+      .batch-subrow { grid-template-columns: 1fr 1fr; }
+      .batch-subrow > div:nth-child(3) { grid-column: 1 / -1; }
+    }
     .ai-helper { background: #f8fafc; border: 2px solid var(--border); border-radius: 8px; padding: 14px 20px; margin-bottom: 20px; }
     .ai-helper summary { cursor: pointer; font-weight: 700; font-size: 15px; }
     .btn-primary { background: var(--navy); color: #fff; border: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
@@ -49,7 +67,7 @@
     <summary>✨ Ada dokumen order (invois / Job Order)? Guna AI untuk isi borang di bawah</summary>
     <p class="muted" style="font-size:14px; margin:12px 0;">AI hanya membantu mengisi borang. Semak dan betulkan di borang tempahan sebelum sahkan.</p>
     <p style="margin:0 0 8px;"><strong>1.</strong> Salin prompt ini dan berikan kepada AI bersama dokumen order.</p>
-    <textarea id="ai-prompt" rows="14" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9;">Sila hasilkan JSON tempahan dengan format berikut:
+    <textarea id="ai-prompt" rows="16" readonly style="font-family:monospace; font-size:13px; padding:12px; background:#f1f5f9;">Sila hasilkan JSON tempahan dengan format berikut:
 {
   "documentType": "Jenis dokumen (cth: Job Order, Invois, Sebut Harga)",
   "customerName": "Nama Pelanggan",
@@ -58,6 +76,7 @@
   "dueDate": "YYYY-MM-DD",
   "totalOrder": 23,
   "notes": "Maklumat penting lain dalam dokumen",
+  "warnings": ["Kejanggalan atau perkara yang tidak pasti"],
   "products": [
     {
       "name": "Nama Produk",
@@ -81,6 +100,7 @@ Peraturan penting:
 - Semua tarikh dalam format YYYY-MM-DD. Dokumen Malaysia guna hari/bulan/tahun, jadi 5/9/2026 ialah 2026-09-05.
 - "notes": ringkaskan maklumat penting lain dalam dokumen (cth: salesperson, cawangan, jenis kerja, bahan, warna, nota khas).
 - "totalOrder" ialah jumlah unit yang tertulis dalam dokumen. Jika satu fail ada beberapa Job Order/halaman, tambah "Total Order" setiap satu.
+- "warnings": senaraikan setiap kejanggalan atau perkara yang tidak pasti sebagai ayat pendek yang jelas (apa, di mana, kenapa). Contoh: nama yang mungkin tersalah gabung atau pecah kerana teks terputus baris, bilangan nama kurang atau lebih daripada kuantiti, jumlah tidak sepadan, tulisan tidak jelas, nombor rujukan tiada, atau beberapa dokumen berbeza dalam satu fail. Jika benar-benar tiada, letak []. Lebih baik memberi amaran daripada menyembunyikan keraguan.
 - SEMAK JUMLAH SEBELUM MENJAWAB: tambah semua "quantity" dalam semua variants. Jumlahnya mesti sama dengan "totalOrder". Jika tidak sama, semak semula dokumen dan betulkan dahulu.
 - Bilangan nama dalam "unitNames" tidak boleh melebihi "quantity". Jika nama kurang daripada quantity, biarkan begitu. Jangan reka nama.
 - Jika dokumen tiada No. Rujukan/Invoice/JO, biarkan "orderReference" sebagai "" (kosong). Jangan reka nombor.
@@ -91,6 +111,8 @@ Peraturan penting:
     <button type="button" class="btn-primary" onclick="fillFormFromAi()" style="margin-top:12px; font-size:14px; padding:12px 20px;">Isi Borang Daripada Output AI</button>
     <div id="ai-fill-result" style="margin-top:12px;"></div>
   </details>
+
+  <div id="order-alerts"></div>
 
   <form id="order-with-labels-form">
     <fieldset>
@@ -107,7 +129,7 @@ Peraturan penting:
         </div>
         <div>
           <label>No. Rujukan Order / Invois
-            <input name="orderReference" placeholder="cth: INV-2026-001 / JO #12 (kosong = dijana automatik)" style="font-size:14px; padding:12px;">
+            <input name="orderReference" placeholder="Kosong = dijana automatik" style="font-size:14px; padding:12px;">
           </label>
         </div>
       </div>
@@ -120,7 +142,7 @@ Peraturan penting:
         </label>
       </div>
       <label style="margin-top:12px; display:block;">Nota Catatan (Pilihan)
-        <input name="orderNotes" placeholder="Nota asas pesanan" style="font-size:14px; padding:12px;">
+        <textarea name="orderNotes" rows="2" placeholder="Nota asas pesanan" style="font-size:14px; padding:12px;"></textarea>
       </label>
     </fieldset>
 
@@ -128,11 +150,12 @@ Peraturan penting:
       <legend>Item Tempahan</legend>
       <p class="muted" style="font-size:14px; margin-bottom:16px;">Masukkan produk, variasi, kuantiti dan nama penerima jika ada. Asingkan nama dengan koma atau baris baru.</p>
 
+      <div class="items-head"><div>Produk</div><div>Variasi</div><div>Kuantiti</div><div>Cetak Sekarang</div><div>Baki</div><div></div></div>
       <div id="items-container">
         <!-- Item row template injected here -->
       </div>
       <button type="button" class="btn-secondary" onclick="addItemRow()" style="margin-top:12px; font-size:14px; padding:12px 20px;">+ Tambah Item</button>
-      <p class="muted" style="font-size:13px; margin-top:12px;">"Nak Dicetak Sekarang" default kepada kuantiti penuh (cetak semua sekali gus). Tukar nilai itu untuk cetak sebahagian dahulu -- baki boleh ditambah kemudian dari Senarai Tempahan.</p>
+      <p class="muted" style="font-size:13px; margin-top:12px;">"Cetak Sekarang" default kepada kuantiti penuh (cetak semua sekali gus). Tukar nilai itu untuk cetak sebahagian dahulu -- baki boleh ditambah kemudian dari Senarai Tempahan.</p>
     </fieldset>
 
     <button type="submit" class="btn-primary" style="width:100%; margin-top:20px;">Sahkan Tempahan &amp; Jana Label</button>
@@ -206,6 +229,15 @@ Peraturan penting:
       return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
     }
 
+    // Grow a textarea to show everything typed in it (up to a cap), so long
+    // name lists are never cut off behind a tiny scrolling box.
+    function autosize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight + 2, 360) + 'px';
+    }
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    document.querySelector('[name=orderNotes]').addEventListener('input', (e) => autosize(e.target));
+
     function parseNames(text) {
       return (text || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
     }
@@ -218,7 +250,7 @@ Peraturan penting:
         : '<option value="">Tiada pelanggan lagi -- cipta baru</option>';
     }
 
-    // One row = one product + variation + total quantity. "Nak Dicetak
+    // One row = one product + variation + total quantity. "Cetak
     // Sekarang" defaults to the full quantity (print everything at once);
     // lower it to print some now and add the baki later. A row can also
     // carry named batches (e.g. one per school) -- those come from AI output
@@ -232,37 +264,34 @@ Peraturan penting:
       div.id = rowId;
       div.innerHTML = `
         <div>
-          <label style="font-size:14px;">Produk
-            <input type="text" data-field="productName" placeholder="cth: Jersi Home 2026" required style="font-size:14px; padding:10px;">
-          </label>
+          <span class="cell-label">Produk</span>
+          <textarea rows="1" data-field="productName" placeholder="cth: Jersi Home 2026" aria-label="Produk" required style="font-size:14px; padding:10px; resize:none; overflow:hidden;"></textarea>
         </div>
         <div>
-          <label style="font-size:14px;">Variasi
-            <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" required style="font-size:14px; padding:10px;">
-          </label>
+          <span class="cell-label">Variasi</span>
+          <input type="text" data-field="variantLabel" placeholder="cth: Saiz M" aria-label="Variasi" required style="font-size:14px; padding:10px;">
         </div>
         <div>
-          <label style="font-size:14px;">Kuantiti
-            <input type="number" min="1" data-field="quantity" required style="font-size:14px; padding:10px;">
-          </label>
+          <span class="cell-label">Kuantiti</span>
+          <input type="number" min="1" data-field="quantity" aria-label="Kuantiti" required style="font-size:14px; padding:10px;">
         </div>
         <div>
-          <label style="font-size:14px;">Nak Dicetak Sekarang
-            <input type="number" min="1" data-field="printNow" required style="font-size:14px; padding:10px;">
-          </label>
+          <span class="cell-label">Cetak Sekarang</span>
+          <input type="number" min="1" data-field="printNow" aria-label="Cetak Sekarang" required style="font-size:14px; padding:10px;">
         </div>
         <div>
-          <label style="font-size:14px;">Baki</label>
+          <span class="cell-label">Baki</span>
           <div class="baki-display" data-field="bakiDisplay">0</div>
         </div>
-        <div class="names-cell">
-          <label style="font-size:14px;">Nama Penerima (Pilihan)
-            <textarea data-field="unitNames" rows="3" placeholder="cth: Ahmad, Ali, Abu" style="font-size:14px; padding:10px;"></textarea>
-          </label>
-          <div class="names-count" data-field="namesCount"></div>
-        </div>
         <div>
-          <button type="button" class="btn-secondary" onclick="document.getElementById('${rowId}').remove()" style="color:#dc2626; font-size:13px; padding:8px 12px;">✕ Buang</button>
+          <button type="button" class="btn-secondary" onclick="document.getElementById('${rowId}').remove()" style="width:100%; color:#dc2626; font-size:13px; padding:9px 4px;">✕ Buang</button>
+        </div>
+        <div class="names-cell">
+          <div class="names-head">
+            <span>Nama penerima (pilihan) · asingkan dengan koma atau baris baru</span>
+            <span class="names-count" data-field="namesCount"></span>
+          </div>
+          <textarea data-field="unitNames" rows="2" placeholder="cth: Ahmad, Ali, Abu" aria-label="Nama penerima" style="font-size:14px; padding:10px;"></textarea>
         </div>
         <div class="batch-subrows" hidden>
           <div class="muted" style="font-size:13px; margin-bottom:8px;">Batch / kumpulan untuk baris ini (daripada AI). Boleh diubah atau dibuang.</div>
@@ -307,13 +336,13 @@ Peraturan penting:
         const s = document.createElement('div');
         s.className = 'batch-subrow';
         s.innerHTML = `
-          <input type="text" data-sub="name" placeholder="Nama batch (cth: SK Sekolah A)" style="font-size:14px; padding:8px;">
-          <input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" style="font-size:14px; padding:8px;">
+          <input type="text" data-sub="name" placeholder="Nama batch (cth: SK Sekolah A)" aria-label="Nama batch" style="font-size:14px; padding:8px;">
+          <input type="number" min="1" data-sub="quantity" placeholder="Kuantiti" aria-label="Kuantiti batch" style="font-size:14px; padding:8px;">
           <div>
-            <textarea data-sub="names" rows="2" placeholder="Nama penerima batch ini" style="font-size:14px; padding:8px;"></textarea>
+            <textarea data-sub="names" rows="2" placeholder="Nama penerima batch ini" aria-label="Nama penerima batch" style="font-size:14px; padding:8px;"></textarea>
             <div class="names-count" data-sub="count"></div>
           </div>
-          <button type="button" class="btn-secondary" style="color:#dc2626; font-size:13px; padding:8px 12px;">✕</button>
+          <button type="button" class="btn-secondary" style="color:#dc2626; font-size:13px; padding:8px 0;">✕</button>
         `;
         const subQty = s.querySelector('[data-sub=quantity]');
         const subNames = s.querySelector('[data-sub=names]');
@@ -324,6 +353,7 @@ Peraturan penting:
         const updateSub = () => {
           showCount(subNames, subCount, Number(subQty.value) || 0);
           refresh();
+          autosize(subNames);
         };
         subQty.addEventListener('input', updateSub);
         subNames.addEventListener('input', updateSub);
@@ -349,16 +379,21 @@ Peraturan penting:
         printNowInput.dataset.autofollow = 'false';
         refresh();
       });
-      namesInput.addEventListener('input', refresh);
+      namesInput.addEventListener('input', () => { autosize(namesInput); refresh(); });
 
       const startQty = prefill.quantity ?? 10;
-      q('productName').value = prefill.productName || '';
+      const productInput = q('productName');
+      productInput.value = prefill.productName || '';
+      productInput.addEventListener('input', () => autosize(productInput));
+      productInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
       q('variantLabel').value = prefill.variantLabel || '';
       qtyInput.value = startQty;
       printNowInput.value = startQty;
       namesInput.value = (prefill.unitNames || []).join(', ');
       (prefill.batches || []).forEach((b) => addSubrow(b));
       refresh();
+      autosize(namesInput);
+      autosize(productInput);
     }
 
     // The AI is a helper for THIS form, not a second way to create orders:
@@ -432,25 +467,39 @@ Peraturan penting:
         const stated = manifest.totalOrder === null || manifest.totalOrder === undefined || manifest.totalOrder === ''
           ? NaN : Number(manifest.totalOrder);
         let totalHtml;
+        let totalOk = '';
         if (!Number.isFinite(stated)) {
           totalHtml = `<div class="msg">AI tidak menyatakan jumlah dalam dokumen, jadi jumlah ${totalQty} unit tidak dapat disemak.</div>`;
         } else if (stated === totalQty) {
-          totalHtml = `<div class="msg ok">✅ Jumlah sepadan dengan dokumen: ${stated} unit.</div>`;
+          totalHtml = '';
+          totalOk = ` Jumlah sepadan dengan dokumen (${stated}).`;
         } else {
           totalHtml = `<div class="msg error">⚠️ Jumlah dalam dokumen ${stated} unit, tetapi jumlah baris ${totalQty} unit. Semak semula kuantiti sebelum sahkan.</div>`;
         }
 
-        // Rows where only some units have a name (e.g. 12 names for 16 units):
-        // usually an extraction slip, so call them out instead of leaving them
-        // to be noticed in the row counters.
+        // Rows where only some units have a name (e.g. 12 names for 16 units).
         const partial = rows.filter((r) => r.unitNames.length && r.unitNames.length < r.quantity)
-          .map((r) => `${r.variantLabel} (${r.unitNames.length} nama / ${r.quantity} unit)`);
+          .map((r) => `${esc(r.variantLabel)} (${r.unitNames.length} nama / ${r.quantity} unit)`);
         const partialHtml = partial.length
           ? `<div class="msg error">⚠️ Nama kurang daripada kuantiti: ${partial.join(', ')}. Semak dengan dokumen.</div>`
           : '';
 
-        out.innerHTML = `<div class="msg ok">✅ Borang telah diisi: ${rows.length} baris, ${totalQty} unit.${customerNote} Semak dan betulkan di bawah, kemudian tekan "Sahkan Tempahan &amp; Jana Label".</div>${totalHtml}${partialHtml}`;
-        document.getElementById('order-with-labels-form').scrollIntoView({ behavior: 'smooth' });
+        // Anomalies the AI itself flagged (ambiguous name splits, unclear
+        // text, several documents in one file...). Shown prominently instead of
+        // being left for staff to discover.
+        const rawWarnings = Array.isArray(manifest.warnings) ? manifest.warnings : (manifest.warnings ? [manifest.warnings] : []);
+        const warnings = rawWarnings.map((w) => (typeof w === 'string' ? w : JSON.stringify(w))).map((w) => w.trim()).filter(Boolean);
+        const warningHtml = warnings.length
+          ? `<div class="msg error"><strong>⚠️ AI menandakan ${warnings.length} perkara untuk disemak:</strong><ul>${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>`
+          : '';
+
+        document.getElementById('order-alerts').innerHTML =
+          `<div class="msg ok">✅ Borang telah diisi: ${rows.length} baris, ${totalQty} unit.${totalOk}${esc(customerNote)} Semak dan betulkan di bawah, kemudian tekan "Sahkan Tempahan &amp; Jana Label".</div>${warningHtml}${totalHtml}${partialHtml}`;
+        out.innerHTML = '';
+        document.getElementById('ai-helper').open = false;
+        const notesEl = document.querySelector('[name=orderNotes]');
+        autosize(notesEl);
+        document.getElementById('order-alerts').scrollIntoView({ behavior: 'smooth' });
       } catch (err) {
         out.innerHTML = `<div class="msg error">❌ ${err.message}</div>`;
       }
@@ -618,13 +667,13 @@ Peraturan penting:
         const itemRows = document.querySelectorAll('.item-row');
         if (!itemRows.length) throw new Error('Sila tambah sekurang-kurangnya 1 item pakaian.');
 
-        // Per row: "Nak Dicetak Sekarang" for simple phasing, OR named batches
+        // Per row: "Cetak Sekarang" for simple phasing, OR named batches
         // (sub-rows, e.g. one per school) for grouped orders. A row with
         // sub-rows sends exactly those batches; otherwise it sends at most one
         // phase (printNow) and the baki is added later from Senarai Tempahan.
         const items = [];
         itemRows.forEach((row) => {
-          const productName = row.querySelector('[data-field=productName]').value.trim();
+          const productName = row.querySelector('[data-field=productName]').value.replace(/\s*\n\s*/g, ' ').trim();
           const variantLabel = row.querySelector('[data-field=variantLabel]').value.trim();
           const quantity = Number(row.querySelector('[data-field=quantity]').value);
           const printNow = Number(row.querySelector('[data-field=printNow]').value);
@@ -663,10 +712,10 @@ Peraturan penting:
             throw new Error(`${what} ada ${unitNames.length} nama tetapi kuantitinya hanya ${quantity}.`);
           }
           if (!printNow || printNow < 1) {
-            throw new Error(`"Nak Dicetak Sekarang" untuk ${what} mesti sekurang-kurangnya 1.`);
+            throw new Error(`"Cetak Sekarang" untuk ${what} mesti sekurang-kurangnya 1.`);
           }
           if (printNow > quantity) {
-            throw new Error(`"Nak Dicetak Sekarang" (${printNow}) melebihi kuantiti (${quantity}) untuk ${what}.`);
+            throw new Error(`"Cetak Sekarang" (${printNow}) melebihi kuantiti (${quantity}) untuk ${what}.`);
           }
           const batches = printNow < quantity ? [{ quantity: printNow }] : null;
           items.push({ productName, variantLabel, quantity, unitNames, batches });
@@ -714,6 +763,8 @@ Peraturan penting:
         addItemRow();
         document.getElementById('ai-text-input').value = '';
         document.getElementById('ai-fill-result').innerHTML = '';
+        document.getElementById('order-alerts').innerHTML = '';
+        autosize(document.querySelector('[name=orderNotes]'));
         await loadCustomers();
         loadOrders();
         document.getElementById('summary-section').scrollIntoView({ behavior: 'smooth' });
