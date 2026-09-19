@@ -4,7 +4,7 @@ Status: **DRAF UNTUK SEMAKAN. Tiada kod, tiada skema, tiada migrasi.** Lakaran j
 
 **Keputusan dikunci 19/9 (versi akhir; menggantikan jawapan awal jika bercanggah):**
 
-1. `recipient_name` ialah **maklumat label/penerima**, bukan identiti fizikal baju. Nama yang dicetak atau dijahit pada baju ialah ciri produk (customisation), di luar model ini (lihat Risiko R1).
+1. **Nama penerima (dijelaskan Izzat 19/9, menggantikan semua andaian sebelum ini):** sesetengah order mahu nama pada baju, sesetengah tidak. Jika dokumen order menulis "baju ini perlu nama X", nama itu **ada pada baju**; jika tidak ditulis, **tiada**. Nama juga dicetak pada label supaya **semasa packing baju tidak tertukar, terlebih atau terkurang**. Maka: unit yang mempunyai `recipient_name` ialah **baju diperibadikan** (nama pada baju); unit tanpa nama ialah baju generik. Ini diterbitkan daripada data order, bukan soalan kepada operator. Nama pada baju ialah sebahagian spesifikasi pengeluaran, sama seperti saiz.
 2. Salah saiz **tidak menulis `DAMAGE_OBSERVED`**. Mekanisme reissue diubah supaya membawa sebab yang tepat (bahagian 7.1). Tiada perbendaharaan event baru.
 3. **Tiada hierarki peranan** (staf/admin) sebagai keperluan seni bina. Sistem hanya merekod siapa melakukan pindaan dan memberi pengesahan yang jelas apabila ada akibat fizikal.
 4. `quantity_ordered` **tidak pernah ditulis semula** (invarian I8).
@@ -59,16 +59,28 @@ Tiga jenis perubahan: **Nama** penerima, **Variasi/saiz** (termasuk produk), **K
 
 ### 4.1 Nama penerima
 
-`recipient_name` ialah maklumat pada label. Menukarnya tidak menukar apa yang kilang wajib hasilkan, jadi ia **tidak** VOID obligasi selagi label masih boleh diganti.
+**Takrif.** Unit berperibadi = unit yang ada `recipient_name` (daripada dokumen order). Nama itu ada pada baju dan pada label. Unit generik = tiada nama. Menambah nama pada unit generik, mengubah, atau membuang nama pada unit berperibadi ialah **perubahan spesifikasi baju**, jadi ia menyentuh identiti seperti perubahan saiz.
 
-| | Mekanisme | Obligasi baru? | Akibat fizikal | Jejak |
-|---|---|---|---|---|
-| **S1** | Pembetulan di tempat (belum ada label) | Tidak | Tiada | `NAME_CORRECTED {lama, baru}` + pindaan |
-| **S2** | Pembetulan + label kertas lama dimatikan (token diputar) + cetak semula | Tidak | Label kertas lama dibuang | `NAME_CORRECTED` + `LABEL_REISSUED` sebab `NAME_CORRECTION` |
-| **S3** | Sama seperti S2 tetapi label sudah pada baju: token lama dimatikan, status tampal dikosongkan, label baru dikeluarkan dan ditampal semula. Pengesahan jelas: "label pada baju perlu ditukar". | Tidak | Label lama dibuang daripada baju, label baru ditampal | `NAME_CORRECTED` + `LABEL_REISSUED` sebab `NAME_CORRECTION`. **Tiada `DAMAGE_OBSERVED`.** |
-| **S4** | Unit tidak diubah. Reissue ditolak selepas dihantar (sudah dikuatkuasakan). Jika pelanggan perlukan baju/label baru: **SUPERSEDE**. | Ya (pengganti) | Baju lama dipulang melalui Return Intake, atau pelanggan simpan | `replaces` + pindaan |
+Apa yang tidak diketahui Labelism ialah sama ada kilang **sudah menghasilkan** baju dengan nama lama, sebelum label ditampal (kilang bekerja daripada dokumen, bukan daripada Labelism). Maka satu pengisytiharan operator, hanya untuk perubahan nama:
 
-Risiko R1 (di luar model): jika sesuatu produk memang mempunyai nama yang dicetak/dijahit pada baju, mengubah nama selepas baju dihasilkan menghasilkan baju salah yang label baru tak dapat betulkan. Itu ciri produk (customisation) dan patut dimodelkan sebagai atribut variasi/spesifikasi produk jika suatu hari ia sebenar-benarnya berlaku, bukan sebagai `recipient_name`. **Belum dibina dan belum diputuskan.**
+> "Baju dengan nama lama **sudah dihasilkan**?" Ya / Tidak
+
+| | Tidak (baju belum dihasilkan) | Ya (baju sudah dihasilkan) |
+|---|---|---|
+| **S1** belum cetak | Betulkan di tempat: `NAME_CORRECTED {lama, baru}` + pindaan | VOID + pengganti + Unit Pengecualian (baju bernama lama) |
+| **S2** dicetak, belum ditampal | Betulkan, matikan label kertas lama (token diputar), cetak baru: `NAME_CORRECTED` + `LABEL_REISSUED` sebab `NAME_CORRECTION` | VOID + pengganti + Unit Pengecualian; label kertas lama dimatikan |
+| **S3** ditampal, belum dihantar | Tidak terpakai: baju sudah wujud dengan nama lama, **jawapan sentiasa "Ya"** | **VOID + pengganti + Unit Pengecualian `VOID_RELEASED`.** Tiada "tukar label sahaja". |
+| **S4** dihantar | Tidak boleh diubah. Jika pelanggan mahu baju bernama baru: **SUPERSEDE** (obligasi pengganti, baju lama dipulang melalui Return Intake atau pelanggan simpan) | sama |
+
+Baju bernama lama yang menjadi UP biasanya **REJECTED** atau **SPARE** (nama orang lain tidak sesuai untuk penerima baru). CONVERT hanya jika satu obligasi baru pada order yang sama memang sesuai dengannya (contoh: nama yang sama diperlukan semula).
+
+Unit generik yang tiada nama dan tiada nama dimahukan: tiada apa untuk diubah; perubahan saiz dan kuantiti ikut 4.2 dan 4.3.
+
+Reissue selepas tampal sedia ada (yang hanya menukar QR) **bukan** cara membetulkan nama. Ia kekal untuk label rosak sahaja.
+
+### 4.1.1 Nama pada label semasa packing
+
+Nama pada label ada tujuan operasi: pembungkus memadankan nama pada baju dengan nama pada label, supaya baju tidak tertukar. Hari ini, hasil scan packing **tidak memaparkan nama penerima** (hanya produk, variasi dan kod), jadi padanan itu bergantung sepenuhnya kepada mata pembungkus. Cadangan kecil, belum dibina dan belum diluluskan: hasil scan packing memaparkan nama penerima dengan jelas untuk unit berperibadi, sebagai bantuan pengesahan (bukan sekatan). Ini bukan sebahagian fasa 0 hingga 4.
 
 ### 4.2 Variasi / saiz
 
@@ -268,7 +280,7 @@ Sebab dipisahkan: pencetus, pelaku dan invarian berbeza. Jika digabung, satu `un
 
 | # | Soalan | Keputusan |
 |---|---|---|
-| 1 | Nama pada baju atau label? | **`recipient_name` ialah maklumat label.** Nama dicetak/dijahit pada baju = ciri produk, di luar model (R1). |
+| 1 | Nama pada baju atau label? | **Kedua-duanya, bergantung order.** Nama dalam dokumen order = nama pada baju dan pada label (untuk pengesahan packing). Tiada nama dalam dokumen = tiada nama. Unit dengan `recipient_name` ialah baju diperibadikan (bahagian 4.1). |
 | 2 | Siapa boleh terapkan pindaan? | **Tiada hierarki peranan.** Rekod pelaku; pengesahan lebih jelas untuk akibat fizikal. Sekatan peranan hanya jika operasi sebenar memerlukannya. |
 | 3 | UP `PENDING` menyekat apa? | Tidak menyekat order atau penghantaran lain. UP tidak boleh masuk packing/pemenuhan. Amaran merah sehingga diputuskan. |
 | 4 | Keluarkan unit dari packing | **Ya, wajib bina.** Satu tindakan, sebab dan pelaku wajib, satu event, buang keahlian, kira semula shipment. |
@@ -278,7 +290,7 @@ Sebab dipisahkan: pencetus, pelaku dan invarian berbeza. Jika digabung, satu `un
 | 8 | Nombor pindaan | `A1`, `A2`... per order, tak boleh diubah selepas diterap. |
 | 9 | Kuantiti kurang selepas hantar | Labelism merekod pemulangan; kuantiti diturunkan hanya selepas keadaan fizikal unit jelas. Refund/kredit/invois di luar skop. |
 | 10 | Pengepala order | Boleh diedit dengan log perubahan, tanpa VOID. No. rujukan lama kekal dalam log. |
-| 11 | Bila nama dikenakan pada baju | **Gugur** (nama ialah metadata label, lihat 1). |
+| 11 | Bila nama dikenakan pada baju | **Dijawab dengan satu pengisytiharan operator** pada perubahan nama S1 dan S2: "baju bernama lama sudah dihasilkan?" (bahagian 4.1). |
 
 ## 13. Urutan pembinaan
 
