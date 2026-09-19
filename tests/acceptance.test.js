@@ -1,7 +1,7 @@
 /**
  * Labelism Acceptance Test Suite – tests/acceptance.test.js
  *
- * Runs 19 acceptance tests against a live local wrangler dev server.
+ * Runs 20 acceptance tests against a live local wrangler dev server.
  * All tests use real HTTP endpoints (no internal service calls).
  *
  * Prerequisites:
@@ -888,6 +888,36 @@ await run('Test 19 – A unit sits in one active return intake and has one QC de
   const stale = await qc(i1.id, units[0], { outcome: 'REJECTED', reason: 'x' });
   assert(stale.status === 400 && /T19-B/.test(stale.body.error), `Old intake must not decide it: ${JSON.stringify(stale.body)}`);
   assert((await qc(i2.id, units[0], { outcome: 'AVAILABLE' })).status === 200, 'newest intake decides');
+});
+
+await run('Test 20 – A dispatched unit cannot have its label reissued; undispatched units still can', async () => {
+  const product = `T20-Product-${Date.now()}`;
+  const { orderId, rows } = await makeOrder('T20', [{ productName: product, variantLabel: 'Saiz M', quantity: 3, batches: null }]);
+  const pr = await api(`/api/orders/${orderId}/print-runs`, { method: 'POST', body: { selections: [{ batchId: rows[0].batch_id, quantity: 3 }] } });
+  const units = (await api(`/api/print-runs/${pr.body.id}`)).body.units;
+  for (const u of units) await attachUnit(u);
+  await api(`/api/print-runs/${pr.body.id}/packing/start`, { method: 'POST', body: {} });
+  // Pack and dispatch only two; the third stays on the shelf.
+  for (const u of units.slice(0, 2)) await api(`/api/print-runs/${pr.body.id}/packing/scan`, { method: 'POST', body: { code: u.internal_token } });
+  await api(`/api/print-runs/${pr.body.id}/packing/close`, { method: 'POST', body: {} });
+  const rec = await api(`/api/orders/${orderId}/reconciliation`);
+  const ships = await api(`/api/order-lines/${rec.body.lines[0].order_line_id}/shipments`);
+  for (const s of ships.body) await api(`/api/shipments/${s.id}/dispatch`, { method: 'POST', body: { locationName: 'Customer' } });
+
+  const before = (await api(`/api/units/lookup/${units[0].internal_token}`)).body;
+  const r = await api(`/api/units/${units[0].id}/reissue-label-after-attachment`, { method: 'POST', body: { actor: 'test' } });
+  assert(r.status === 400 && /dihantar/.test(r.body.error), `Reissue after dispatch must be refused: ${r.status} ${JSON.stringify(r.body)}`);
+  const r2 = await api(`/api/units/${units[0].id}/reissue-label`, { method: 'POST', body: { actor: 'test' } });
+  assert(r2.status === 400, 'Plain reissue after dispatch must also be refused');
+
+  // Nothing changed on the refused unit: same QR still resolves, still attached, no reissue events.
+  const after = await api(`/api/units/lookup/${units[0].internal_token}`);
+  assert(after.status === 200, 'The dispatched unit QR must still resolve');
+  assert(after.body.events.length === before.events.length, 'A refused reissue must not write events');
+
+  // The unit that was never dispatched can still be reissued as before.
+  const ok = await api(`/api/units/${units[2].id}/reissue-label-after-attachment`, { method: 'POST', body: { actor: 'test' } });
+  assert(ok.status === 201, `Undispatched unit must still be reissuable: ${ok.status} ${JSON.stringify(ok.body)}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

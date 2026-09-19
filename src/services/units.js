@@ -113,9 +113,28 @@ export async function confirmLabel(db, unitId, actor) {
 // allowed before label_confirmed_at is set: once attachment is confirmed,
 // the label IS the physical object's identity and rotating it would sever
 // that link instead of protecting it.
+// A unit that has left the building (UNIT_DISPATCHED) no longer has a label
+// this system can swap: the customer holds the garment with the label on it.
+// Rotating the token then would kill the QR on a garment already out in the
+// world and blank its "attached" status while it sits in a DISPATCHED
+// shipment. If a replacement/return workflow is ever needed it should be its
+// own explicit path (return intake first), not this everyday reissue.
+async function assertNotDispatched(db, unit) {
+  const dispatched = await db
+    .prepare("SELECT 1 FROM unit_events WHERE unit_id = ? AND event_type = 'UNIT_DISPATCHED' LIMIT 1")
+    .bind(unit.id)
+    .first();
+  if (dispatched) {
+    throw new ValidationError(
+      `Unit ${unit.human_code} sudah dihantar (dispatched). Label tidak boleh diganti selepas dihantar. Jika ia dipulangkan, terima melalui Pemulangan (Return Intake) dahulu.`
+    );
+  }
+}
+
 export async function reissueLabel(db, unitId, actor) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
+  await assertNotDispatched(db, unit);
   if (unit.label_confirmed_at) {
     throw new ValidationError(
       'This label is already confirmed attached -- reissuing would sever a real physical identity. Use Record Damage / Confirm Missing instead.'
@@ -173,6 +192,7 @@ export async function reissueLabel(db, unitId, actor) {
 export async function reissueLabelAfterAttachment(db, unitId, actor) {
   const unit = await db.prepare('SELECT * FROM units WHERE id = ?').bind(unitId).first();
   if (!unit) return { notFound: true };
+  await assertNotDispatched(db, unit);
   if (!unit.label_confirmed_at) {
     throw new ValidationError(
       'This unit was never confirmed attached -- use the "Lost -- Reissue" action on Print Labels instead.'
