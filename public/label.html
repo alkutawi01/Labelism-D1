@@ -28,6 +28,7 @@
         padding: 2mm;
       }
       .label:last-child { page-break-after: auto; }
+      .label.confirmed { display: none !important; }
 
       /* A4 sheet mode: many labels per page, cut by hand -- for testing
          before a thermal printer/driver is set up. Dashed border doubles
@@ -481,8 +482,14 @@
       document.getElementById('summary-generated').textContent = units.length;
       document.getElementById('summary-attached').textContent = confirmedCount;
       document.getElementById('summary-pending').textContent = pendingCount;
-      document.getElementById('print-btn').textContent = `Cetak Semula Batch ${currentRun.run_number}`;
-      document.getElementById('print-count').textContent = `Anda akan mencetak ${units.length} label.`;
+      const reprintBtn = document.getElementById('print-btn');
+      reprintBtn.textContent = `Cetak Semula Batch ${currentRun.run_number}`;
+      reprintBtn.disabled = pendingCount === 0;
+      document.getElementById('print-count').textContent = pendingCount === 0
+        ? 'Semua label dalam batch ini sudah ditampal, tiada apa nak dicetak semula.'
+        : confirmedCount > 0
+        ? `Anda akan mencetak ${pendingCount} label yang belum ditampal (${confirmedCount} yang sudah ditampal tidak dicetak semula).`
+        : `Anda akan mencetak ${pendingCount} label.`;
       document.getElementById('unit-count-summary').textContent = units.length
         ? `${pendingCount} daripada ${units.length} label masih perlu ditampal dan disahkan.`
         : 'Batch ini belum mempunyai label.';
