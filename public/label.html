@@ -119,6 +119,7 @@
   </header>
 
   <label class="no-print batch-picker">Order
+    <input type="search" id="order-search" placeholder="Cari customer atau no. tempahan…" autocomplete="off" style="margin-top:7px;font-weight:400;">
     <select id="order-select"><option value="">Memuatkan…</option></select>
   </label>
   <label class="no-print" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin-top:8px;font-weight:400;font-size:14px;">
@@ -248,10 +249,20 @@
     // ------------------------------------------------------------------
     // Only orders that still have labels to print are listed by default, so
     // the list stays short and finished orders do not pile up in it.
+    // Typing in the search box looks through ALL orders (customer name or
+    // order reference), including ones whose labels are all printed -- someone
+    // searching for a specific order usually wants that one, e.g. to reprint.
+    const searchBox = document.getElementById('order-search');
     function renderOrderOptions(preferId) {
-      const list = ordersList.filter((o) => showAllBox.checked || o.unprinted_units > 0 || o.id === preferId);
+      const q = searchBox.value.trim().toLowerCase();
+      const list = ordersList.filter((o) => {
+        if (q) return `${o.customer_name} ${o.order_reference}`.toLowerCase().includes(q);
+        return showAllBox.checked || o.unprinted_units > 0 || o.id === preferId;
+      });
       if (!list.length) {
-        orderSelect.innerHTML = '<option value="">Tiada order yang menunggu cetakan</option>';
+        orderSelect.innerHTML = q
+          ? '<option value="">Tiada order sepadan dengan carian</option>'
+          : '<option value="">Tiada order yang menunggu cetakan</option>';
         return;
       }
       orderSelect.innerHTML = list.map((o) => {
@@ -279,6 +290,11 @@
       loadOrder(orderSelect.value);
     });
     orderSelect.addEventListener('change', () => loadOrder(orderSelect.value));
+    searchBox.addEventListener('input', () => {
+      const before = orderSelect.value;
+      renderOrderOptions(before);
+      if (orderSelect.value !== before) loadOrder(orderSelect.value);
+    });
 
     // ------------------------------------------------------------------
     // Print table
